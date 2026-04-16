@@ -10,7 +10,7 @@ namespace Character.Controller
         private Camera _camera;
         public float MoveSpeed = 5f;
         public float SprintSpeed = 10f;
-        public float RotationSlerpSpeed = 10f;
+        public float RotationSlerpSpeed = 30f;
 
         public Vector3 Velocity;
         public float gravity = -9.81f;
@@ -26,6 +26,10 @@ namespace Character.Controller
             _inputHandler = GetComponent<InputHandler>();
             _characterController = GetComponent<CharacterController>();
             _camera = Camera.main;
+            
+            //临时放在这里，锁光标
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
         }
 
         void Update()
@@ -39,8 +43,8 @@ namespace Character.Controller
             Vector3 camRight = Vector3.right;
             if (_camera != null)
             {
-                camForward = GetPlanarNormalized(_camera.transform.forward);
-                camRight = GetPlanarNormalized(_camera.transform.right);
+                camForward = new Vector3(_camera.transform.forward.x, 0, _camera.transform.forward.z).normalized;
+                camRight = new Vector3(_camera.transform.right.x, 0, _camera.transform.right.z).normalized;
             }
 
             Vector3 inputDir = camRight * moveInput.x + camForward * moveInput.y;
@@ -73,16 +77,5 @@ namespace Character.Controller
             _characterController.Move(Velocity * Time.deltaTime);
         }
 
-        private static Vector3 GetPlanarNormalized(Vector3 dir)
-        {
-            dir.y = 0f;
-            float sqrMag = dir.sqrMagnitude;
-            if (sqrMag <= 0.0001f)
-            {
-                return Vector3.forward;
-            }
-
-            return dir / Mathf.Sqrt(sqrMag);
-        }
-    }
+      }
 }
