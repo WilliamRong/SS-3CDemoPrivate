@@ -1,3 +1,6 @@
+using Character.Core;
+using Character.Intent;
+using Character.Motor;
 using Input;
 using UnityEngine;
 
@@ -8,18 +11,22 @@ namespace Character.Controller
         private InputHandler _inputHandler;
         private CharacterController _characterController;
         private Camera _camera;
+
+        [Header("Move")]
         public float MoveSpeed = 5f;
         public float SprintSpeed = 10f;
         public float RotationSlerpSpeed = 30f;
-
-        public Vector3 Velocity;
-        public float gravity = -9.81f;
         public float SmoothTime = 0.1f;
 
-        private Vector3 _currentHorizontalVelocity;
-        private Vector3 _horizontalVelocityRef;
-
+        [Header("Vertical")]
+        public float gravity = -9.81f;
         public float JumpHeight = 1f;
+
+        public Vector3 Velocity;
+
+        private CharacterContext _context;
+        private CharacterMotor _motor;
+      
         // Start is called before the first frame update
         void Start()
         {
@@ -30,51 +37,32 @@ namespace Character.Controller
             //临时放在这里，锁光标
             Cursor.visible = false;
             Cursor.lockState = CursorLockMode.Locked;
+
+
+            _context = new CharacterContext(_characterController, _camera);
+
+            _motor = new CharacterMotor(_context){
+                MoveSpeed = MoveSpeed,
+                SprintSpeed = SprintSpeed,
+                RotationSlerpSpeed = RotationSlerpSpeed,
+                SmoothTime = SmoothTime,
+                Gravity = gravity,
+                JumpHeight = JumpHeight,
+            };
         }
 
         void Update()
         {
             // 水平移动（SmoothDamp 平滑过渡）
-            Vector2 moveInput = _inputHandler.MoveInput;
-            float speed = _inputHandler.IsSprinting ? SprintSpeed : MoveSpeed;
-            bool hasMoveInput = moveInput.sqrMagnitude > 0.0001f;
+            var intent = new CharacterIntent{
+                Move = _inputHandler.MoveInput,
+                IsSprintHeld = _inputHandler.IsSprinting,
+                IsJumpPressed = _inputHandler.JumpTriggered,
+            };
+            
+            _motor.Tick(intent, Time.deltaTime, transform);
 
-            Vector3 camForward = Vector3.forward;
-            Vector3 camRight = Vector3.right;
-            if (_camera != null)
-            {
-                camForward = new Vector3(_camera.transform.forward.x, 0, _camera.transform.forward.z).normalized;
-                camRight = new Vector3(_camera.transform.right.x, 0, _camera.transform.right.z).normalized;
-            }
-
-            Vector3 inputDir = camRight * moveInput.x + camForward * moveInput.y;
-            if (hasMoveInput && inputDir.sqrMagnitude > 0.0001f)
-            {
-                inputDir.Normalize();
-                Quaternion targetRot = Quaternion.LookRotation(inputDir);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, RotationSlerpSpeed * Time.deltaTime);
-            }
-
-            Vector3 targetHorizontal = inputDir * speed;
-            _currentHorizontalVelocity = Vector3.SmoothDamp(_currentHorizontalVelocity, targetHorizontal, ref _horizontalVelocityRef, SmoothTime);
-            Velocity.x = _currentHorizontalVelocity.x;
-            Velocity.z = _currentHorizontalVelocity.z;
-
-            // 跳跃
-            if (_inputHandler.JumpTriggered && _characterController.isGrounded)
-            {
-                Velocity.y = Mathf.Sqrt(JumpHeight * -2f * gravity);
-            }
-
-            // 重力
-            if (_characterController.isGrounded && Velocity.y < 0)
-            {
-                Velocity.y = -2f;
-            }
-            Velocity.y += gravity * Time.deltaTime;
-
-            // 一次 Move
-            _characterController.Move(Velocity * Time.deltaTime);
+            Velocity = _context.Velocity;
         }
 
       }

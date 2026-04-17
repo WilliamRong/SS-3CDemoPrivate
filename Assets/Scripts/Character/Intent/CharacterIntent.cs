@@ -1,18 +1,11 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
-public class CharacterIntent : MonoBehaviour
+namespace Character.Intent
 {
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
+   public struct CharacterIntent
+   {
+      public Vector3 Move;//移动
+      public bool IsSprintHeld;//是否按住冲刺
+      public bool IsJumpPressed;//是否按住跳跃
+   }
 }
