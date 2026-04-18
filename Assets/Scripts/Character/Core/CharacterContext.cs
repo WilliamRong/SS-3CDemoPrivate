@@ -5,12 +5,14 @@ namespace Character.Core
     public sealed class CharacterContext
     {
       public CharacterController Controller { get; private set; }
+      public Transform Root { get; private set; }
       public Camera ViewCamera{get;private set;}
       public Vector3 Velocity;
 
-      public CharacterContext(CharacterController controller, Camera viewCamera)
+      public CharacterContext(CharacterController controller, Transform root, Camera viewCamera)
       {
         Controller = controller;
+        Root = root;
         ViewCamera = viewCamera;
         Velocity = Vector3.zero;
       }

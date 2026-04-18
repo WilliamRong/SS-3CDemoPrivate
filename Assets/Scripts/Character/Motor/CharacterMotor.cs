@@ -10,6 +10,8 @@ namespace Character.Motor
 
         private Vector3 _currentHorizontalVelocity;
         private Vector3 _horizontalVelocityRef;
+        
+        private bool _isSprintActive;
 
         //todo之后转移到配置表
         public float MoveSpeed = 5f;
@@ -24,14 +26,14 @@ namespace Character.Motor
             _context = context;
         }
 
-        public void Tick(CharacterIntent intent, float dt, Transform actorTransform)
+        public void Tick(CharacterIntent intent, float dt)
         {
-            TickHorizontal(intent, dt, actorTransform);
-            TickVertical(intent, dt, actorTransform);
+            TickHorizontal(intent, dt);
+            TickVertical(intent, dt);
             _context.Controller.Move(_context.Velocity * dt);
         }
 
-        private void TickHorizontal(CharacterIntent intent, float dt, Transform actorTransform)
+        private void TickHorizontal(CharacterIntent intent, float dt)
         {
             _context.GetCameraBasis(out var camForward, out var camRight);
 
@@ -41,10 +43,10 @@ namespace Character.Motor
             if(hasMoveInput){
                 inputDir.Normalize();
                 var targetRot = Quaternion.LookRotation(inputDir);
-                actorTransform.rotation = Quaternion.Slerp(actorTransform.rotation, targetRot, RotationSlerpSpeed * dt);
+                _context.Root.rotation = Quaternion.Slerp(_context.Root.rotation, targetRot, RotationSlerpSpeed * dt);
             }
 
-            var speed = intent.IsSprintHeld ? SprintSpeed : MoveSpeed;
+            var speed = _isSprintActive ? SprintSpeed : MoveSpeed;
             var targetHorizontal = inputDir * speed;
 
             _currentHorizontalVelocity = Vector3.SmoothDamp(_currentHorizontalVelocity, targetHorizontal, ref _horizontalVelocityRef, SmoothTime);
@@ -54,7 +56,7 @@ namespace Character.Motor
             _context.Velocity = v;
         }
 
-        private void TickVertical(CharacterIntent intent, float dt, Transform actorTransform)
+        private void TickVertical(CharacterIntent intent, float dt)
         {
             //跳跃和重力
             var v = _context.Velocity;
@@ -69,8 +71,11 @@ namespace Character.Motor
             v.y += Gravity * dt;
             _context.Velocity = v;
         }
-        
 
+        public void SetSprintActive(bool active)
+        {
+            _isSprintActive = active;
+        }
 
     }
 }

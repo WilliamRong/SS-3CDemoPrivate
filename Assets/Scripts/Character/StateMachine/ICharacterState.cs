@@ -1,18 +1,13 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+using Character.Intent;
 
-public class ICharacterState : MonoBehaviour
+namespace Character.StateMachine
 {
-    // Start is called before the first frame update
-    void Start()
+    public interface ICharacterState
     {
-        
-    }
+        CharacterStateId Id { get; }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        void Enter();
+        void Tick(CharacterIntent intent, float deltaTime);
+        void Exit();
     }
 }

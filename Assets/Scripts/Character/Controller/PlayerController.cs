@@ -1,6 +1,8 @@
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
+using Character.StateMachine;
+using Character.StateMachine.States;
 using Input;
 using UnityEngine;
 
@@ -21,7 +23,15 @@ namespace Character.Controller
         [Header("Vertical")]
         public float gravity = -9.81f;
         public float JumpHeight = 1f;
-
+        
+        [Header("State")]
+        private CharacterStateMachine _fsm;
+        private IdleState _idleState;
+        private MoveState _moveState;
+        private SprintState _sprintState;
+        public CharacterStateId CurrentStateId =>
+            _fsm?.CurrentState?.Id ?? CharacterStateId.None;
+        
         public Vector3 Velocity;
 
         private CharacterContext _context;
@@ -39,7 +49,7 @@ namespace Character.Controller
             Cursor.lockState = CursorLockMode.Locked;
 
 
-            _context = new CharacterContext(_characterController, _camera);
+            _context = new CharacterContext(_characterController, transform, _camera);
 
             _motor = new CharacterMotor(_context){
                 MoveSpeed = MoveSpeed,
@@ -49,6 +59,17 @@ namespace Character.Controller
                 Gravity = gravity,
                 JumpHeight = JumpHeight,
             };
+            
+            
+            //状态机
+            _fsm = new CharacterStateMachine();
+            _idleState = new IdleState(_fsm, _motor);
+            _moveState = new MoveState(_fsm, _motor);
+            _sprintState = new SprintState(_fsm, _motor);
+            _idleState.SetTransitions(_moveState, _sprintState);
+            _moveState.SetTransitions(_idleState, _sprintState);
+            _sprintState.SetTransitions(_idleState, _moveState);
+            _fsm.Initialize(_idleState);
         }
 
         void Update()
@@ -60,8 +81,7 @@ namespace Character.Controller
                 IsJumpPressed = _inputHandler.JumpTriggered,
             };
             
-            _motor.Tick(intent, Time.deltaTime, transform);
-
+            _fsm.Tick(intent, Time.deltaTime);
             Velocity = _context.Velocity;
         }
 

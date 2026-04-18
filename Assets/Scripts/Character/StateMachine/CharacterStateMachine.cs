@@ -1,18 +1,28 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+using Character.Intent;
 
-public class CharacterStateMachine : MonoBehaviour
+namespace Character.StateMachine
 {
-    // Start is called before the first frame update
-    void Start()
-    {
-        
-    }
+public sealed class CharacterStateMachine
+{
+  public ICharacterState CurrentState { get; private set; }
 
-    // Update is called once per frame
-    void Update()
-    {
-        
-    }
+  public void Initialize(ICharacterState initialState)
+  {
+    CurrentState = initialState;
+    CurrentState.Enter();
+  }
+  
+  public void Tick(CharacterIntent intent, float deltaTime)
+  {
+    CurrentState.Tick(intent, deltaTime);
+  }
+
+  public void ChangeState(ICharacterState newState)
+  {
+    if(newState == null || newState.Id == CurrentState.Id) return;
+    CurrentState?.Exit();
+    CurrentState = newState;
+    CurrentState?.Enter();
+  }
+}
 }
