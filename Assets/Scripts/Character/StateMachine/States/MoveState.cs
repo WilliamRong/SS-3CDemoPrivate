@@ -10,8 +10,6 @@ namespace Character.StateMachine.States
 
         private IdleState _idleState;
         private SprintState _sprintState;
-        private AttackState _attackState;
-        private DodgeState _dodgeState;
 
         public MoveState(CharacterStateMachine fsm, CharacterMotor motor)
         {
@@ -19,13 +17,10 @@ namespace Character.StateMachine.States
             _motor = motor;
         }
 
-        public void SetTransitions(IdleState idleState, SprintState sprintState,  AttackState attackState,
-            DodgeState dodgeState)
+        public void SetTransitions(IdleState idleState, SprintState sprintState)
         {
             _idleState = idleState;
             _sprintState = sprintState;
-            _attackState = attackState;
-            _dodgeState = dodgeState;
         }
 
         public CharacterStateId Id { get; } = CharacterStateId.Move;
@@ -35,9 +30,6 @@ namespace Character.StateMachine.States
         {
             _motor.SetSprintActive(false);
             _motor.Tick(intent, deltaTime);
-            
-            if (intent.IsDodgePressed) { _fsm.ChangeState(_dodgeState); return; }
-            if (intent.IsAttackPressed) { _fsm.ChangeState(_attackState); return; }
 
             bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
             if (!hasMove)
