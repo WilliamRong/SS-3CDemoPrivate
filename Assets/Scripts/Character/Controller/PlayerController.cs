@@ -31,6 +31,7 @@ namespace Character.Controller
         
         [Header("State")]
         private CharacterStateMachine _fsm;
+        private CharacterStateRegistry _stateRegistry;
         private IdleState _idleState;
         private MoveState _moveState;
         private SprintState _sprintState;
@@ -74,19 +75,23 @@ namespace Character.Controller
             
             //状态机
             _fsm = new CharacterStateMachine();
-            _idleState = new IdleState(_fsm, _motor);
-            _moveState = new MoveState(_fsm, _motor);
-            _sprintState = new SprintState(_fsm, _motor);
-            _attackState = new AttackState(_fsm, _motor);
-            _dodgeState = new DodgeState(_fsm, _motor, _context);
-            _hitState = new HitState(_fsm, _motor);
+            _stateRegistry = new CharacterStateRegistry();
+            _idleState = new IdleState(_fsm, _motor, _stateRegistry);
+            _moveState = new MoveState(_fsm, _motor, _stateRegistry);
+            _sprintState = new SprintState(_fsm, _motor, _stateRegistry);
+            _attackState = new AttackState(_fsm, _motor, _stateRegistry);
+            _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry);
+            _hitState = new HitState(_fsm, _motor, _stateRegistry);
             _deadState = new DeadState(_motor);
-            _idleState.SetTransitions(_moveState, _sprintState, _attackState, _dodgeState);
-            _moveState.SetTransitions(_idleState, _sprintState, _attackState, _dodgeState);
-            _sprintState.SetTransitions(_idleState, _moveState, _attackState, _dodgeState);
-            _attackState.SetTransitions(_idleState, _moveState);
-            _dodgeState.SetTransitions(_idleState, _moveState);
-            _hitState.SetTransitions(_idleState, _moveState);
+
+            _stateRegistry.Register(_idleState);
+            _stateRegistry.Register(_moveState);
+            _stateRegistry.Register(_sprintState);
+            _stateRegistry.Register(_attackState);
+            _stateRegistry.Register(_dodgeState);
+            _stateRegistry.Register(_hitState);
+            _stateRegistry.Register(_deadState);
+
             _fsm.Initialize(_idleState);
         }
 
@@ -125,18 +130,18 @@ namespace Character.Controller
             _context.ApplyDamage(damage);
             if (_context.IsDead)
             {
-                _fsm.ChangeState(_deadState);
+                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
                 return;
             }
 
             _hitState.ConfigureDuration(isHeavyHit ? HeavyHitDuration : LightHitDuration);
-            _fsm.ChangeState(_hitState);
+            _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
 
         public void Revive(float hp)
         {
             _context.Revive(hp);
-            _fsm.ChangeState(_idleState);
+            _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive);
         }
 
       }

@@ -7,25 +7,13 @@ namespace Character.StateMachine.States
     {
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterMotor _motor;
+        private readonly CharacterStateRegistry _registry;
 
-        private IdleState _idleState;
-        private MoveState _moveState;
-        private AttackState _attackState;
-        private DodgeState _dodgeState;
-
-        public SprintState(CharacterStateMachine fsm, CharacterMotor motor)
+        public SprintState(CharacterStateMachine fsm, CharacterMotor motor, CharacterStateRegistry registry)
         {
             _fsm = fsm;
             _motor = motor;
-        }
-
-        public void SetTransitions(IdleState idleState, MoveState moveState, AttackState attackState,
-            DodgeState dodgeState)
-        {
-            _idleState = idleState;
-            _moveState = moveState;
-            _attackState = attackState;
-            _dodgeState = dodgeState;
+            _registry = registry;
         }
 
         public CharacterStateId Id { get; } = CharacterStateId.Sprint;
@@ -36,19 +24,28 @@ namespace Character.StateMachine.States
             _motor.SetSprintActive(true);
             _motor.Tick(intent, deltaTime);
             
-            if (intent.IsDodgePressed) { _fsm.ChangeState(_dodgeState); return; }
-            if (intent.IsAttackPressed) { _fsm.ChangeState(_attackState); return; }
+            if (intent.IsDodgePressed)
+            {
+                _fsm.TryTransition(CharacterStateId.Dodge, _registry, TransitionReason.InputDodge);
+                return;
+            }
+
+            if (intent.IsAttackPressed)
+            {
+                _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+                return;
+            }
 
             bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
             if (!hasMove)
             {
-                _fsm.ChangeState(_idleState);
+                _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.InputMove);
                 return;
             }
 
             if (!intent.IsSprintHeld)
             {
-                _fsm.ChangeState(_moveState);
+                _fsm.TryTransition(CharacterStateId.Move, _registry, TransitionReason.InputMove);
             }
         }
 

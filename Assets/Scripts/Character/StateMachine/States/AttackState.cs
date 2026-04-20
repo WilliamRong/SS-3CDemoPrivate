@@ -7,9 +7,7 @@ namespace Character.StateMachine.States
     {
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterMotor _motor;
-    
-        private IdleState _idleState;
-        private MoveState _moveState;
+        private readonly CharacterStateRegistry _registry;
 
         private float _timer;
 
@@ -17,16 +15,11 @@ namespace Character.StateMachine.States
     
         public CharacterStateId Id { get; } = CharacterStateId.Attack;
 
-        public AttackState(CharacterStateMachine fsm, CharacterMotor motor)
+        public AttackState(CharacterStateMachine fsm, CharacterMotor motor, CharacterStateRegistry registry)
         {
             _fsm = fsm;
             _motor = motor;
-        }
-    
-        public void SetTransitions(IdleState idleState, MoveState moveState)
-        {
-            _idleState = idleState;
-            _moveState = moveState;
+            _registry = registry;
         }
     
         public void Enter()
@@ -42,7 +35,7 @@ namespace Character.StateMachine.States
             if (_timer >= _duration)
             {
                 bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
-                _fsm.ChangeState(hasMove ? _moveState : _idleState);
+                _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry, TransitionReason.Timeout);
             }
         }
 

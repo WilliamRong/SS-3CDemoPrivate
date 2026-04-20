@@ -9,10 +9,7 @@ namespace Character.StateMachine.States
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterMotor _motor;
         private readonly CharacterContext _context;
-    
-    
-        private IdleState _idleState;
-        private MoveState _moveState;
+        private readonly CharacterStateRegistry _registry;
     
         private float _timer;
 
@@ -20,17 +17,12 @@ namespace Character.StateMachine.States
         private readonly float _invincibleStart = 0.05f;
         private readonly float _invincibleEnd = 0.18f;
     
-        public DodgeState(CharacterStateMachine fsm, CharacterMotor motor, CharacterContext context)
+        public DodgeState(CharacterStateMachine fsm, CharacterMotor motor, CharacterContext context, CharacterStateRegistry registry)
         {
             _fsm = fsm;
             _motor = motor;
             _context = context;
-        }
-    
-        public void SetTransitions(IdleState idleState, MoveState moveState)
-        {
-            _idleState = idleState;
-            _moveState = moveState;
+            _registry = registry;
         }
 
         public CharacterStateId Id { get; } = CharacterStateId.Dodge;
@@ -50,7 +42,7 @@ namespace Character.StateMachine.States
             if (_timer >= _duration)
             {
                 bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
-                _fsm.ChangeState(hasMove ? _moveState : _idleState);
+                _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry, TransitionReason.Timeout);
             }
         }
 
