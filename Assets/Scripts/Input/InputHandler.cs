@@ -14,7 +14,11 @@ namespace Input
         public Vector2 LookInput { get; private set; }
         
         public bool IsSprinting { get; private set; }
+        
+        //单帧触发，下一帧清零
         public bool JumpTriggered { get; private set; }
+        public bool AttackTriggered { get; private set; }
+        public bool DodgeTriggered { get; private set; }
 
         private void Awake()
         {
@@ -25,11 +29,19 @@ namespace Input
         {
             _inputActions.Enable();
             _inputActions.Player.Jump.performed += OnJumpPerformed;
+            _inputActions.Player.Attack.performed += OnAttackPerformed;
+            _inputActions.Player.Dodge.performed += OnDodgePerformed;
         }
 
         private void OnDisable()
         {
             _inputActions.Player.Jump.performed -= OnJumpPerformed;
+            _inputActions.Player.Attack.performed -= OnAttackPerformed;
+            _inputActions.Player.Dodge.performed -= OnDodgePerformed;
+            _inputActions.Disable();
+            
+            // 补充：禁用时清理脉冲，避免残留
+            ClearTriggers();
         }
         
 
@@ -38,6 +50,16 @@ namespace Input
             JumpTriggered = true;
         }
         
+        
+        private void OnAttackPerformed(InputAction.CallbackContext obj)
+        {
+            AttackTriggered = true;
+        }
+        
+        private void OnDodgePerformed(InputAction.CallbackContext obj)
+        {
+            DodgeTriggered = true;
+        }
         
         // Update is called once per frame
         void Update()
@@ -49,7 +71,14 @@ namespace Input
 
         private void LateUpdate()
         {
+            ClearTriggers();
+        }
+
+        private void ClearTriggers()
+        {
             JumpTriggered = false;
+            AttackTriggered = false;
+            DodgeTriggered = false;
         }
     }
 }

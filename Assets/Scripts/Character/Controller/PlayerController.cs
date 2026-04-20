@@ -23,12 +23,22 @@ namespace Character.Controller
         [Header("Vertical")]
         public float gravity = -9.81f;
         public float JumpHeight = 1f;
+
+        [Header("Combat")]
+        public float MaxHp = 100f;
+        public float LightHitDuration = 0.25f;
+        public float HeavyHitDuration = 0.45f;
         
         [Header("State")]
         private CharacterStateMachine _fsm;
         private IdleState _idleState;
         private MoveState _moveState;
         private SprintState _sprintState;
+        private AttackState _attackState;
+        private DodgeState _dodgeState;
+        private HitState _hitState;
+        private DeadState _deadState;
+        
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
         
@@ -50,6 +60,7 @@ namespace Character.Controller
 
 
             _context = new CharacterContext(_characterController, transform, _camera);
+            _context.ConfigureHealth(MaxHp);
 
             _motor = new CharacterMotor(_context){
                 MoveSpeed = MoveSpeed,
@@ -66,9 +77,16 @@ namespace Character.Controller
             _idleState = new IdleState(_fsm, _motor);
             _moveState = new MoveState(_fsm, _motor);
             _sprintState = new SprintState(_fsm, _motor);
-            _idleState.SetTransitions(_moveState, _sprintState);
-            _moveState.SetTransitions(_idleState, _sprintState);
-            _sprintState.SetTransitions(_idleState, _moveState);
+            _attackState = new AttackState(_fsm, _motor);
+            _dodgeState = new DodgeState(_fsm, _motor, _context);
+            _hitState = new HitState(_fsm, _motor);
+            _deadState = new DeadState(_motor);
+            _idleState.SetTransitions(_moveState, _sprintState, _attackState, _dodgeState);
+            _moveState.SetTransitions(_idleState, _sprintState, _attackState, _dodgeState);
+            _sprintState.SetTransitions(_idleState, _moveState, _attackState, _dodgeState);
+            _attackState.SetTransitions(_idleState, _moveState);
+            _dodgeState.SetTransitions(_idleState, _moveState);
+            _hitState.SetTransitions(_idleState, _moveState);
             _fsm.Initialize(_idleState);
         }
 
@@ -79,10 +97,46 @@ namespace Character.Controller
                 Move = _inputHandler.MoveInput,
                 IsSprintHeld = _inputHandler.IsSprinting,
                 IsJumpPressed = _inputHandler.JumpTriggered,
+                IsAttackPressed = _inputHandler.AttackTriggered,
+                IsDodgePressed = _inputHandler.DodgeTriggered,
             };
+
+            if (_context.IsDead)
+            {
+                intent.IsAttackPressed = false;
+                intent.IsDodgePressed = false;
+                intent.IsJumpPressed = false;
+                intent.IsSprintHeld = false;
+            }
             
             _fsm.Tick(intent, Time.deltaTime);
             Velocity = _context.Velocity;
+
+            if (UnityEngine.Input.GetKeyDown(KeyCode.F))
+            {
+                ApplyHit(10, false);
+            }
+        }
+
+        public void ApplyHit(float damage, bool isHeavyHit)
+        {
+            if (_context.IsDead || _context.IsInvincible) return;
+
+            _context.ApplyDamage(damage);
+            if (_context.IsDead)
+            {
+                _fsm.ChangeState(_deadState);
+                return;
+            }
+
+            _hitState.ConfigureDuration(isHeavyHit ? HeavyHitDuration : LightHitDuration);
+            _fsm.ChangeState(_hitState);
+        }
+
+        public void Revive(float hp)
+        {
+            _context.Revive(hp);
+            _fsm.ChangeState(_idleState);
         }
 
       }
