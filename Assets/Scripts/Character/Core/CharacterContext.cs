@@ -8,6 +8,10 @@ namespace Character.Core
       public Transform Root { get; private set; }
       public Camera ViewCamera{get;private set;}
       public Vector3 Velocity;
+      public float MaxHp { get; private set; } = 100f;
+      public float CurrentHp { get; private set; } = 100f;
+      public bool IsInvincible { get; set; }
+      public bool IsDead => CurrentHp <= 0f;
 
       public CharacterContext(CharacterController controller, Transform root, Camera viewCamera)
       {
@@ -15,6 +19,24 @@ namespace Character.Core
         Root = root;
         ViewCamera = viewCamera;
         Velocity = Vector3.zero;
+      }
+
+      public void ConfigureHealth(float maxHp)
+      {
+        MaxHp = Mathf.Max(1f, maxHp);
+        CurrentHp = MaxHp;
+      }
+
+      public void ApplyDamage(float damage)
+      {
+        if (IsDead || IsInvincible) return;
+        CurrentHp = Mathf.Max(0f, CurrentHp - Mathf.Max(0f, damage));
+      }
+
+      public void Revive(float hp)
+      {
+        CurrentHp = Mathf.Clamp(hp, 1f, MaxHp);
+        IsInvincible = false;
       }
 
       public bool IsGrounded => Controller != null && Controller.isGrounded;

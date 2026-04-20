@@ -1,18 +1,32 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+using Character.Intent;
+using Character.Motor;
 
-public class DeadState : MonoBehaviour
+namespace Character.StateMachine.States
 {
-    // Start is called before the first frame update
-    void Start()
+    public sealed class DeadState : ICharacterState
     {
-        
-    }
+        private readonly CharacterMotor _motor;
 
-    // Update is called once per frame
-    void Update()
-    {
-        
+        public CharacterStateId Id { get; } = CharacterStateId.Dead;
+
+        public DeadState(CharacterMotor motor)
+        {
+            _motor = motor;
+        }
+
+        public void Enter()
+        {
+            _motor.SetSprintActive(false);
+        }
+
+        public void Tick(CharacterIntent intent, float deltaTime)
+        {
+            _motor.Tick(intent, deltaTime);
+        }
+
+        public void Exit()
+        {
+        }
     }
 }
+

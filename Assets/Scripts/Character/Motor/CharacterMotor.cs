@@ -58,18 +58,21 @@ namespace Character.Motor
 
         private void TickVertical(CharacterIntent intent, float dt)
         {
+            //暂时没有跳跃功能
+            return;
+            
             //跳跃和重力
-            var v = _context.Velocity;
-
-            if(_context.IsGrounded && v.y < 0f) v.y = -2f;
-
-            if(intent.IsJumpPressed && _context.IsGrounded) 
-            {
-                v.y = Mathf.Sqrt(JumpHeight * -2f * Gravity);
-            }
-
-            v.y += Gravity * dt;
-            _context.Velocity = v;
+            // var v = _context.Velocity;
+            //
+            // if(_context.IsGrounded && v.y < 0f) v.y = -2f;
+            //
+            // if(intent.IsJumpPressed && _context.IsGrounded) 
+            // {
+            //     v.y = Mathf.Sqrt(JumpHeight * -2f * Gravity);
+            // }
+            //
+            // v.y += Gravity * dt;
+            // _context.Velocity = v;
         }
 
         public void SetSprintActive(bool active)
