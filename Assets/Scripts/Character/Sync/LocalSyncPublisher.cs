@@ -1,0 +1,118 @@
+using System;
+using Character.Controller;
+using Character.StateMachine;
+using UnityEngine;
+
+namespace Character.Sync
+{
+    public sealed class LocalSyncPublisher : MonoBehaviour
+    {
+        [Header("Refs")] 
+        [SerializeField] private NetTickClock _clock;
+        [SerializeField] private PlayerController _playerController;
+        [SerializeField] private int _actorId = 1;
+
+        [Header("Snapshot")] 
+        [SerializeField] private float _minPosDeltaToSend = 0.001f;
+        [SerializeField] private float _minYawDeltaToSend = 0.1f;
+
+        public event Action<StateSnapshot> OnSnapshotProduced;
+        public event Action<ActionEvent> OnActionEventProduced;
+
+        private int _nextSeqId = 1;
+
+        private Vector3 _lastSentPos;
+        private float _lastSentYaw;
+        private bool _hasSentAnySnapshot;
+
+        private CharacterStateId _lastStateId = CharacterStateId.None;
+
+        private void Awake()
+        {
+            if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
+            if (_playerController == null) _playerController = GetComponent<PlayerController>();
+        }
+
+        private void Update()
+        {
+            if (_clock == null || _playerController == null) return;
+            
+            //每个逻辑tick发一次快照
+            int tickCount = _clock.TickCountThisFrame;
+            for (int i = 0; i < tickCount; i++)
+            {
+                TryProduceSnapshot(_clock.CurrentTick - (tickCount - 1 - i));
+            }
+            
+            //状态变化时发动作事件(低频)
+            TryProduceActionEventOnStateChange(_clock.CurrentTick);
+
+        }
+
+        private void TryProduceSnapshot(int tick)
+        {
+            Vector3 pos = transform.position;
+            float yaw = transform.eulerAngles.y;
+
+            //水平速度先用“与上一快照差分”近似
+            Vector2 velocityXZ = Vector2.zero;
+            if(_hasSentAnySnapshot){
+                float dt = Mathf.Max(_clock.TickInterval, 0.0001f);
+                Vector3 dp = pos - _lastSentPos;
+                velocityXZ = new Vector2(dp.x / dt, dp.z / dt);
+            }
+
+            bool shouldSend = !_hasSentAnySnapshot;
+            if(!shouldSend)
+            {
+                float posDelta = (pos - _lastSentPos).sqrMagnitude;
+                float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
+                shouldSend = posDelta >= _minPosDeltaToSend || yawDelta >= _minYawDeltaToSend;
+            }
+
+            if(!shouldSend) return;
+
+            var snapshot = new StateSnapshot(
+                tick,
+                _actorId,
+                pos,
+                yaw,
+                velocityXZ,
+                _playerController.CurrentStateId
+            );
+
+            OnSnapshotProduced?.Invoke(snapshot);
+
+            _lastSentPos = pos;
+            _lastSentYaw = yaw;
+            _hasSentAnySnapshot = true;
+        }
+
+        private void TryProduceActionEventOnStateChange(int tick)
+        {
+            CharacterStateId current = _playerController.CurrentStateId;
+            if(current == _lastStateId) return;
+
+            ActionType actionType = MapStateToActionType(current);
+            if(actionType != ActionType.None)
+            {
+                var evt = new ActionEvent(_nextSeqId++, tick, _actorId, actionType);
+                OnActionEventProduced?.Invoke(evt);
+            }
+
+            _lastStateId = current;
+        }
+
+        private static ActionType MapStateToActionType(CharacterStateId stateId)
+        {
+            return stateId switch
+            {
+                CharacterStateId.Attack => ActionType.AttackStart,
+                CharacterStateId.Dodge => ActionType.DodgeStart,
+                CharacterStateId.Hit => ActionType.Hit,
+                CharacterStateId.Dead => ActionType.Dead,
+                _ => ActionType.None
+            };
+        }
+    }
+}
