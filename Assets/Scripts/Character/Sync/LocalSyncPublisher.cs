@@ -1,6 +1,7 @@
 using System;
 using Character.Controller;
 using Character.StateMachine;
+using Core;
 using UnityEngine;
 
 namespace Character.Sync
@@ -10,6 +11,7 @@ namespace Character.Sync
         [Header("Refs")] 
         [SerializeField] private NetTickClock _clock;
         [SerializeField] private PlayerController _playerController;
+        [SerializeField] private PlayerAuthorityGate _authorityGate;
         [SerializeField] private int _actorId = 1;
 
         [Header("Snapshot")] 
@@ -31,11 +33,13 @@ namespace Character.Sync
         {
             if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
             if (_playerController == null) _playerController = GetComponent<PlayerController>();
+            if (_authorityGate == null) _authorityGate = GetComponent<PlayerAuthorityGate>();
         }
 
         private void Update()
         {
             if (_clock == null || _playerController == null) return;
+            if (!CanPublishFromThisInstance()) return;
             
             //每个逻辑tick发一次快照
             int tickCount = _clock.TickCountThisFrame;
@@ -47,6 +51,12 @@ namespace Character.Sync
             //状态变化时发动作事件(低频)
             TryProduceActionEventOnStateChange(_clock.CurrentTick);
 
+        }
+
+        private bool CanPublishFromThisInstance()
+        {
+            if (_authorityGate == null) return true;
+            return _authorityGate.CanProcessLocalInput;
         }
 
         private void TryProduceSnapshot(int tick)

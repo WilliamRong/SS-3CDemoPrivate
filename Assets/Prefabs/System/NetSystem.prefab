@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 8025734029591167315}
   - component: {fileID: 7120250014329789661}
   - component: {fileID: 3894217259508549436}
+  - component: {fileID: 998877665544332211}
   m_Layer: 0
   m_Name: NetSystem
   m_TagString: Untagged
@@ -75,7 +76,24 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _publisher: {fileID: 0}
-  _pipe: {fileID: 7120250014329789661}
+  _transportMode: 1
+  _fakePipe: {fileID: 0}
+  _mirrorTransport: {fileID: 998877665544332211}
   _remoteSnapshotBuffer: {fileID: 0}
   _remoteActionApplier: {fileID: 0}
   _logWireUp: 1
+--- !u!114 &998877665544332211
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3503430170969607328}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: da335ba9ff83f3b4cbbb13b0b92d3477, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _logSend: 1
+  _logReceive: 1
+  _logRelay: 0

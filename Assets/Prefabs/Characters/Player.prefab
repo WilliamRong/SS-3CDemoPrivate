@@ -326,6 +326,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c1340874f1f34d849f5bb1acaf4db934, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
   _cameraPath: Cameras/TP
   _retryIntervalSeconds: 0.2
   _maxRetryCount: 30
@@ -342,3 +345,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0e2451e290e341f59ca3ac58347bd96a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0

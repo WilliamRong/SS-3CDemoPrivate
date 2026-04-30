@@ -1,4 +1,5 @@
 using UnityEngine;
+using Core;
 
 namespace Character.Sync
 {
@@ -10,8 +11,11 @@ namespace Character.Sync
         [Header("Source")]
         [SerializeField] private LocalSyncPublisher _publisher;
 
-        [Header("Pipe")]
-        [SerializeField] private FakeNetworkPipe _pipe;
+        [Header("Transport")]
+        [SerializeField] private SyncTransportMode _transportMode = SyncTransportMode.Fake;
+        [SerializeField] private FakeNetworkPipe _fakePipe;
+        [SerializeField] private MirrorSyncTransport _mirrorTransport;
+        private ISyncTransport _transport;
 
         [Header("Remote")]
         [SerializeField] private RemoteSnapshotBuffer _remoteSnapshotBuffer;
@@ -24,11 +28,11 @@ namespace Character.Sync
 
         private void Awake()
         {
-            // 可选自动找，推荐Inspector手拖更稳定
-            if (_publisher == null) _publisher = FindFirstObjectByType<LocalSyncPublisher>();
-            if (_pipe == null) _pipe = FindFirstObjectByType<FakeNetworkPipe>();
+            ResolvePublisher();
             if (_remoteSnapshotBuffer == null) _remoteSnapshotBuffer = FindFirstObjectByType<RemoteSnapshotBuffer>();
-            // _remoteActionApplier 可为空，后续接上
+            if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
+            
+            ResolveTransport();
         }
 
         private void OnEnable()
@@ -45,17 +49,17 @@ namespace Character.Sync
 
         private void OnDisable()
         {
-            if (!_isWired || _publisher == null || _pipe == null) return;
+            if (!_isWired || _publisher == null || _transport == null) return;
 
             // 反订阅，防止重复订阅/内存泄漏
-            _publisher.OnSnapshotProduced -= _pipe.EnqueueSnapshot;
-            _publisher.OnActionEventProduced -= _pipe.EnqueueActionEvent;
+            _publisher.OnSnapshotProduced -= _transport.SendSnapshot;
+            _publisher.OnActionEventProduced -= _transport.SendActionEvent;
 
             if (_remoteSnapshotBuffer != null)
-                _pipe.OnSnapshotReceived -= _remoteSnapshotBuffer.Push;
+                _transport.OnSnapshotReceived -= _remoteSnapshotBuffer.Push;
 
             if (_remoteActionApplier != null)
-                _pipe.OnActionEventReceived -= _remoteActionApplier.Apply;
+                _transport.OnActionEventReceived -= _remoteActionApplier.Apply;
 
             _isWired = false;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire down done.");
@@ -63,26 +67,76 @@ namespace Character.Sync
 
         private void TryWireUp()
         {
-            if (_publisher == null) _publisher = FindFirstObjectByType<LocalSyncPublisher>();
-            if (_pipe == null) _pipe = FindFirstObjectByType<FakeNetworkPipe>();
+            if (_publisher == null) ResolvePublisher();
             if (_remoteSnapshotBuffer == null) _remoteSnapshotBuffer = FindFirstObjectByType<RemoteSnapshotBuffer>();
-
+            if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
+            if(_transport == null) ResolveTransport();
+            
+            
             if (!ValidateRefs()) return;
 
-            // 本地发布 -> Pipe
-            _publisher.OnSnapshotProduced += _pipe.EnqueueSnapshot;
-            _publisher.OnActionEventProduced += _pipe.EnqueueActionEvent;
+            // 本地发布 -> Transport
+            _publisher.OnSnapshotProduced += _transport.SendSnapshot;
+            _publisher.OnActionEventProduced += _transport.SendActionEvent;
 
-            // Pipe -> 远端
-            _pipe.OnSnapshotReceived += _remoteSnapshotBuffer.Push;
+            // Transport -> 远端
+            _transport.OnSnapshotReceived += _remoteSnapshotBuffer.Push;
 
             if (_remoteActionApplier != null)
-                _pipe.OnActionEventReceived += _remoteActionApplier.Apply;
+                _transport.OnActionEventReceived += _remoteActionApplier.Apply;
 
             _isWired = true;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire up done.");
         }
 
+        private void ResolveTransport()
+        {
+            switch (_transportMode)
+            {
+                case SyncTransportMode.Fake:
+                    if (_fakePipe == null) _fakePipe = FindFirstObjectByType<FakeNetworkPipe>();
+                    _transport = _fakePipe;
+                    break;
+                case SyncTransportMode.Mirror:
+                    if (_mirrorTransport == null) ResolveMirrorTransport();
+                    _transport = _mirrorTransport;
+                    break;
+                default:
+                    _transport = null;
+                    break;
+            }
+        }
+
+        private void ResolvePublisher()
+        {
+            if (_publisher != null) return;
+
+            var allPublishers = FindObjectsByType<LocalSyncPublisher>(FindObjectsSortMode.None);
+            for (int i = 0; i < allPublishers.Length; i++)
+            {
+                var gate = allPublishers[i].GetComponent<PlayerAuthorityGate>();
+                if (gate != null && gate.CanProcessLocalInput)
+                {
+                    _publisher = allPublishers[i];
+                    return;
+                }
+            }
+
+            if (allPublishers.Length > 0)
+                _publisher = allPublishers[0];
+        }
+
+        private void ResolveMirrorTransport()
+        {
+            if (_mirrorTransport != null) return;
+
+            var allTransports = FindObjectsByType<MirrorSyncTransport>(FindObjectsSortMode.None);
+            if (allTransports.Length > 0)
+                _mirrorTransport = allTransports[0];
+        }
+        
+        
+        
         private bool ValidateRefs()
         {
             if (_publisher == null)
@@ -91,9 +145,9 @@ namespace Character.Sync
                 return false;
             }
 
-            if (_pipe == null)
+            if (_transport == null)
             {
-                Debug.LogError("[SyncBootstrap] Missing FakeNetworkPipe.");
+                Debug.LogError($"[SyncBootstrap] Missing transport for mode {_transportMode}.");
                 return false;
             }
 

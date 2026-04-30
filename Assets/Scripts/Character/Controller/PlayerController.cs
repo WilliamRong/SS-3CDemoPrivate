@@ -58,12 +58,12 @@ namespace Character.Controller
             _characterController = GetComponent<CharacterController>();
             _camera = Camera.main;
             
-            // 仅本地权威玩家控制光标状态
-            if (CanProcessLocalInput())
-            {
-                Cursor.visible = false;
-                Cursor.lockState = CursorLockMode.Locked;
-            }
+            // // 仅本地权威玩家控制光标状态
+            // if (CanProcessLocalInput())
+            // {
+            //     Cursor.visible = false;
+            //     Cursor.lockState = CursorLockMode.Locked;
+            // }
 
 
             _context = new CharacterContext(_characterController, transform, _camera);

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Character.Sync
 {
-    public sealed class FakeNetworkPipe : MonoBehaviour
+    public sealed class FakeNetworkPipe : MonoBehaviour, ISyncTransport
     {
         [Header("Network Simulator")]
         [SerializeField] private float _baseLatencyMs = 80f;
@@ -13,6 +13,17 @@ namespace Character.Sync
 
         public event Action<StateSnapshot> OnSnapshotReceived;
         public event Action<ActionEvent> OnActionEventReceived;
+        
+        
+        public void SendSnapshot(StateSnapshot snapshot)
+        {
+           EnqueueSnapshot(snapshot);
+        }
+
+        public void SendActionEvent(ActionEvent actionEvent)
+        {
+            EnqueueActionEvent(actionEvent);
+        }
 
 
         private struct QueuedSnapshot{
