@@ -3,6 +3,7 @@ using Character.Intent;
 using Character.Motor;
 using Character.StateMachine;
 using Character.StateMachine.States;
+using Core;
 using Input;
 using UnityEngine;
 
@@ -11,6 +12,7 @@ namespace Character.Controller
     public class PlayerController : MonoBehaviour
     {
         private InputHandler _inputHandler;
+        private PlayerAuthorityGate _authorityGate;
         private CharacterController _characterController;
         private Camera _camera;
 
@@ -52,12 +54,16 @@ namespace Character.Controller
         void Start()
         {
             _inputHandler = GetComponent<InputHandler>();
+            _authorityGate = GetComponent<PlayerAuthorityGate>();
             _characterController = GetComponent<CharacterController>();
             _camera = Camera.main;
             
-            //临时放在这里，锁光标
-            Cursor.visible = false;
-            Cursor.lockState = CursorLockMode.Locked;
+            // 仅本地权威玩家控制光标状态
+            if (CanProcessLocalInput())
+            {
+                Cursor.visible = false;
+                Cursor.lockState = CursorLockMode.Locked;
+            }
 
 
             _context = new CharacterContext(_characterController, transform, _camera);
@@ -97,6 +103,8 @@ namespace Character.Controller
 
         void Update()
         {
+            if (!CanProcessLocalInput()) return;
+
             // 水平移动（SmoothDamp 平滑过渡）
             var intent = new CharacterIntent{
                 Move = _inputHandler.MoveInput,
@@ -142,6 +150,12 @@ namespace Character.Controller
         {
             _context.Revive(hp);
             _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive);
+        }
+
+        private bool CanProcessLocalInput()
+        {
+            if (_authorityGate == null) return true;
+            return _authorityGate.CanProcessLocalInput;
         }
 
       }

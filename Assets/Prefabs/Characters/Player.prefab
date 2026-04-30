@@ -120,6 +120,10 @@ GameObject:
   - component: {fileID: 724524946989506975}
   - component: {fileID: 3193431677645894127}
   - component: {fileID: 6134410188504937041}
+  - component: {fileID: 4232551613056902401}
+  - component: {fileID: 3964192591737398881}
+  - component: {fileID: 5566778899001122334}
+  - component: {fileID: 8899001122334455667}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -268,6 +272,73 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   MoveSpeed: 5
   SprintSpeed: 10
-  Velocity: {x: 0, y: 0}
+  RotationSlerpSpeed: 30
+  SmoothTime: 0.1
   gravity: -9.81
   JumpHeight: 3
+  MaxHp: 100
+  LightHitDuration: 0.25
+  HeavyHitDuration: 0.45
+  Velocity: {x: 0, y: 0, z: 0}
+--- !u!114 &4232551613056902401
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9b91ecbcc199f4492b9a91e820070131, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  sceneId: 0
+  _assetId: 215819706
+  serverOnly: 0
+  visibility: 0
+  hasSpawned: 0
+--- !u!114 &3964192591737398881
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e366dd046f06e8f44aa50fd422773ee5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _clock: {fileID: 0}
+  _playerController: {fileID: 6134410188504937041}
+  _actorId: 1
+  _minPosDeltaToSend: 0.001
+  _minYawDeltaToSend: 0.1
+--- !u!114 &5566778899001122334
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c1340874f1f34d849f5bb1acaf4db934, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _cameraPath: Cameras/TP
+  _retryIntervalSeconds: 0.2
+  _maxRetryCount: 30
+  _logBinding: 1
+--- !u!114 &8899001122334455667
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e2451e290e341f59ca3ac58347bd96a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 

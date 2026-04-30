@@ -1,4 +1,5 @@
 using Character.Controller;
+using Mirror;
 using UnityEngine;
 
 namespace Character.Sync
@@ -17,7 +18,6 @@ namespace Character.Sync
 
         private void Awake()
         {
-            if (_localPlayer == null) _localPlayer = FindFirstObjectByType<PlayerController>();
             if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
             if (_remoteInterpolator == null) _remoteInterpolator = FindFirstObjectByType<RemoteInterpolator>();
             if (_pipe == null) _pipe = FindFirstObjectByType<FakeNetworkPipe>();
@@ -25,6 +25,8 @@ namespace Character.Sync
 
         private void OnGUI()
         {
+            TryResolveLocalPlayer();
+
             var box = new GUIStyle(GUI.skin.box)
             {
                 fontSize = _fontSize,
@@ -44,6 +46,26 @@ namespace Character.Sync
             GUILayout.Label($"PosError: {posError}", box);
             GUILayout.Label($"FakeNet: {netCfg}", box);
             GUILayout.EndArea();
+        }
+
+        private bool TryResolveLocalPlayer()
+        {
+            // 1) Mirror 本地玩家优先（联机最稳）
+            if (NetworkClient.active && NetworkClient.localPlayer != null)
+            {
+                var pc = NetworkClient.localPlayer.GetComponent<PlayerController>();
+                if (pc != null)
+                {
+                    _localPlayer = pc;
+                    return true;
+                }
+            }
+
+            // 2) 离线回退（单机场景）
+            if (_localPlayer == null)
+                _localPlayer = FindFirstObjectByType<PlayerController>();
+
+            return _localPlayer != null;
         }
     }
 }
