@@ -128,6 +128,7 @@ namespace Character.Sync
             if (_activeInstance == null) return;
 
             StateSnapshot snapshot = FromMsg(msg);
+            snapshot.ArrivalTimeSec = Time.unscaledTime;
             if (_activeInstance._logReceive) Debug.Log($"[MirrorTransport] RecvSnapshot tick={snapshot.Tick}");
             _activeInstance.OnSnapshotReceived?.Invoke(snapshot);
         }

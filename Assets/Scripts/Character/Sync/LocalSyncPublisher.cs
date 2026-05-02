@@ -1,6 +1,7 @@
 using System;
 using Character.Controller;
 using Character.StateMachine;
+using Mirror;
 using Core;
 using UnityEngine;
 
@@ -17,6 +18,7 @@ namespace Character.Sync
         [Header("Snapshot")] 
         [SerializeField] private float _minPosDeltaToSend = 0.001f;
         [SerializeField] private float _minYawDeltaToSend = 0.1f;
+        [SerializeField] private NetworkIdentity _networkIdentity;
 
         public event Action<StateSnapshot> OnSnapshotProduced;
         public event Action<ActionEvent> OnActionEventProduced;
@@ -34,6 +36,7 @@ namespace Character.Sync
             if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
             if (_playerController == null) _playerController = GetComponent<PlayerController>();
             if (_authorityGate == null) _authorityGate = GetComponent<PlayerAuthorityGate>();
+            if (_networkIdentity == null) _networkIdentity = GetComponent<NetworkIdentity>();
         }
 
         private void Update()
@@ -84,7 +87,7 @@ namespace Character.Sync
 
             var snapshot = new StateSnapshot(
                 tick,
-                _actorId,
+                ResolveActorId(),
                 pos,
                 yaw,
                 velocityXZ,
@@ -106,7 +109,7 @@ namespace Character.Sync
             ActionType actionType = MapStateToActionType(current);
             if(actionType != ActionType.None)
             {
-                var evt = new ActionEvent(_nextSeqId++, tick, _actorId, actionType);
+                var evt = new ActionEvent(_nextSeqId++, tick, ResolveActorId(), actionType);
                 OnActionEventProduced?.Invoke(evt);
             }
 
@@ -123,6 +126,15 @@ namespace Character.Sync
                 CharacterStateId.Dead => ActionType.Dead,
                 _ => ActionType.None
             };
+        }
+        
+        private int ResolveActorId()
+        {
+            if (_networkIdentity != null && _networkIdentity.netId != 0)
+                return (int)_networkIdentity.netId;
+
+            // 离线或尚未分配netId时回退，保证不为0
+            return _actorId;
         }
     }
 }

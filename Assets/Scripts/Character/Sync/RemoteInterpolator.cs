@@ -5,12 +5,11 @@ namespace Character.Sync
     public class RemoteInterpolator : MonoBehaviour
     {
        [Header("Refs")]
-       [SerializeField] private NetTickClock _clock;
        [SerializeField] private RemoteSnapshotBuffer _buffer;
 
        [Header("Interpolation")]
-       [Tooltip("渲染时落后多少tick，给插值留缓冲")]
-       [SerializeField] private int _interpBackTicks = 2;
+       [Tooltip("渲染缓冲延迟（秒）")]
+       [SerializeField] private float _bufferDelaySec = 0.12f;
 
        [Tooltip("大误差阈值（米）")]
        [SerializeField] private float _largeErrorThreshold = 1.5f;
@@ -25,17 +24,16 @@ namespace Character.Sync
        public float LastPosError{get; private set;}
 
        private void Awake(){
-          if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
           if (_buffer == null) _buffer = GetComponent<RemoteSnapshotBuffer>();
        }
 
        private void Update(){
-            if (_clock == null || _buffer == null) return;
+            if (_buffer == null) return;
             if (_buffer.Count == 0) return;
 
-            float targetTick = _clock.CurrentTick - _interpBackTicks - (1f - _clock.TickProgress01);
+            float targetTime = Time.unscaledTime - _bufferDelaySec;
 
-            if (!_buffer.TrySample(targetTick, out var from, out var to, out float t))
+            if (!_buffer.TrySampleByArrivalTime(targetTime, out var from, out var to, out float t))
             {
                 return;
             }
@@ -68,7 +66,7 @@ namespace Character.Sync
             LastAppliedSnapshot = to;
 
             if(_logState){
-                 Debug.Log($"[RemoteInterp] targetTick={targetTick}, from={from.Tick}, to={to.Tick}, err={LastPosError:F2}");
+                 Debug.Log($"[RemoteInterp] targetTime={targetTime}, from={from.Tick}, to={to.Tick}, err={LastPosError:F2}");
             }
        }
     }

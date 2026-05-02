@@ -17,10 +17,6 @@ namespace Character.Sync
         [SerializeField] private MirrorSyncTransport _mirrorTransport;
         private ISyncTransport _transport;
 
-        [Header("Remote")]
-        [SerializeField] private RemoteSnapshotBuffer _remoteSnapshotBuffer;
-        [SerializeField] private RemoteActionApplier _remoteActionApplier; // 可先留空
-
         [Header("Debug")]
         [SerializeField] private bool _logWireUp = false;
         
@@ -29,9 +25,6 @@ namespace Character.Sync
         private void Awake()
         {
             ResolvePublisher();
-            if (_remoteSnapshotBuffer == null) _remoteSnapshotBuffer = FindFirstObjectByType<RemoteSnapshotBuffer>();
-            if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
-            
             ResolveTransport();
         }
 
@@ -55,11 +48,8 @@ namespace Character.Sync
             _publisher.OnSnapshotProduced -= _transport.SendSnapshot;
             _publisher.OnActionEventProduced -= _transport.SendActionEvent;
 
-            if (_remoteSnapshotBuffer != null)
-                _transport.OnSnapshotReceived -= _remoteSnapshotBuffer.Push;
-
-            if (_remoteActionApplier != null)
-                _transport.OnActionEventReceived -= _remoteActionApplier.Apply;
+            _transport.OnSnapshotReceived -= HandleSnapshotReceived;
+            _transport.OnActionEventReceived -= HandleActionReceived;
 
             _isWired = false;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire down done.");
@@ -68,8 +58,6 @@ namespace Character.Sync
         private void TryWireUp()
         {
             if (_publisher == null) ResolvePublisher();
-            if (_remoteSnapshotBuffer == null) _remoteSnapshotBuffer = FindFirstObjectByType<RemoteSnapshotBuffer>();
-            if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
             if(_transport == null) ResolveTransport();
             
             
@@ -79,11 +67,9 @@ namespace Character.Sync
             _publisher.OnSnapshotProduced += _transport.SendSnapshot;
             _publisher.OnActionEventProduced += _transport.SendActionEvent;
 
-            // Transport -> 远端
-            _transport.OnSnapshotReceived += _remoteSnapshotBuffer.Push;
-
-            if (_remoteActionApplier != null)
-                _transport.OnActionEventReceived += _remoteActionApplier.Apply;
+            // Transport -> 所有远端表现组件（挂在 PlayerPrefab/NpcPrefab）
+            _transport.OnSnapshotReceived += HandleSnapshotReceived;
+            _transport.OnActionEventReceived += HandleActionReceived;
 
             _isWired = true;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire up done.");
@@ -151,13 +137,25 @@ namespace Character.Sync
                 return false;
             }
 
-            if (_remoteSnapshotBuffer == null)
-            {
-                Debug.LogError("[SyncBootstrap] Missing RemoteSnapshotBuffer.");
-                return false;
-            }
-
             return true;
+        }
+
+        private void HandleSnapshotReceived(StateSnapshot snapshot)
+        {
+            var buffers = FindObjectsByType<RemoteSnapshotBuffer>(FindObjectsSortMode.None);
+            for (int i = 0; i < buffers.Length; i++)
+            {
+                buffers[i].Push(snapshot);
+            }
+        }
+
+        private void HandleActionReceived(ActionEvent actionEvent)
+        {
+            var appliers = FindObjectsByType<RemoteActionApplier>(FindObjectsSortMode.None);
+            for (int i = 0; i < appliers.Length; i++)
+            {
+                appliers[i].Apply(actionEvent);
+            }
         }
     }
 }

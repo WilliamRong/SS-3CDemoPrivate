@@ -6,6 +6,7 @@ namespace Character.Sync
     public struct StateSnapshot
     {
         public int Tick;
+        public float ArrivalTimeSec;
         public int ActorId;
 
         public Vector3 Position;
@@ -28,6 +29,7 @@ namespace Character.Sync
             Yaw = yaw;
             VelocityXZ = velocityXZ;
             StateId = stateId;
+            ArrivalTimeSec = 0f;
         }
 
         public override string ToString()
