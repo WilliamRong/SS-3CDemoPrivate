@@ -20,7 +20,7 @@ namespace AI
         }
 
         public void SetDestination(Vector3 destination){
-            if (_agent == null || !_agent.isOnNavMesh)
+            if (!CanControlAgent())
                 return;
             _agent.isStopped = false;
             _agent.SetDestination(destination);
@@ -30,14 +30,22 @@ namespace AI
         /// <summary>停止寻路（停在当前位置）。</summary>
         public void Stop()
         {
-            if (_agent == null) return;
+            if (!CanControlAgent()) return;
             _agent.isStopped = true;
         }
         /// <summary>取消路径，常用于重新设目标前清理。</summary>
         public void ResetPath()
         {
-            if (_agent == null) return;
+            if (!CanControlAgent()) return;
             _agent.ResetPath();
+        }
+
+        /// <summary>
+        /// Host 退出 / 场景卸载时 NavMesh 可能已失效，agent 会不在网格上；
+        /// </summary>
+        private bool CanControlAgent()
+        {
+            return _agent != null && _agent.enabled && _agent.isOnNavMesh;
         }
 
         public bool HasReachedDestination()

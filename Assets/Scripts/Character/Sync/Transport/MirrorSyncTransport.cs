@@ -75,6 +75,20 @@ namespace Character.Sync
             NetworkClient.Send(ToMsg(actionEvent));
         }
 
+        public void BroadcastSnapshotFromServer(StateSnapshot snapshot)
+        {
+            if (!NetworkServer.active) return;
+            
+            NetworkServer.SendToAll(ToMsg(snapshot));
+        }
+
+        public void BroadcastActionFromServer(ActionEvent actionEvent)
+        {
+            if (!NetworkServer.active) return;
+            
+            NetworkServer.SendToAll(ToMsg(actionEvent));
+        }
+
         private static void RegisterHandlers()
         {
             if (_handlersRegistered) return;

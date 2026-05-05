@@ -1,3 +1,4 @@
+using Mirror;
 using UnityEngine;
 
 namespace Character.Sync
@@ -11,10 +12,21 @@ namespace Character.Sync
         public int LastAppliedTick {get; private set;} = 0;
         public ActionType CurrentRemoteAction {get; private set;} = ActionType.None;
 
+        private NetworkIdentity _networkIdentity;
 
+        private void Awake()
+        {
+            _networkIdentity = GetComponent<NetworkIdentity>();
+        }
 
         public void Apply(ActionEvent evt)
         {
+            if (_networkIdentity != null && _networkIdentity.netId != 0
+                && evt.ActorId != (int)_networkIdentity.netId)
+            {
+                return;
+            }
+
             if(evt.SeqId <= LastAppliedSeqId){
                 if(_logApply) Debug.Log($"RemoteActionApplier: Ignore duplicate seqId {evt.SeqId}");
                 return;

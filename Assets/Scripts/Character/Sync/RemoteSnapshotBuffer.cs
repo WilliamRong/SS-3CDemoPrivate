@@ -37,15 +37,15 @@ namespace Character.Sync
            }
            else
            {
-           if (_autoBindActorId && _acceptActorId < 0)
-           {
-               _acceptActorId = snapshot.ActorId;
-           }
+               if (_autoBindActorId && _acceptActorId < 0)
+               {
+                   _acceptActorId = snapshot.ActorId;
+               }
 
-           if (_acceptActorId >= 0 && snapshot.ActorId != _acceptActorId)
-           {
-               return;
-           }
+               if (_acceptActorId >= 0 && snapshot.ActorId != _acceptActorId)
+               {
+                   return;
+               }
            }
            
            

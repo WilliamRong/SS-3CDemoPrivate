@@ -1,3 +1,4 @@
+using Mirror;
 using UnityEngine;
 
 namespace Character.Sync
@@ -23,12 +24,25 @@ namespace Character.Sync
        public StateSnapshot LastAppliedSnapshot {get; private set;}
        public float LastPosError{get; private set;}
 
-       private void Awake(){
+       private NetworkIdentity _networkIdentity;
+
+       private void Awake()
+       {
           if (_buffer == null) _buffer = GetComponent<RemoteSnapshotBuffer>();
+          _networkIdentity = GetComponent<NetworkIdentity>();
        }
 
-       private void Update(){
+       private void Update()
+       {
             if (_buffer == null) return;
+
+            // Host 上服务端权威物体：位置由本地仿真（如 NavMeshAgent）驱动，不做远端插值
+            if (_networkIdentity != null
+                && NetworkServer.active
+                && NetworkClient.active
+                && _networkIdentity.isServer)
+                return;
+
             if (_buffer.Count == 0) return;
 
             float targetTime = Time.unscaledTime - _bufferDelaySec;
