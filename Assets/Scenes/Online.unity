@@ -2257,6 +2257,16 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 998877665544332211, guid: 00de6441d76e98d4dbc8141361ab0d53,
+        type: 3}
+      propertyPath: _logSend
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 998877665544332211, guid: 00de6441d76e98d4dbc8141361ab0d53,
+        type: 3}
+      propertyPath: _logReceive
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3503430170969607328, guid: 00de6441d76e98d4dbc8141361ab0d53,
         type: 3}
       propertyPath: m_Name

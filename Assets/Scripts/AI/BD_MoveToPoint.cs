@@ -27,7 +27,6 @@ namespace AI
             if (m_Motor == null || m_Destination == null)
                 return;
             
-            m_Motor.SetDestination(m_Destination.Value);
         }
 
         public override TaskStatus OnUpdate()
@@ -40,8 +39,6 @@ namespace AI
         public override void OnEnd()
         {
             base.OnEnd();
-            if(m_Motor != null)
-                m_Motor.Stop();
         }
     }
 }

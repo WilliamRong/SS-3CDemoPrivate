@@ -106,7 +106,7 @@ namespace Character.Sync
             CharacterStateId current = _playerController.CurrentStateId;
             if(current == _lastStateId) return;
 
-            ActionType actionType = MapStateToActionType(current);
+            ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
             if(actionType != ActionType.None)
             {
                 var evt = new ActionEvent(_nextSeqId++, tick, ResolveActorId(), actionType);
@@ -114,18 +114,6 @@ namespace Character.Sync
             }
 
             _lastStateId = current;
-        }
-
-        private static ActionType MapStateToActionType(CharacterStateId stateId)
-        {
-            return stateId switch
-            {
-                CharacterStateId.Attack => ActionType.AttackStart,
-                CharacterStateId.Dodge => ActionType.DodgeStart,
-                CharacterStateId.Hit => ActionType.Hit,
-                CharacterStateId.Dead => ActionType.Dead,
-                _ => ActionType.None
-            };
         }
         
         private int ResolveActorId()

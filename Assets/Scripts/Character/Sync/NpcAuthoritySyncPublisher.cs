@@ -1,3 +1,4 @@
+using AI;
 using Character.StateMachine;
 using Core;
 using Mirror;
@@ -5,17 +6,16 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    //需要让NpcCharacterDriver 组件在NpcAuthoritySyncPublisher 之前运行
+    [DefaultExecutionOrder(100)]
     [RequireComponent(typeof(NetworkIdentity))]
     public class NpcAuthoritySyncPublisher : NetworkBehaviour
     {
         [Header("Refs")]
         [SerializeField] private NetTickClock _clock;
         [SerializeField] private MirrorSyncTransport _transport;
-        
-        [Header("State (后续接 FSM 时改这里)")]
-        [SerializeField] private CharacterStateId _debugStateId = CharacterStateId.Idle;
-        
-        
+        [SerializeField] private NpcCharacterDriver _npcDriver;
+
         private bool _hasSentAnySnapshot;
         private Vector3 _lastSentPos;
         private float _lastSentYaw;
@@ -24,6 +24,12 @@ namespace Character.Sync
 
         private const float MinPosDelta = 0.001f;
         private const float MinYawDelta = 0.1f;
+
+        private void Awake()
+        {
+            if (_npcDriver == null)
+                _npcDriver = GetComponent<NpcCharacterDriver>();
+        }
 
         public override void OnStartServer()
         {
@@ -40,7 +46,7 @@ namespace Character.Sync
 
         }
 
-        private void Update()
+        private void LateUpdate()
         {
             if (!isServer) return;
             if(_transport == null || _clock == null) return;
@@ -85,7 +91,7 @@ namespace Character.Sync
                 pos,
                 yaw,
                 velocityXZ,
-                _debugStateId
+                ResolveCurrentStateId()
             );
             
             _transport.BroadcastSnapshotFromServer(snapshot);
@@ -97,10 +103,10 @@ namespace Character.Sync
 
         private void TrySendActionOnStateChange(int tick)
         {
-            CharacterStateId currentStateId = _debugStateId;
+            CharacterStateId currentStateId = ResolveCurrentStateId();
             if (currentStateId == _lastStateId) return;
 
-            ActionType actionType = MapStateToActionType(currentStateId);
+            ActionType actionType = CharacterStateActionMapping.MapStateToActionType(currentStateId);
             if (actionType != ActionType.None)
             {
                 var evt = new ActionEvent(
@@ -115,16 +121,11 @@ namespace Character.Sync
             _lastStateId = currentStateId;
         }
 
-        private static ActionType MapStateToActionType(CharacterStateId stateId)
+        private CharacterStateId ResolveCurrentStateId()
         {
-            return stateId switch
-            {
-                CharacterStateId.Attack => ActionType.AttackStart,
-                CharacterStateId.Dodge => ActionType.DodgeStart,
-                CharacterStateId.Hit => ActionType.Hit,
-                CharacterStateId.Dead => ActionType.Dead,
-                _ => ActionType.None
-            };
+            if (_npcDriver != null)
+                return _npcDriver.CurrentStateId;
+            return CharacterStateId.Idle;
         }
     }
 }
