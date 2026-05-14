@@ -38,9 +38,8 @@ namespace Character.Sync
 
             // Host 上服务端权威物体：位置由本地仿真（如 NavMeshAgent）驱动，不做远端插值
             if (_networkIdentity != null
-                && NetworkServer.active
-                && NetworkClient.active
-                && _networkIdentity.isServer)
+                && NetworkServer.activeHost
+                && _networkIdentity.isLocalPlayer)
                 return;
 
             if (_buffer.Count == 0) return;
