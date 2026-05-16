@@ -3,6 +3,7 @@ using Character.Intent;
 using Character.Motor;
 using Character.StateMachine;
 using Character.StateMachine.States;
+using Character.Sync;
 using Core;
 using Input;
 using UnityEngine;
@@ -49,7 +50,13 @@ namespace Character.Controller
 
         private CharacterContext _context;
         private CharacterMotor _motor;
-      
+        private CharacterLateUpdatePipeline _lateUpdatePipeline;
+
+        private void Awake()
+        {
+            _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
+        }
+
         // Start is called before the first frame update
         void Start()
         {
@@ -129,6 +136,17 @@ namespace Character.Controller
             {
                 ApplyHit(10, false);
             }
+        }
+
+        private void LateUpdate()
+        {
+            if (!CanProcessLocalInput())
+                return;
+
+            if (_lateUpdatePipeline == null)
+                _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
+
+            _lateUpdatePipeline?.TickLateUpdate();
         }
 
         public void ApplyHit(float damage, bool isHeavyHit)

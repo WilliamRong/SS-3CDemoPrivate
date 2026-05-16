@@ -1,11 +1,12 @@
 using Character.Controller;
 using Character.StateMachine;
+using Mirror;
 using UnityEngine;
 
 namespace Character.Diagnostics
 {
     /// <summary>
-    /// 左上角显示当前 / 上一帧切换前的状态（CharacterStateId 枚举名）。
+    /// 右上角显示当前 / 上一帧切换前的状态（CharacterStateId 枚举名）。
     /// 拖同一物体上的 PlayerController；上一状态在“发生切换”时更新。
     /// </summary>
     public sealed class CharacterStateDebugOverlay : MonoBehaviour
@@ -13,6 +14,7 @@ namespace Character.Diagnostics
         [SerializeField] private PlayerController _player;
 
         [Header("Layout")]
+        [Tooltip("x：距屏幕右边缘；y：距屏幕上边缘")]
         [SerializeField] private Vector2 _screenOffset = new Vector2(12f, 12f);
         [SerializeField] private int _fontSize = 20;
         [SerializeField] private bool _showNumericId = true;
@@ -45,12 +47,17 @@ namespace Character.Diagnostics
             if (_player == null)
                 return;
 
+            // 同一 Player 预制体会挂在远端镜像上；仅本地玩家绘制，避免叠多层。
+            var netId = _player.GetComponent<NetworkIdentity>();
+            if (netId != null && NetworkClient.active && !netId.isLocalPlayer)
+                return;
+
             CharacterStateId current = _player.CurrentStateId;
 
             var box = new GUIStyle(GUI.skin.box)
             {
                 fontSize = _fontSize,
-                alignment = TextAnchor.UpperLeft,
+                alignment = TextAnchor.UpperRight,
                 richText = true
             };
 
@@ -59,7 +66,8 @@ namespace Character.Diagnostics
 
             float w = 420f;
             float h = 72f;
-            var rect = new Rect(_screenOffset.x, _screenOffset.y, w, h);
+            float x = Screen.width - w - _screenOffset.x;
+            var rect = new Rect(x, _screenOffset.y, w, h);
 
             GUILayout.BeginArea(rect);
             GUILayout.Label($"<b>Current</b>:  {curText}", box);

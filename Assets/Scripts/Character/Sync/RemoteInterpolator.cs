@@ -32,7 +32,10 @@ namespace Character.Sync
           _networkIdentity = GetComponent<NetworkIdentity>();
        }
 
-       private void Update()
+       /// <summary>
+       /// Called from <see cref="CharacterLateUpdatePipeline.TickLateUpdate"/> only (not from Update).
+       /// </summary>
+       public void TickInterpolation()
        {
             if (_buffer == null) return;
 
