@@ -1,3 +1,4 @@
+using Character.Config;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
@@ -31,6 +32,9 @@ namespace Character.Controller
         public float MaxHp = 100f;
         public float LightHitDuration = 0.25f;
         public float HeavyHitDuration = 0.45f;
+
+        [Header("Sprint")]
+        [SerializeField] private SprintPhaseConfig _sprintPhaseConfig;
         
         [Header("State")]
         private CharacterStateMachine _fsm;
@@ -45,7 +49,19 @@ namespace Character.Controller
         
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
-        
+
+        public bool TryGetActiveSprintState(out SprintState sprintState)
+        {
+            if (_fsm?.CurrentState is SprintState active)
+            {
+                sprintState = active;
+                return true;
+            }
+
+            sprintState = null;
+            return false;
+        }
+
         public Vector3 Velocity;
 
         private CharacterContext _context;
@@ -91,7 +107,8 @@ namespace Character.Controller
             _stateRegistry = new CharacterStateRegistry();
             _idleState = new IdleState(_fsm, _motor, _stateRegistry);
             _moveState = new MoveState(_fsm, _motor, _stateRegistry);
-            _sprintState = new SprintState(_fsm, _motor, _stateRegistry);
+            _sprintState = new SprintState(_fsm, _motor, _context, _stateRegistry, _sprintPhaseConfig);
+
             _attackState = new AttackState(_fsm, _motor, _stateRegistry);
             _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry);
             _hitState = new HitState(_fsm, _motor, _stateRegistry);

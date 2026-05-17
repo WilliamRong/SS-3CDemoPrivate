@@ -13,6 +13,7 @@ namespace Character.Sync
         public float Yaw;
         public float Vx, Vz;
         public int StateId;
+        public byte SprintPhase;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -168,7 +169,8 @@ namespace Character.Sync
                 Yaw = s.Yaw,
                 Vx = s.VelocityXZ.x,
                 Vz = s.VelocityXZ.y,
-                StateId = (int)s.StateId
+                StateId = (int)s.StateId,
+                SprintPhase = s.SprintPhase
             };
         }
 
@@ -180,7 +182,8 @@ namespace Character.Sync
                 new Vector3(m.Px, m.Py, m.Pz),
                 m.Yaw,
                 new Vector2(m.Vx, m.Vz),
-                (StateMachine.CharacterStateId)m.StateId
+                (StateMachine.CharacterStateId)m.StateId,
+                m.SprintPhase
             );
         }
 

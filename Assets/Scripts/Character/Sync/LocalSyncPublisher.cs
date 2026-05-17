@@ -30,6 +30,8 @@ namespace Character.Sync
         private bool _hasSentAnySnapshot;
 
         private CharacterStateId _lastStateId = CharacterStateId.None;
+        private CharacterStateId _lastSentStateId = CharacterStateId.None;
+        private byte _lastSentSprintPhase;
 
         private void Awake()
         {
@@ -44,16 +46,13 @@ namespace Character.Sync
             if (_clock == null || _playerController == null) return;
             if (!CanPublishFromThisInstance()) return;
             
-            //每个逻辑tick发一次快照
             int tickCount = _clock.TickCountThisFrame;
             for (int i = 0; i < tickCount; i++)
             {
                 TryProduceSnapshot(_clock.CurrentTick - (tickCount - 1 - i));
             }
             
-            //状态变化时发动作事件(低频)
             TryProduceActionEventOnStateChange(_clock.CurrentTick);
-
         }
 
         private bool CanPublishFromThisInstance()
@@ -67,23 +66,30 @@ namespace Character.Sync
             Vector3 pos = transform.position;
             float yaw = transform.eulerAngles.y;
 
-            //水平速度先用“与上一快照差分”近似
             Vector2 velocityXZ = Vector2.zero;
-            if(_hasSentAnySnapshot){
+            if (_hasSentAnySnapshot)
+            {
                 float dt = Mathf.Max(_clock.TickInterval, 0.0001f);
                 Vector3 dp = pos - _lastSentPos;
                 velocityXZ = new Vector2(dp.x / dt, dp.z / dt);
             }
 
+            CharacterStateId stateId = _playerController.CurrentStateId;
+            byte sprintPhase = ResolveSprintPhase(stateId);
+
             bool shouldSend = !_hasSentAnySnapshot;
-            if(!shouldSend)
+            if (!shouldSend)
             {
                 float posDelta = (pos - _lastSentPos).sqrMagnitude;
                 float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
-                shouldSend = posDelta >= _minPosDeltaToSend || yawDelta >= _minYawDeltaToSend;
+                shouldSend = posDelta >= _minPosDeltaToSend
+                    || yawDelta >= _minYawDeltaToSend
+                    || stateId != _lastSentStateId
+                    || sprintPhase != _lastSentSprintPhase;
             }
 
-            if(!shouldSend) return;
+            if (!shouldSend)
+                return;
 
             var snapshot = new StateSnapshot(
                 tick,
@@ -91,7 +97,8 @@ namespace Character.Sync
                 pos,
                 yaw,
                 velocityXZ,
-                _playerController.CurrentStateId
+                stateId,
+                sprintPhase
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -99,15 +106,32 @@ namespace Character.Sync
             _lastSentPos = pos;
             _lastSentYaw = yaw;
             _hasSentAnySnapshot = true;
+            _lastSentStateId = stateId;
+            _lastSentSprintPhase = sprintPhase;
+        }
+
+        private static byte ResolveSprintPhase(CharacterStateId stateId, PlayerController player)
+        {
+            if (stateId != CharacterStateId.Sprint || player == null)
+                return 0;
+
+            return player.TryGetActiveSprintState(out var sprintState)
+                ? (byte)sprintState.CurrentPhase
+                : (byte)0;
+        }
+
+        private byte ResolveSprintPhase(CharacterStateId stateId)
+        {
+            return ResolveSprintPhase(stateId, _playerController);
         }
 
         private void TryProduceActionEventOnStateChange(int tick)
         {
             CharacterStateId current = _playerController.CurrentStateId;
-            if(current == _lastStateId) return;
+            if (current == _lastStateId) return;
 
             ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
-            if(actionType != ActionType.None)
+            if (actionType != ActionType.None)
             {
                 var evt = new ActionEvent(_nextSeqId++, tick, ResolveActorId(), actionType);
                 OnActionEventProduced?.Invoke(evt);
@@ -121,7 +145,6 @@ namespace Character.Sync
             if (_networkIdentity != null && _networkIdentity.netId != 0)
                 return (int)_networkIdentity.netId;
 
-            // 离线或尚未分配netId时回退，保证不为0
             return _actorId;
         }
     }

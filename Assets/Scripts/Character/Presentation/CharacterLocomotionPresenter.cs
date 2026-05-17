@@ -4,46 +4,75 @@ using UnityEngine;
 namespace Character.Presentation
 {
     /// <summary>
-    /// Locomotion layer: Idle state + 2D run blend tree (VelocityX/Z).
-    /// Free move: forward axis targets run at (0, <see cref="AnimatorParams.RunForwardBlendZ"/>).
-    /// Lock-on strafe (walk/defense) will use full X/Z later; upper-body overlay TBD.
+    /// Idle + Locomotion blend tree. Not used while <see cref="CharacterStateId.Sprint"/> (sprint discrete states own layer 0).
     /// </summary>
     public sealed class CharacterLocomotionPresenter
     {
         private const float VelocityEpsilon = 0.05f;
+        private const int HashNone = 0;
 
-        private int _lastLocomotionAnimatorHash;
+        private int _appliedStateHash = HashNone;
 
-        public void Tick(Animator animator, Transform presentationRoot, CharacterStateId stateId, Vector2 worldVelocityXZ, bool isLockOn)
+        /// <summary>Sprint discrete clips own layer 0 — invalidate so we CrossFade on return.</summary>
+        public void ReleaseLayerToSprint()
         {
-            if (animator == null) return;
-
-            ApplyLocomotionState(animator, stateId);
-            ApplyLocomotionBlend(animator, presentationRoot, stateId, worldVelocityXZ, isLockOn);
+            _appliedStateHash = HashNone;
         }
 
-        private void ApplyLocomotionState(Animator animator, CharacterStateId stateId)
+        /// <summary>First frame after FSM left Sprint (e.g. still on SprintBrake in Animator).</summary>
+        public void TickLeavingSprint(
+            Animator animator,
+            Transform presentationRoot,
+            CharacterStateId stateId,
+            Vector2 worldVelocityXZ,
+            bool isLockOn)
+        {
+            if (animator == null)
+                return;
+
+            _appliedStateHash = HashNone;
+            ApplyState(animator, stateId, useFullCrossFade: true);
+            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, isLockOn);
+        }
+
+        public void Tick(
+            Animator animator,
+            Transform presentationRoot,
+            CharacterStateId stateId,
+            Vector2 worldVelocityXZ,
+            bool isLockOn)
+        {
+            if (animator == null)
+                return;
+
+            ApplyState(animator, stateId, useFullCrossFade: false);
+            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, isLockOn);
+        }
+
+        private void ApplyState(Animator animator, CharacterStateId stateId, bool useFullCrossFade)
         {
             if (!IsLocomotionDrivingState(stateId))
             {
                 if (stateId != CharacterStateId.None)
-                    _lastLocomotionAnimatorHash = 0;
+                    _appliedStateHash = HashNone;
                 return;
             }
 
-            bool useLocomotionTree = stateId == CharacterStateId.Move || stateId == CharacterStateId.Sprint;
-            int targetHash = useLocomotionTree ? AnimatorParams.StateLocomotion : AnimatorParams.StateIdle;
+            int targetHash = stateId == CharacterStateId.Move
+                ? AnimatorParams.StateLocomotion
+                : AnimatorParams.StateIdle;
 
-            if (targetHash == _lastLocomotionAnimatorHash)
+            if (targetHash == _appliedStateHash)
                 return;
 
-            bool enteringLocomotionTree = useLocomotionTree
-                && _lastLocomotionAnimatorHash != AnimatorParams.StateLocomotion;
-            float fadeDuration = enteringLocomotionTree
-                ? AnimatorParams.LocomotionEnterCrossFadeDuration
-                : AnimatorParams.LocomotionCrossFadeDuration;
+            bool enteringLocomotionTree = stateId == CharacterStateId.Move
+                && _appliedStateHash != AnimatorParams.StateLocomotion;
 
-            _lastLocomotionAnimatorHash = targetHash;
+            float fadeDuration = useFullCrossFade || !enteringLocomotionTree
+                ? AnimatorParams.LocomotionCrossFadeDuration
+                : AnimatorParams.LocomotionEnterCrossFadeDuration;
+
+            _appliedStateHash = targetHash;
 
             animator.CrossFade(
                 targetHash,
@@ -51,7 +80,7 @@ namespace Character.Presentation
                 AnimatorParams.LocomotionLayerIndex,
                 0f);
 
-            if (enteringLocomotionTree)
+            if (stateId == CharacterStateId.Move)
                 SetForwardRunBlend(animator);
         }
 
@@ -61,7 +90,7 @@ namespace Character.Presentation
             animator.SetFloat(AnimatorParams.VelocityZ, AnimatorParams.RunForwardBlendZ);
         }
 
-        private void ApplyLocomotionBlend(
+        private void ApplyBlend(
             Animator animator,
             Transform presentationRoot,
             CharacterStateId stateId,
@@ -87,7 +116,7 @@ namespace Character.Presentation
 
         private static bool IsLocomotionDrivingState(CharacterStateId stateId)
         {
-            return stateId is CharacterStateId.Idle or CharacterStateId.Move or CharacterStateId.Sprint;
+            return stateId is CharacterStateId.Idle or CharacterStateId.Move;
         }
 
         private static Vector2 ComputeAnimatorBlendVelocity(
@@ -108,7 +137,7 @@ namespace Character.Presentation
             {
                 float mag = worldVelocity.magnitude;
                 if (mag < VelocityEpsilon)
-                    return ResolveFallbackBlend(stateId);
+                    return new Vector2(0f, AnimatorParams.RunForwardBlendZ);
 
                 float normalized = Mathf.Clamp(mag / refSpeed * runZ, 0f, axisMax);
                 return new Vector2(0f, normalized * AnimatorParams.FreeMoveBlendScale);
@@ -124,7 +153,7 @@ namespace Character.Presentation
 
             float forwardSpeed = Vector3.Dot(worldVelocity, presentationRoot.forward);
             if (Mathf.Abs(forwardSpeed) < VelocityEpsilon)
-                return ResolveFallbackBlend(stateId);
+                return new Vector2(0f, AnimatorParams.RunForwardBlendZ);
 
             float normalizedZ = Mathf.Clamp(
                 forwardSpeed / refSpeed * runZ * AnimatorParams.FreeMoveBlendScale,
@@ -135,17 +164,6 @@ namespace Character.Presentation
                 normalizedZ = Mathf.Max(normalizedZ, runZ);
 
             return new Vector2(0f, normalizedZ);
-        }
-
-        /// <summary>
-        /// Move/Sprint with input but negligible velocity — hold forward run in blend tree.
-        /// </summary>
-        private static Vector2 ResolveFallbackBlend(CharacterStateId stateId)
-        {
-            if (stateId is CharacterStateId.Move or CharacterStateId.Sprint)
-                return new Vector2(0f, AnimatorParams.RunForwardBlendZ);
-
-            return Vector2.zero;
         }
     }
 }

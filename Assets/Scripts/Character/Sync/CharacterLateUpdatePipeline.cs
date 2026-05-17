@@ -2,6 +2,7 @@ using AI;
 using Character.Controller;
 using Character.Presentation;
 using Character.StateMachine;
+using Character.StateMachine.States;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -26,6 +27,9 @@ namespace Character.Sync
         private ILockOnLocomotionQuery _lockOnQuery;
 
         private readonly CharacterLocomotionPresenter _locomotionPresenter = new();
+        private readonly CharacterSprintPresenter _sprintPresenter = new();
+
+        private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
 
         private void Awake()
         {
@@ -46,9 +50,6 @@ namespace Character.Sync
                 _animator.applyRootMotion = false;
         }
 
-        /// <summary>
-        /// Runs after gameplay Update (e.g. from <see cref="PlayerController"/> on local authority).
-        /// </summary>
         public void TickLateUpdate()
         {
             if (_remoteInterpolator != null)
@@ -57,7 +58,46 @@ namespace Character.Sync
             if (_animator == null)
                 return;
 
-            ResolvePresentation(out var stateId, out var velocityXZ, out var isLockOn);
+            ResolvePresentation(
+                out var stateId,
+                out var velocityXZ,
+                out var isLockOn,
+                out var sprintPhase);
+
+            bool leftSprint = _lastPresentationStateId == CharacterStateId.Sprint
+                && stateId != CharacterStateId.Sprint;
+            _lastPresentationStateId = stateId;
+
+            if (stateId == CharacterStateId.Sprint)
+            {
+                _locomotionPresenter.ReleaseLayerToSprint();
+
+                if (_playerController != null
+                    && HasLocalPresentationAuthority()
+                    && _playerController.TryGetActiveSprintState(out var sprintState))
+                {
+                    _sprintPresenter.Tick(_animator, sprintState);
+                }
+                else
+                {
+                    _sprintPresenter.TickRemotePhase(_animator, sprintPhase);
+                }
+
+                return;
+            }
+
+            if (leftSprint)
+            {
+                _sprintPresenter.Reset();
+                _locomotionPresenter.TickLeavingSprint(
+                    _animator,
+                    transform,
+                    stateId,
+                    velocityXZ,
+                    isLockOn);
+                return;
+            }
+
             _locomotionPresenter.Tick(
                 _animator,
                 transform,
@@ -77,27 +117,33 @@ namespace Character.Sync
         private void ResolvePresentation(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
-            out bool isLockOn)
+            out bool isLockOn,
+            out SprintState.SprintPhase sprintPhase)
         {
             isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
+            sprintPhase = SprintState.SprintPhase.Loop;
 
-            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ))
+            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase))
                 return;
 
             if (TryResolveFromServerNpc(out stateId, out velocityXZ))
                 return;
 
-            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ))
+            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase))
                 return;
 
             stateId = CharacterStateId.Idle;
             velocityXZ = Vector2.zero;
         }
 
-        private bool TryResolveFromLocalPlayer(out CharacterStateId stateId, out Vector2 velocityXZ)
+        private bool TryResolveFromLocalPlayer(
+            out CharacterStateId stateId,
+            out Vector2 velocityXZ,
+            out SprintState.SprintPhase sprintPhase)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
+            sprintPhase = SprintState.SprintPhase.Loop;
 
             if (_playerController == null)
                 return false;
@@ -108,6 +154,13 @@ namespace Character.Sync
             stateId = _playerController.CurrentStateId;
             var velocity = _playerController.Velocity;
             velocityXZ = new Vector2(velocity.x, velocity.z);
+
+            if (stateId == CharacterStateId.Sprint
+                && _playerController.TryGetActiveSprintState(out var sprintState))
+            {
+                sprintPhase = sprintState.CurrentPhase;
+            }
+
             return true;
         }
 
@@ -119,13 +172,9 @@ namespace Character.Sync
             if (_networkIdentity != null)
                 return _networkIdentity.isLocalPlayer;
 
-            // No Mirror on this instance (offline test): PlayerController sim is authoritative.
             return true;
         }
 
-        /// <summary>
-        /// Host / dedicated server: NPC FSM and NavMesh run only on server — use sim state, not delayed snapshots.
-        /// </summary>
         private bool TryResolveFromServerNpc(out CharacterStateId stateId, out Vector2 velocityXZ)
         {
             stateId = CharacterStateId.None;
@@ -146,10 +195,14 @@ namespace Character.Sync
             return true;
         }
 
-        private bool TryResolveFromRemoteSnapshot(out CharacterStateId stateId, out Vector2 velocityXZ)
+        private bool TryResolveFromRemoteSnapshot(
+            out CharacterStateId stateId,
+            out Vector2 velocityXZ,
+            out SprintState.SprintPhase sprintPhase)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
+            sprintPhase = SprintState.SprintPhase.Loop;
 
             if (_remoteInterpolator == null)
                 return false;
@@ -160,6 +213,7 @@ namespace Character.Sync
 
             stateId = snapshot.StateId;
             velocityXZ = snapshot.VelocityXZ;
+            sprintPhase = snapshot.GetSprintPhaseOrDefault();
             return true;
         }
 

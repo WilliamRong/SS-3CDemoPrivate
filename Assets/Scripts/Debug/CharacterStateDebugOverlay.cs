@@ -1,5 +1,6 @@
 using Character.Controller;
 using Character.StateMachine;
+using Character.StateMachine.States;
 using Mirror;
 using UnityEngine;
 
@@ -65,14 +66,23 @@ namespace Character.Diagnostics
             string prevText = FormatState(_previous);
 
             float w = 420f;
-            float h = 72f;
+            float h = 96f;
             float x = Screen.width - w - _screenOffset.x;
             var rect = new Rect(x, _screenOffset.y, w, h);
 
             GUILayout.BeginArea(rect);
             GUILayout.Label($"<b>Current</b>:  {curText}", box);
             GUILayout.Label($"<b>Previous</b>: {prevText}", box);
+            GUILayout.Label($"<b>Sprint Phase</b>: {FormatSprintPhase()}", box);
             GUILayout.EndArea();
+        }
+
+        private string FormatSprintPhase()
+        {
+            if (_player.TryGetActiveSprintState(out SprintState sprint))
+                return sprint.CurrentPhase.ToString();
+
+            return "—";
         }
 
         private string FormatState(CharacterStateId id)

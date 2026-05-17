@@ -104,6 +104,7 @@ MonoBehaviour:
   MaxHp: 100
   LightHitDuration: 0.25
   HeavyHitDuration: 0.45
+  _sprintPhaseConfig: {fileID: 11400000, guid: c9d5f3b20a4e5d7f9b1c2d3e4f5a6b7d, type: 2}
   Velocity: {x: 0, y: 0, z: 0}
 --- !u!114 &4232551613056902401
 MonoBehaviour:

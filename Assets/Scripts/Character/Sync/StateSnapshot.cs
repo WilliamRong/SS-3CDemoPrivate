@@ -1,4 +1,5 @@
 using Character.StateMachine;
+using Character.StateMachine.States;
 using UnityEngine;
 
 namespace Character.Sync
@@ -14,6 +15,8 @@ namespace Character.Sync
         public Vector2 VelocityXZ;
 
         public CharacterStateId StateId;
+        /// <summary>Valid when <see cref="StateId"/> is Sprint; otherwise 0.</summary>
+        public byte SprintPhase;
 
         public StateSnapshot(
             int tick,
@@ -21,7 +24,8 @@ namespace Character.Sync
             Vector3 position,
             float yaw,
             Vector2 velocityXZ,
-            CharacterStateId stateId)
+            CharacterStateId stateId,
+            byte sprintPhase = 0)
         {
             Tick = tick;
             ActorId = actorId;
@@ -29,12 +33,23 @@ namespace Character.Sync
             Yaw = yaw;
             VelocityXZ = velocityXZ;
             StateId = stateId;
+            SprintPhase = sprintPhase;
             ArrivalTimeSec = 0f;
+        }
+
+        public SprintState.SprintPhase GetSprintPhaseOrDefault()
+        {
+            if (StateId != CharacterStateId.Sprint)
+                return SprintState.SprintPhase.Loop;
+
+            return System.Enum.IsDefined(typeof(SprintState.SprintPhase), (int)SprintPhase)
+                ? (SprintState.SprintPhase)SprintPhase
+                : SprintState.SprintPhase.Loop;
         }
 
         public override string ToString()
         {
-            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, " +
+            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, " +
                    $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), " +
                    $"yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
         }
