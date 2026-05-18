@@ -17,6 +17,7 @@ namespace Character.StateMachine.States
         public void Enter()
         {
             _motor.SetSprintActive(false);
+            _motor.SetMovementBlocked(true);
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
@@ -26,7 +27,7 @@ namespace Character.StateMachine.States
 
         public void Exit()
         {
+            _motor.SetMovementBlocked(false);
         }
     }
 }
-

@@ -20,3 +20,6 @@ MonoBehaviour:
   blendAxisMax: 2
   runForwardBlendZ: 2
   sprintCrossFadeDuration: 0.15
+  lightHitCrossFadeDuration: 0.08
+  heavyHitCrossFadeDuration: 0.08
+  deathCrossFadeDuration: 0.08

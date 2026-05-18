@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: SprintPhaseConfig
   m_EditorClassIdentifier: 
   crossfadePadding: 0.15
-  startDuration: 0.5
+  startDuration: 0.75
   brakeDuration: 0.15
-  turn180Duration: 0.2
+  turn180Duration: 0.55
   turn180Cooldown: 0.5
   inputBufferDuration: 0.5
   minOppositeInputMagnitude: 0.2

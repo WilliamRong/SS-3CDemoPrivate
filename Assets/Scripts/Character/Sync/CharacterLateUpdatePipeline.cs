@@ -11,8 +11,8 @@ using UnityEngine;
 namespace Character.Sync
 {
     /// <summary>
-    /// Single LateUpdate entry for visual follow-up: remote interpolation, then locomotion presentation.
-    /// Does not rely on Script Execution Order — call order is explicit in <see cref="TickLateUpdate"/>.
+    /// Single LateUpdate entry for visual follow-up: remote interpolation, then presentation routing.
+    /// Priority: combat overlay (Hit/Dead) → Sprint (layer 0) → post-sprint locomotion → default locomotion.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CharacterLateUpdatePipeline : MonoBehaviour
@@ -29,6 +29,7 @@ namespace Character.Sync
 
         private CharacterLocomotionPresenter _locomotionPresenter;
         private CharacterSprintPresenter _sprintPresenter;
+        private CharacterCombatPresenter _combatPresenter;
 
         private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
 
@@ -53,20 +54,6 @@ namespace Character.Sync
             EnsurePresenters();
         }
 
-        private void EnsurePresenters()
-        {
-            var presentation = ResolvePresentationConfig();
-            _locomotionPresenter ??= new CharacterLocomotionPresenter(presentation);
-            _sprintPresenter ??= new CharacterSprintPresenter(presentation);
-        }
-
-        private CharacterPresentationConfig ResolvePresentationConfig()
-        {
-            return _playerController != null
-                ? GameDataManager.Instance.Player.presentation
-                : GameDataManager.Instance.Npc.presentation;
-        }
-
         public void TickLateUpdate()
         {
             EnsurePresenters();
@@ -77,52 +64,18 @@ namespace Character.Sync
             if (_animator == null)
                 return;
 
-            ResolvePresentation(
-                out var stateId,
-                out var velocityXZ,
-                out var isLockOn,
-                out var sprintPhase);
+            var frame = BuildPresentationFrame();
 
-            bool leftSprint = _lastPresentationStateId == CharacterStateId.Sprint
-                && stateId != CharacterStateId.Sprint;
-            _lastPresentationStateId = stateId;
-
-            if (stateId == CharacterStateId.Sprint)
+            if (TryPresentCombat(frame)
+                || TryPresentSprint(frame)
+                || TryPresentAfterSprint(frame))
             {
-                _locomotionPresenter.ReleaseLayerToSprint();
-
-                if (_playerController != null
-                    && HasLocalPresentationAuthority()
-                    && _playerController.TryGetActiveSprintState(out var sprintState))
-                {
-                    _sprintPresenter.Tick(_animator, sprintState);
-                }
-                else
-                {
-                    _sprintPresenter.TickRemotePhase(_animator, sprintPhase);
-                }
-
+                CommitPresentationFrame(frame);
                 return;
             }
 
-            if (leftSprint)
-            {
-                _sprintPresenter.Reset();
-                _locomotionPresenter.TickLeavingSprint(
-                    _animator,
-                    transform,
-                    stateId,
-                    velocityXZ,
-                    isLockOn);
-                return;
-            }
-
-            _locomotionPresenter.Tick(
-                _animator,
-                transform,
-                stateId,
-                velocityXZ,
-                isLockOn);
+            PresentLocomotion(frame);
+            CommitPresentationFrame(frame);
         }
 
         private void LateUpdate()
@@ -131,6 +84,122 @@ namespace Character.Sync
                 return;
 
             TickLateUpdate();
+        }
+
+        private PresentationFrame BuildPresentationFrame()
+        {
+            ResolvePresentation(
+                out var stateId,
+                out var velocityXZ,
+                out var isLockOn,
+                out var sprintPhase);
+
+            return new PresentationFrame(
+                _lastPresentationStateId,
+                stateId,
+                velocityXZ,
+                isLockOn,
+                sprintPhase);
+        }
+
+        private void CommitPresentationFrame(PresentationFrame frame)
+        {
+            _lastPresentationStateId = frame.StateId;
+        }
+
+        private bool TryPresentCombat(PresentationFrame frame)
+        {
+            if (!IsCombatPresentationState(frame.StateId))
+                return false;
+
+            ReleaseSprintOverlayIfNeeded(frame);
+            _combatPresenter.Tick(_animator, frame.StateId);
+            return true;
+        }
+
+        private bool TryPresentSprint(PresentationFrame frame)
+        {
+            if (frame.StateId != CharacterStateId.Sprint)
+                return false;
+
+            if (frame.LeftCombat)
+                _combatPresenter.ResetAllCombatLayers(_animator);
+
+            _locomotionPresenter.ReleaseLayerToSprint();
+
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveSprintState(out var sprintState))
+            {
+                _sprintPresenter.Tick(_animator, sprintState);
+            }
+            else
+            {
+                _sprintPresenter.TickRemotePhase(_animator, frame.SprintPhase);
+            }
+
+            return true;
+        }
+
+        private bool TryPresentAfterSprint(PresentationFrame frame)
+        {
+            if (!frame.LeftSprint)
+                return false;
+
+            _sprintPresenter.Reset();
+            _locomotionPresenter.TickLeavingSprint(
+                _animator,
+                transform,
+                frame.StateId,
+                frame.VelocityXZ,
+                frame.IsLockOn);
+
+            return true;
+        }
+
+        private void PresentLocomotion(PresentationFrame frame)
+        {
+            if (frame.LeftCombat)
+                _combatPresenter.ResetAllCombatLayers(_animator);
+
+            _locomotionPresenter.Tick(
+                _animator,
+                transform,
+                frame.StateId,
+                frame.VelocityXZ,
+                frame.IsLockOn);
+        }
+
+        private void ReleaseSprintOverlayIfNeeded(PresentationFrame frame)
+        {
+            if (frame.PreviousStateId != CharacterStateId.Sprint)
+                return;
+
+            _sprintPresenter.Reset();
+            _locomotionPresenter.ReleaseLayerToSprint();
+        }
+
+        private static bool IsCombatPresentationState(CharacterStateId id)
+        {
+            return id is CharacterStateId.Hit
+                or CharacterStateId.Dead
+                or CharacterStateId.Attack
+                or CharacterStateId.Dodge;
+        }
+
+        private void EnsurePresenters()
+        {
+            var presentation = ResolvePresentationConfig();
+            _locomotionPresenter ??= new CharacterLocomotionPresenter(presentation);
+            _sprintPresenter ??= new CharacterSprintPresenter(presentation);
+            _combatPresenter ??= new CharacterCombatPresenter(presentation);
+        }
+
+        private CharacterPresentationConfig ResolvePresentationConfig()
+        {
+            return _playerController != null
+                ? GameDataManager.Instance.Player.presentation
+                : GameDataManager.Instance.Npc.presentation;
         }
 
         private void ResolvePresentation(
@@ -251,6 +320,43 @@ namespace Character.Sync
                 _authorityGate = GetComponent<PlayerAuthorityGate>();
 
             return _authorityGate != null && _authorityGate.CanProcessLocalInput;
+        }
+
+        private readonly struct PresentationFrame
+        {
+            public PresentationFrame(
+                CharacterStateId previousStateId,
+                CharacterStateId stateId,
+                Vector2 velocityXZ,
+                bool isLockOn,
+                SprintState.SprintPhase sprintPhase)
+            {
+                PreviousStateId = previousStateId;
+                StateId = stateId;
+                VelocityXZ = velocityXZ;
+                IsLockOn = isLockOn;
+                SprintPhase = sprintPhase;
+            }
+
+            public CharacterStateId PreviousStateId { get; }
+            public CharacterStateId StateId { get; }
+            public Vector2 VelocityXZ { get; }
+            public bool IsLockOn { get; }
+            public SprintState.SprintPhase SprintPhase { get; }
+
+            public bool LeftSprint =>
+                PreviousStateId == CharacterStateId.Sprint && StateId != CharacterStateId.Sprint;
+
+            public bool LeftCombat =>
+                IsCombatState(PreviousStateId) && !IsCombatState(StateId);
+
+            private static bool IsCombatState(CharacterStateId id)
+            {
+                return id is CharacterStateId.Hit
+                    or CharacterStateId.Dead
+                    or CharacterStateId.Attack
+                    or CharacterStateId.Dodge;
+            }
         }
     }
 }

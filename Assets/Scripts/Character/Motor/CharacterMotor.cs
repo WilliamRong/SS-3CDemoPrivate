@@ -14,6 +14,7 @@ namespace Character.Motor
         private Vector3 _horizontalVelocityRef;
 
         private bool _isSprintActive;
+        private bool _movementBlocked;
 
         public CharacterMotor(CharacterContext context, CharacterLocomotionConfig config)
         {
@@ -23,9 +24,35 @@ namespace Character.Motor
 
         public void Tick(CharacterIntent intent, float dt)
         {
+            if (_movementBlocked)
+            {
+                StopHorizontalMotion();
+                TickVertical(intent, dt);
+                _context.Controller.Move(_context.Velocity * dt);
+                return;
+            }
+
             TickHorizontal(intent, dt);
             TickVertical(intent, dt);
             _context.Controller.Move(_context.Velocity * dt);
+        }
+
+        public void SetMovementBlocked(bool blocked)
+        {
+            _movementBlocked = blocked;
+            if (blocked)
+                StopHorizontalMotion();
+        }
+
+        public void StopHorizontalMotion()
+        {
+            _currentHorizontalVelocity = Vector3.zero;
+            _horizontalVelocityRef = Vector3.zero;
+
+            var v = _context.Velocity;
+            v.x = 0f;
+            v.z = 0f;
+            _context.Velocity = v;
         }
 
         private void TickHorizontal(CharacterIntent intent, float dt)

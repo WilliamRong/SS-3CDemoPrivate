@@ -9,9 +9,9 @@ namespace Character.Config
         [Header("Vitals")]
         public float maxHp = 100f;
 
-        [Header("Hit State")]
-        public float lightHitDuration = 0.25f;
-        public float heavyHitDuration = 0.45f;
+        [Header("Hit State (logic duration, seconds)")]
+        public float lightHitDuration = 0.8166667f;
+        public float heavyHitDuration = 0.8166667f;
 
         [Header("Attack State")]
         public float attackDuration = 0.5f;
@@ -30,7 +30,7 @@ namespace Character.Config
         [Header("Hit Interrupt Windows")]
         public float hitPreHitEnd = 0.1f;
         public float hitActiveEnd = 0.2f;
-        public float hitRecoveryEnd = 0.5f;
+        public float hitRecoveryEnd = 0.8166667f;
 
         public void GetStateWindows(CharacterStateId stateId, out float preHitEnd, out float activeEnd, out float recoveryEnd)
         {

@@ -19,5 +19,17 @@ namespace Character.Config
 
         [Header("Sprint Animator")]
         public float sprintCrossFadeDuration = 0.15f;
+
+        [Header("Combat Animator (CrossFade duration, seconds)")]
+        public float lightHitCrossFadeDuration = 0.08f;
+        public float heavyHitCrossFadeDuration = 0.08f;
+        public float deathCrossFadeDuration = 0.08f;
+
+        public float GetHitCrossFadeDuration(bool heavyHit)
+        {
+            return heavyHit ? heavyHitCrossFadeDuration : lightHitCrossFadeDuration;
+        }
+
+        public float GetDeathCrossFadeDuration() => deathCrossFadeDuration;
     }
 }

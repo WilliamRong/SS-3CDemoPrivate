@@ -12,7 +12,7 @@ namespace Character.StateMachine
                 { CharacterStateId.Sprint, new HashSet<CharacterStateId> { CharacterStateId.Move, CharacterStateId.Idle, CharacterStateId.Attack, CharacterStateId.Dodge, CharacterStateId.Hit, CharacterStateId.Dead } },
                 { CharacterStateId.Attack, new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Hit, CharacterStateId.Dead } },
                 { CharacterStateId.Dodge,  new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Hit, CharacterStateId.Dead } },
-                { CharacterStateId.Hit,    new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Dead } },
+                { CharacterStateId.Hit,    new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Sprint, CharacterStateId.Dead } },
                 { CharacterStateId.Dead,   new HashSet<CharacterStateId> { CharacterStateId.Idle } }, // revive
             };
 

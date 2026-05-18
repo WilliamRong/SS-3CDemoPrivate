@@ -38,6 +38,7 @@ namespace Character.StateMachine.States
         {
             _timer = 0f;
             _motor.SetSprintActive(false);
+            _motor.SetMovementBlocked(true);
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
@@ -45,14 +46,25 @@ namespace Character.StateMachine.States
             _timer += deltaTime;
             _motor.Tick(intent, deltaTime);
 
-            if (_timer < _duration) return;
+            if (_timer < _duration)
+                return;
 
             bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
-            _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry, TransitionReason.Timeout);
+            if (intent.IsSprintHeld && hasMove)
+            {
+                _fsm.TryTransition(CharacterStateId.Sprint, _registry, TransitionReason.Timeout);
+                return;
+            }
+
+            _fsm.TryTransition(
+                hasMove ? CharacterStateId.Move : CharacterStateId.Idle,
+                _registry,
+                TransitionReason.Timeout);
         }
 
         public void Exit()
         {
+            _motor.SetMovementBlocked(false);
         }
     }
 }

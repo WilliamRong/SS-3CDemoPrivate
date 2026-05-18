@@ -11,9 +11,9 @@ namespace Character.Config
         public float crossfadePadding = 0.15f;
 
         [Header("One-Shot Durations (seconds)")]
-        public float startDuration = 0.5f;
-        public float brakeDuration = 0.15f;
-        public float turn180Duration = 0.2f;
+        public float startDuration = 0.75f;
+        public float brakeDuration = 0.2f;
+        public float turn180Duration = 0.55f;
 
         [Header("Turn180 Input (raw stick)")]
         public float turn180Cooldown = 0.5f;

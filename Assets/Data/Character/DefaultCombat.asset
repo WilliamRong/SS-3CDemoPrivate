@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: DefaultCombat
   m_EditorClassIdentifier: 
   maxHp: 100
-  lightHitDuration: 0.25
-  heavyHitDuration: 0.45
+  lightHitDuration: 0.8166667
+  heavyHitDuration: 0.8166667
   attackDuration: 0.5
   attackPreHitEnd: 0.1
   attackActiveEnd: 0.25
@@ -27,4 +27,4 @@ MonoBehaviour:
   dodgeRecoveryEnd: 0.25
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
-  hitRecoveryEnd: 0.5
+  hitRecoveryEnd: 0.8166667
