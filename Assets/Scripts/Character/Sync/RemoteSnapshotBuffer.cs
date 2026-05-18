@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Core;
 using Mirror;
 using UnityEngine;
 
@@ -8,14 +9,12 @@ namespace Character.Sync
     {
        [SerializeField] private int _maxBufferSize = 64;
 
-
        [SerializeField] private bool _autoBindActorId = true;
        [SerializeField] private int _acceptActorId = -1;
        [SerializeField] private bool _lockToSelfNetworkIdentity = true;
-       
+
        private readonly List<StateSnapshot> _buffer = new();
        private NetworkIdentity _networkIdentity;
-       
 
        public int Count => _buffer.Count;
        public int BoundActorId => _acceptActorId;
@@ -25,6 +24,7 @@ namespace Character.Sync
        private void Awake()
        {
            if (_networkIdentity == null) _networkIdentity = GetComponent<NetworkIdentity>();
+           _maxBufferSize = GameDataManager.Instance.NetworkSync.snapshotBufferMaxSize;
        }
 
        public void Push(StateSnapshot snapshot)
@@ -47,23 +47,12 @@ namespace Character.Sync
                    return;
                }
            }
-           
-           
-            // 插入保持按 ArrivalTime 升序
+
             int idx = _buffer.Count;
             while (idx > 0 && _buffer[idx - 1].ArrivalTimeSec > snapshot.ArrivalTimeSec)
                 idx--;
             _buffer.Insert(idx, snapshot);
-            // 已按ArrivalTime排序，不需要Tick去重
-            // // 去重：同 tick 保留后来的（简单策略）
-            // for (int i = _buffer.Count - 2; i >= 0; i--)
-            // {
-            //     if (_buffer[i].Tick == snapshot.Tick)
-            //         _buffer.RemoveAt(i);
-            //     else
-            //         break;
-            // }
-            // 裁剪
+
             if (_buffer.Count > _maxBufferSize)
             {
                 int removeCount = _buffer.Count - _maxBufferSize;
@@ -71,9 +60,6 @@ namespace Character.Sync
             }
        }
 
-        /// <summary>
-        /// 根据目标tick找前后帧，找不到返回 false
-        /// </summary>
        public bool TryGetFrames(int targetTick, out StateSnapshot from, out StateSnapshot to)
        {
             from = default;
@@ -85,14 +71,12 @@ namespace Character.Sync
                 to = _buffer[0];
                 return true;
             }
-            // 小于最早帧：夹住
             if (targetTick <= _buffer[0].Tick)
             {
                 from = _buffer[0];
                 to = _buffer[0];
                 return true;
             }
-            // 大于最晚帧：夹住
             int last = _buffer.Count - 1;
             if (targetTick >= _buffer[last].Tick)
             {
@@ -100,7 +84,6 @@ namespace Character.Sync
                 to = _buffer[last];
                 return true;
             }
-            // 中间区间查找
             for (int i = 0; i < _buffer.Count - 1; i++)
             {
                 var a = _buffer[i];
@@ -128,7 +111,6 @@ namespace Character.Sync
                 return true;
             }
 
-             // 夹住边界
             if (targetTick <= _buffer[0].Tick)
             {
                 from = _buffer[0];
@@ -143,8 +125,6 @@ namespace Character.Sync
                 return true;
             }
 
-
-             // 找包围区间
             for (int i = 0; i < _buffer.Count - 1; i++)
             {
                 var a = _buffer[i];
@@ -160,8 +140,7 @@ namespace Character.Sync
 
             return false;
        }
-       
-       //基于ArrivalTime采样
+
        public bool TrySampleByArrivalTime(float targetTime, out StateSnapshot from, out StateSnapshot to, out float t)
        {
            from = default;
@@ -176,7 +155,6 @@ namespace Character.Sync
                return true;
            }
 
-           // 边界夹住
            if (targetTime <= _buffer[0].ArrivalTimeSec)
            {
                from = _buffer[0];
@@ -192,7 +170,6 @@ namespace Character.Sync
                return true;
            }
 
-           // 区间查找
            for (int i = 0; i < _buffer.Count - 1; i++)
            {
                var a = _buffer[i];
@@ -211,7 +188,7 @@ namespace Character.Sync
 
            return false;
        }
-       
+
        public void ResetActorBinding(int actorId = -1)
        {
            _acceptActorId = actorId;
@@ -225,5 +202,4 @@ namespace Character.Sync
            return (int)_networkIdentity.netId;
        }
     }
-
 }

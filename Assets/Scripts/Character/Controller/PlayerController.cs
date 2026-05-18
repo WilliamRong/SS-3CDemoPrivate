@@ -1,4 +1,3 @@
-using Character.Config;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
@@ -18,25 +17,6 @@ namespace Character.Controller
         private CharacterController _characterController;
         private Camera _camera;
 
-        [Header("Move")]
-        public float MoveSpeed = 5f;
-        public float SprintSpeed = 10f;
-        public float RotationSlerpSpeed = 30f;
-        public float SmoothTime = 0.1f;
-
-        [Header("Vertical")]
-        public float gravity = -9.81f;
-        public float JumpHeight = 1f;
-
-        [Header("Combat")]
-        public float MaxHp = 100f;
-        public float LightHitDuration = 0.25f;
-        public float HeavyHitDuration = 0.45f;
-
-        [Header("Sprint")]
-        [SerializeField] private SprintPhaseConfig _sprintPhaseConfig;
-        
-        [Header("State")]
         private CharacterStateMachine _fsm;
         private CharacterStateRegistry _stateRegistry;
         private IdleState _idleState;
@@ -46,7 +26,7 @@ namespace Character.Controller
         private DodgeState _dodgeState;
         private HitState _hitState;
         private DeadState _deadState;
-        
+
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
 
@@ -73,45 +53,29 @@ namespace Character.Controller
             _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
         }
 
-        // Start is called before the first frame update
         void Start()
         {
             _inputHandler = GetComponent<InputHandler>();
             _authorityGate = GetComponent<PlayerAuthorityGate>();
             _characterController = GetComponent<CharacterController>();
             _camera = Camera.main;
-            
-            // // 仅本地权威玩家控制光标状态
-            // if (CanProcessLocalInput())
-            // {
-            //     Cursor.visible = false;
-            //     Cursor.lockState = CursorLockMode.Locked;
-            // }
 
+            var def = GameDataManager.Instance.Player;
 
             _context = new CharacterContext(_characterController, transform, _camera);
-            _context.ConfigureHealth(MaxHp);
+            _context.ConfigureHealth(def.combat.maxHp);
 
-            _motor = new CharacterMotor(_context){
-                MoveSpeed = MoveSpeed,
-                SprintSpeed = SprintSpeed,
-                RotationSlerpSpeed = RotationSlerpSpeed,
-                SmoothTime = SmoothTime,
-                Gravity = gravity,
-                JumpHeight = JumpHeight,
-            };
-            
-            
-            //状态机
-            _fsm = new CharacterStateMachine();
+            _motor = new CharacterMotor(_context, def.locomotion);
+
+            _fsm = new CharacterStateMachine(def.combat);
             _stateRegistry = new CharacterStateRegistry();
             _idleState = new IdleState(_fsm, _motor, _stateRegistry);
             _moveState = new MoveState(_fsm, _motor, _stateRegistry);
-            _sprintState = new SprintState(_fsm, _motor, _context, _stateRegistry, _sprintPhaseConfig);
+            _sprintState = new SprintState(_fsm, _motor, _context, _stateRegistry, def.sprint);
 
-            _attackState = new AttackState(_fsm, _motor, _stateRegistry);
-            _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry);
-            _hitState = new HitState(_fsm, _motor, _stateRegistry);
+            _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
+            _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
+            _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
 
             _stateRegistry.Register(_idleState);
@@ -129,8 +93,8 @@ namespace Character.Controller
         {
             if (!CanProcessLocalInput()) return;
 
-            // 水平移动（SmoothDamp 平滑过渡）
-            var intent = new CharacterIntent{
+            var intent = new CharacterIntent
+            {
                 Move = _inputHandler.MoveInput,
                 IsSprintHeld = _inputHandler.IsSprinting,
                 IsJumpPressed = _inputHandler.JumpTriggered,
@@ -145,7 +109,7 @@ namespace Character.Controller
                 intent.IsJumpPressed = false;
                 intent.IsSprintHeld = false;
             }
-            
+
             _fsm.Tick(intent, Time.deltaTime);
             Velocity = _context.Velocity;
 
@@ -170,6 +134,8 @@ namespace Character.Controller
         {
             if (_context.IsDead || _context.IsInvincible) return;
 
+            var combat = GameDataManager.Instance.Player.combat;
+
             _context.ApplyDamage(damage);
             if (_context.IsDead)
             {
@@ -177,7 +143,7 @@ namespace Character.Controller
                 return;
             }
 
-            _hitState.ConfigureDuration(isHeavyHit ? HeavyHitDuration : LightHitDuration);
+            _hitState.ConfigureDuration(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration);
             _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
 
@@ -192,6 +158,5 @@ namespace Character.Controller
             if (_authorityGate == null) return true;
             return _authorityGate.CanProcessLocalInput;
         }
-
-      }
+    }
 }

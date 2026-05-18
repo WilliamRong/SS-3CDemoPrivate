@@ -521,9 +521,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _buffer: {fileID: 3848279797799811784}
-  _bufferDelaySec: 0.12
-  _largeErrorThreshold: 1.5
-  _snapLerpSpeed: 12
   _logState: 0
 --- !u!114 &1256244487053923907
 MonoBehaviour:

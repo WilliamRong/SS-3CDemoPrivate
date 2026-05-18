@@ -1,5 +1,6 @@
-using Character.Intent;
+using Character.Config;
 using Character.Core;
+using Character.Intent;
 using Character.Motor;
 
 namespace Character.StateMachine.States
@@ -10,19 +11,22 @@ namespace Character.StateMachine.States
         private readonly CharacterMotor _motor;
         private readonly CharacterContext _context;
         private readonly CharacterStateRegistry _registry;
-    
+        private readonly CharacterCombatConfig _combat;
+
         private float _timer;
 
-        private readonly float _duration = 0.2f;
-        private readonly float _invincibleStart = 0.05f;
-        private readonly float _invincibleEnd = 0.18f;
-    
-        public DodgeState(CharacterStateMachine fsm, CharacterMotor motor, CharacterContext context, CharacterStateRegistry registry)
+        public DodgeState(
+            CharacterStateMachine fsm,
+            CharacterMotor motor,
+            CharacterContext context,
+            CharacterStateRegistry registry,
+            CharacterCombatConfig combat)
         {
             _fsm = fsm;
             _motor = motor;
             _context = context;
             _registry = registry;
+            _combat = combat;
         }
 
         public CharacterStateId Id { get; } = CharacterStateId.Dodge;
@@ -37,9 +41,9 @@ namespace Character.StateMachine.States
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _timer += deltaTime;
-            _context.IsInvincible = _timer >= _invincibleStart && _timer <= _invincibleEnd;
+            _context.IsInvincible = _timer >= _combat.dodgeInvincibleStart && _timer <= _combat.dodgeInvincibleEnd;
             _motor.Tick(intent, deltaTime);
-            if (_timer >= _duration)
+            if (_timer >= _combat.dodgeDuration)
             {
                 bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
                 _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry, TransitionReason.Timeout);

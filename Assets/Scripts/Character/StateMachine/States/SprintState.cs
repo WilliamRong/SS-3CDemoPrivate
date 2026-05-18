@@ -33,7 +33,7 @@ namespace Character.StateMachine.States
             _fsm = fsm;
             _motor = motor;
             _registry = registry;
-            _config = config != null ? config : ScriptableObject.CreateInstance<SprintPhaseConfig>();
+            _config = config;
         }
 
         public CharacterStateId Id { get; } = CharacterStateId.Sprint;

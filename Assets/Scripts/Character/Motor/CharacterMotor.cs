@@ -1,3 +1,4 @@
+using Character.Config;
 using Character.Core;
 using Character.Intent;
 using UnityEngine;
@@ -6,24 +7,18 @@ namespace Character.Motor
 {
     public class CharacterMotor
     {
-        private CharacterContext _context;
+        private readonly CharacterContext _context;
+        private readonly CharacterLocomotionConfig _config;
 
         private Vector3 _currentHorizontalVelocity;
         private Vector3 _horizontalVelocityRef;
-        
+
         private bool _isSprintActive;
 
-        //todo之后转移到配置表
-        public float MoveSpeed = 5f;
-        public float SprintSpeed = 10f;
-        public float RotationSlerpSpeed = 30f;
-        public float SmoothTime = 0.1f;
-        public float Gravity = -9.81f;
-        public float JumpHeight = 1f;
-
-        public CharacterMotor(CharacterContext context)
+        public CharacterMotor(CharacterContext context, CharacterLocomotionConfig config)
         {
             _context = context;
+            _config = config;
         }
 
         public void Tick(CharacterIntent intent, float dt)
@@ -40,16 +35,24 @@ namespace Character.Motor
             var inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
             var hasMoveInput = intent.Move.sqrMagnitude > 0.0001f && inputDir.sqrMagnitude > 0.0001f;
 
-            if(hasMoveInput){
+            if (hasMoveInput)
+            {
                 inputDir.Normalize();
                 var targetRot = Quaternion.LookRotation(inputDir);
-                _context.Root.rotation = Quaternion.Slerp(_context.Root.rotation, targetRot, RotationSlerpSpeed * dt);
+                _context.Root.rotation = Quaternion.Slerp(
+                    _context.Root.rotation,
+                    targetRot,
+                    _config.rotationSlerpSpeed * dt);
             }
 
-            var speed = _isSprintActive ? SprintSpeed : MoveSpeed;
+            var speed = _isSprintActive ? _config.sprintSpeed : _config.moveSpeed;
             var targetHorizontal = inputDir * speed;
 
-            _currentHorizontalVelocity = Vector3.SmoothDamp(_currentHorizontalVelocity, targetHorizontal, ref _horizontalVelocityRef, SmoothTime);
+            _currentHorizontalVelocity = Vector3.SmoothDamp(
+                _currentHorizontalVelocity,
+                targetHorizontal,
+                ref _horizontalVelocityRef,
+                _config.smoothTime);
             var v = _context.Velocity;
             v.x = _currentHorizontalVelocity.x;
             v.z = _currentHorizontalVelocity.z;
@@ -58,27 +61,18 @@ namespace Character.Motor
 
         private void TickVertical(CharacterIntent intent, float dt)
         {
-            //暂时没有跳跃功能
-            return;
-            
-            //跳跃和重力
-            // var v = _context.Velocity;
-            //
-            // if(_context.IsGrounded && v.y < 0f) v.y = -2f;
-            //
-            // if(intent.IsJumpPressed && _context.IsGrounded) 
-            // {
-            //     v.y = Mathf.Sqrt(JumpHeight * -2f * Gravity);
-            // }
-            //
-            // v.y += Gravity * dt;
-            // _context.Velocity = v;
+            var v = _context.Velocity;
+
+            if (_context.IsGrounded && v.y < 0f)
+                v.y = -2f;
+
+            if (_context.IsGrounded && intent.IsJumpPressed)
+                v.y = Mathf.Sqrt(_config.jumpHeight * -2f * _config.gravity);
+
+            v.y += _config.gravity * dt;
+            _context.Velocity = v;
         }
 
-        public void SetSprintActive(bool active)
-        {
-            _isSprintActive = active;
-        }
-
+        public void SetSprintActive(bool active) => _isSprintActive = active;
     }
 }

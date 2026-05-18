@@ -1,4 +1,5 @@
 using AI;
+using Character.Config;
 using Character.StateMachine;
 using Core;
 using Mirror;
@@ -6,7 +7,6 @@ using UnityEngine;
 
 namespace Character.Sync
 {
-    //需要让NpcCharacterDriver 组件在NpcAuthoritySyncPublisher 之前运行
     [DefaultExecutionOrder(100)]
     [RequireComponent(typeof(NetworkIdentity))]
     public class NpcAuthoritySyncPublisher : NetworkBehaviour
@@ -16,14 +16,13 @@ namespace Character.Sync
         [SerializeField] private MirrorSyncTransport _transport;
         [SerializeField] private NpcCharacterDriver _npcDriver;
 
+        private NetworkSyncConfig Sync => GameDataManager.Instance.NetworkSync;
+
         private bool _hasSentAnySnapshot;
         private Vector3 _lastSentPos;
         private float _lastSentYaw;
         private CharacterStateId _lastStateId = CharacterStateId.None;
         private int _nextSeqId = 1;
-
-        private const float MinPosDelta = 0.001f;
-        private const float MinYawDelta = 0.1f;
 
         private void Awake()
         {
@@ -43,13 +42,12 @@ namespace Character.Sync
                 Debug.LogError("[NpcAuthoritySyncPublisher] MirrorSyncTransport not found in scene.", this);
             if (_clock == null)
                 Debug.LogWarning("[NpcAuthoritySyncPublisher] NetTickClock not found; snapshots won't tick evenly.", this);
-
         }
 
         private void LateUpdate()
         {
             if (!isServer) return;
-            if(_transport == null || _clock == null) return;
+            if (_transport == null || _clock == null) return;
 
             int tickCount = _clock.TickCountThisFrame;
             for (int i = 0; i < tickCount; i++)
@@ -57,7 +55,7 @@ namespace Character.Sync
                 int tick = _clock.CurrentTick - (tickCount - 1 - i);
                 TrySendSnapshot(tick);
             }
-            
+
             TrySendActionOnStateChange(_clock.CurrentTick);
         }
 
@@ -73,14 +71,14 @@ namespace Character.Sync
                 Vector3 dp = pos - _lastSentPos;
                 velocityXZ = new Vector2(dp.x / dt, dp.z / dt);
             }
-            
+
             bool shouldSend = !_hasSentAnySnapshot;
 
             if (!shouldSend)
             {
                 float posDelta = (pos - _lastSentPos).sqrMagnitude;
                 float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
-                shouldSend = posDelta > MinPosDelta || yawDelta > MinYawDelta;
+                shouldSend = posDelta > Sync.minPosDeltaToSend || yawDelta > Sync.minYawDeltaToSend;
             }
 
             if (!shouldSend) return;
@@ -93,7 +91,7 @@ namespace Character.Sync
                 velocityXZ,
                 ResolveCurrentStateId()
             );
-            
+
             _transport.BroadcastSnapshotFromServer(snapshot);
 
             _lastSentPos = pos;

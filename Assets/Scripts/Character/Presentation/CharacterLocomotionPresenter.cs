@@ -1,3 +1,4 @@
+using Character.Config;
 using Character.StateMachine;
 using UnityEngine;
 
@@ -8,18 +9,21 @@ namespace Character.Presentation
     /// </summary>
     public sealed class CharacterLocomotionPresenter
     {
-        private const float VelocityEpsilon = 0.05f;
         private const int HashNone = 0;
 
+        private readonly CharacterPresentationConfig _config;
         private int _appliedStateHash = HashNone;
 
-        /// <summary>Sprint discrete clips own layer 0 — invalidate so we CrossFade on return.</summary>
+        public CharacterLocomotionPresenter(CharacterPresentationConfig config)
+        {
+            _config = config;
+        }
+
         public void ReleaseLayerToSprint()
         {
             _appliedStateHash = HashNone;
         }
 
-        /// <summary>First frame after FSM left Sprint (e.g. still on SprintBrake in Animator).</summary>
         public void TickLeavingSprint(
             Animator animator,
             Transform presentationRoot,
@@ -69,8 +73,8 @@ namespace Character.Presentation
                 && _appliedStateHash != AnimatorParams.StateLocomotion;
 
             float fadeDuration = useFullCrossFade || !enteringLocomotionTree
-                ? AnimatorParams.LocomotionCrossFadeDuration
-                : AnimatorParams.LocomotionEnterCrossFadeDuration;
+                ? _config.locomotionCrossFadeDuration
+                : _config.locomotionEnterCrossFadeDuration;
 
             _appliedStateHash = targetHash;
 
@@ -84,10 +88,10 @@ namespace Character.Presentation
                 SetForwardRunBlend(animator);
         }
 
-        private static void SetForwardRunBlend(Animator animator)
+        private void SetForwardRunBlend(Animator animator)
         {
             animator.SetFloat(AnimatorParams.VelocityX, 0f);
-            animator.SetFloat(AnimatorParams.VelocityZ, AnimatorParams.RunForwardBlendZ);
+            animator.SetFloat(AnimatorParams.VelocityZ, _config.runForwardBlendZ);
         }
 
         private void ApplyBlend(
@@ -119,7 +123,7 @@ namespace Character.Presentation
             return stateId is CharacterStateId.Idle or CharacterStateId.Move;
         }
 
-        private static Vector2 ComputeAnimatorBlendVelocity(
+        private Vector2 ComputeAnimatorBlendVelocity(
             Transform presentationRoot,
             Vector2 worldVelocityXZ,
             bool isLockOn,
@@ -129,18 +133,19 @@ namespace Character.Presentation
                 return Vector2.zero;
 
             var worldVelocity = new Vector3(worldVelocityXZ.x, 0f, worldVelocityXZ.y);
-            float refSpeed = AnimatorParams.LocomotionBlendReferenceSpeed;
-            float runZ = AnimatorParams.RunForwardBlendZ;
-            float axisMax = AnimatorParams.BlendAxisMax;
+            float refSpeed = _config.locomotionBlendReferenceSpeed;
+            float runZ = _config.runForwardBlendZ;
+            float axisMax = _config.blendAxisMax;
+            float epsilon = _config.velocityEpsilon;
 
             if (presentationRoot == null)
             {
                 float mag = worldVelocity.magnitude;
-                if (mag < VelocityEpsilon)
-                    return new Vector2(0f, AnimatorParams.RunForwardBlendZ);
+                if (mag < epsilon)
+                    return new Vector2(0f, _config.runForwardBlendZ);
 
                 float normalized = Mathf.Clamp(mag / refSpeed * runZ, 0f, axisMax);
-                return new Vector2(0f, normalized * AnimatorParams.FreeMoveBlendScale);
+                return new Vector2(0f, normalized * _config.freeMoveBlendScale);
             }
 
             if (isLockOn)
@@ -152,15 +157,15 @@ namespace Character.Presentation
             }
 
             float forwardSpeed = Vector3.Dot(worldVelocity, presentationRoot.forward);
-            if (Mathf.Abs(forwardSpeed) < VelocityEpsilon)
-                return new Vector2(0f, AnimatorParams.RunForwardBlendZ);
+            if (Mathf.Abs(forwardSpeed) < epsilon)
+                return new Vector2(0f, _config.runForwardBlendZ);
 
             float normalizedZ = Mathf.Clamp(
-                forwardSpeed / refSpeed * runZ * AnimatorParams.FreeMoveBlendScale,
+                forwardSpeed / refSpeed * runZ * _config.freeMoveBlendScale,
                 -axisMax,
                 axisMax);
 
-            if (forwardSpeed > VelocityEpsilon)
+            if (forwardSpeed > epsilon)
                 normalizedZ = Mathf.Max(normalizedZ, runZ);
 
             return new Vector2(0f, normalizedZ);

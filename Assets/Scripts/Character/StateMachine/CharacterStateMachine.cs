@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Character.Config;
 using Character.Intent;
 
 namespace Character.StateMachine
@@ -9,6 +10,11 @@ namespace Character.StateMachine
         public CharacterStateId CurrentId => CurrentState?.Id ?? CharacterStateId.None;
 
         private readonly CharacterStateRuntime _runtime = new CharacterStateRuntime();
+
+        public CharacterStateMachine(CharacterCombatConfig combatConfig = null)
+        {
+            _runtime.SetCombatConfig(combatConfig);
+        }
 
         private static readonly Dictionary<CharacterStateId, int> _priority = new()
         {

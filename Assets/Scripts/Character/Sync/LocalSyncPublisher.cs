@@ -1,27 +1,26 @@
 using System;
+using Character.Config;
 using Character.Controller;
 using Character.StateMachine;
-using Mirror;
 using Core;
+using Mirror;
 using UnityEngine;
 
 namespace Character.Sync
 {
     public sealed class LocalSyncPublisher : MonoBehaviour
     {
-        [Header("Refs")] 
+        [Header("Refs")]
         [SerializeField] private NetTickClock _clock;
         [SerializeField] private PlayerController _playerController;
         [SerializeField] private PlayerAuthorityGate _authorityGate;
         [SerializeField] private int _actorId = 1;
-
-        [Header("Snapshot")] 
-        [SerializeField] private float _minPosDeltaToSend = 0.001f;
-        [SerializeField] private float _minYawDeltaToSend = 0.1f;
         [SerializeField] private NetworkIdentity _networkIdentity;
 
         public event Action<StateSnapshot> OnSnapshotProduced;
         public event Action<ActionEvent> OnActionEventProduced;
+
+        private NetworkSyncConfig Sync => GameDataManager.Instance.NetworkSync;
 
         private int _nextSeqId = 1;
 
@@ -45,13 +44,13 @@ namespace Character.Sync
         {
             if (_clock == null || _playerController == null) return;
             if (!CanPublishFromThisInstance()) return;
-            
+
             int tickCount = _clock.TickCountThisFrame;
             for (int i = 0; i < tickCount; i++)
             {
                 TryProduceSnapshot(_clock.CurrentTick - (tickCount - 1 - i));
             }
-            
+
             TryProduceActionEventOnStateChange(_clock.CurrentTick);
         }
 
@@ -82,8 +81,8 @@ namespace Character.Sync
             {
                 float posDelta = (pos - _lastSentPos).sqrMagnitude;
                 float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
-                shouldSend = posDelta >= _minPosDeltaToSend
-                    || yawDelta >= _minYawDeltaToSend
+                shouldSend = posDelta >= Sync.minPosDeltaToSend
+                    || yawDelta >= Sync.minYawDeltaToSend
                     || stateId != _lastSentStateId
                     || sprintPhase != _lastSentSprintPhase;
             }
@@ -139,7 +138,7 @@ namespace Character.Sync
 
             _lastStateId = current;
         }
-        
+
         private int ResolveActorId()
         {
             if (_networkIdentity != null && _networkIdentity.netId != 0)

@@ -1,4 +1,5 @@
 using AI;
+using Character.Config;
 using Character.Controller;
 using Character.Presentation;
 using Character.StateMachine;
@@ -26,8 +27,8 @@ namespace Character.Sync
         private NPCMotor _npcMotor;
         private ILockOnLocomotionQuery _lockOnQuery;
 
-        private readonly CharacterLocomotionPresenter _locomotionPresenter = new();
-        private readonly CharacterSprintPresenter _sprintPresenter = new();
+        private CharacterLocomotionPresenter _locomotionPresenter;
+        private CharacterSprintPresenter _sprintPresenter;
 
         private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
 
@@ -48,10 +49,28 @@ namespace Character.Sync
 
             if (_animator != null)
                 _animator.applyRootMotion = false;
+
+            EnsurePresenters();
+        }
+
+        private void EnsurePresenters()
+        {
+            var presentation = ResolvePresentationConfig();
+            _locomotionPresenter ??= new CharacterLocomotionPresenter(presentation);
+            _sprintPresenter ??= new CharacterSprintPresenter(presentation);
+        }
+
+        private CharacterPresentationConfig ResolvePresentationConfig()
+        {
+            return _playerController != null
+                ? GameDataManager.Instance.Player.presentation
+                : GameDataManager.Instance.Npc.presentation;
         }
 
         public void TickLateUpdate()
         {
+            EnsurePresenters();
+
             if (_remoteInterpolator != null)
                 _remoteInterpolator.TickInterpolation();
 

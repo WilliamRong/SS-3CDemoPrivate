@@ -1,3 +1,4 @@
+using Character.Config;
 using Character.Intent;
 using Character.Motor;
 
@@ -8,21 +9,29 @@ namespace Character.StateMachine.States
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterMotor _motor;
         private readonly CharacterStateRegistry _registry;
+        private readonly CharacterCombatConfig _combat;
+
         private float _timer;
-        private float _duration = 0.25f;
+        private float _duration;
 
         public CharacterStateId Id { get; } = CharacterStateId.Hit;
 
-        public HitState(CharacterStateMachine fsm, CharacterMotor motor, CharacterStateRegistry registry)
+        public HitState(
+            CharacterStateMachine fsm,
+            CharacterMotor motor,
+            CharacterStateRegistry registry,
+            CharacterCombatConfig combat)
         {
             _fsm = fsm;
             _motor = motor;
             _registry = registry;
+            _combat = combat;
+            _duration = _combat.lightHitDuration;
         }
 
         public void ConfigureDuration(float duration)
         {
-            _duration = duration > 0f ? duration : 0.25f;
+            _duration = duration > 0f ? duration : _combat.lightHitDuration;
         }
 
         public void Enter()
@@ -47,4 +56,3 @@ namespace Character.StateMachine.States
         }
     }
 }
-

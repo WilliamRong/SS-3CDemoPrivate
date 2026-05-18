@@ -419,7 +419,7 @@ MonoBehaviour:
   m_LookAt: {fileID: 0}
   m_Follow: {fileID: 0}
   m_Lens:
-    FieldOfView: 40
+    FieldOfView: 45
     OrthographicSize: 10
     NearClipPlane: 0.1
     FarClipPlane: 5000
@@ -629,7 +629,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_BindingMode: 5
-  m_FollowOffset: {x: 0, y: 1.1, z: -2.75}
+  m_FollowOffset: {x: 0, y: 1.0939373, z: -2.7789316}
   m_XDamping: 1.25
   m_YDamping: 1.25
   m_ZDamping: 1.25
@@ -861,7 +861,7 @@ MonoBehaviour:
   m_LookAt: {fileID: 0}
   m_Follow: {fileID: 0}
   m_Lens:
-    FieldOfView: 40
+    FieldOfView: 45
     OrthographicSize: 10
     NearClipPlane: 0.1
     FarClipPlane: 5000
@@ -953,7 +953,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_BindingMode: 5
-  m_FollowOffset: {x: 0, y: 0.08, z: -3.35}
+  m_FollowOffset: {x: 0, y: 1.0939373, z: -2.7789316}
   m_XDamping: 1.25
   m_YDamping: 1.25
   m_ZDamping: 1.25
@@ -1198,7 +1198,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_BindingMode: 5
-  m_FollowOffset: {x: 0, y: 0.5, z: -3.25}
+  m_FollowOffset: {x: 0, y: 1.0939373, z: -2.7789316}
   m_XDamping: 1.25
   m_YDamping: 1.25
   m_ZDamping: 1.25
@@ -1344,7 +1344,7 @@ Camera:
     height: 1
   near clip plane: 0.1
   far clip plane: 5000
-  field of view: 40
+  field of view: 45
   orthographic: 0
   orthographic size: 10
   m_Depth: -1
@@ -1634,7 +1634,7 @@ MonoBehaviour:
   m_LookAt: {fileID: 0}
   m_Follow: {fileID: 0}
   m_Lens:
-    FieldOfView: 40
+    FieldOfView: 45
     OrthographicSize: 10
     NearClipPlane: 0.1
     FarClipPlane: 5000
@@ -2271,6 +2271,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_Name
       value: NetSystem
+      objectReference: {fileID: 0}
+    - target: {fileID: 3894217259508549436, guid: 00de6441d76e98d4dbc8141361ab0d53,
+        type: 3}
+      propertyPath: m_Enabled
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 3894217259508549436, guid: 00de6441d76e98d4dbc8141361ab0d53,
         type: 3}

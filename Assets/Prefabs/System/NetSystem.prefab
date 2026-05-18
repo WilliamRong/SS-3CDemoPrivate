@@ -9,6 +9,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 6893707821179930401}
+  - component: {fileID: 9911002200334455660}
   - component: {fileID: 8025734029591167315}
   - component: {fileID: 7120250014329789661}
   - component: {fileID: 3894217259508549436}
@@ -35,6 +36,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &9911002200334455660
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3503430170969607328}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1a2b3c4d5e6478990a1b2c3d4e5f702, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _catalog: {fileID: 11400000, guid: f1a2b3c4d5e6478990a1b2c3d4e5f703, type: 2}
 --- !u!114 &8025734029591167315
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -47,7 +61,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d64a32fa797a674d9228bbe4fb110bc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _tickRate: 20
 --- !u!114 &7120250014329789661
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -60,9 +73,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 900e049e3697fbb48848a0eff6a61779, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _baseLatencyMs: 20
-  _jitterMs: 0
-  _packetLossRate: 0.067
 --- !u!114 &3894217259508549436
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -1,3 +1,4 @@
+using Character.Config;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using UnityEngine;
@@ -9,8 +10,14 @@ namespace Character.Presentation
     /// </summary>
     public sealed class CharacterSprintPresenter
     {
+        private readonly CharacterPresentationConfig _config;
         private int _lastAnimatorHash;
         private SprintState.SprintPhase _lastPhase = (SprintState.SprintPhase)(-1);
+
+        public CharacterSprintPresenter(CharacterPresentationConfig config)
+        {
+            _config = config;
+        }
 
         public void Reset()
         {
@@ -48,7 +55,7 @@ namespace Character.Presentation
 
             animator.CrossFade(
                 targetHash,
-                AnimatorParams.SprintCrossFadeDuration,
+                _config.sprintCrossFadeDuration,
                 AnimatorParams.LocomotionLayerIndex,
                 0f);
         }
