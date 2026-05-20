@@ -33,6 +33,13 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Hit, StateWindowType.ActiveWindow, TransitionReason.HitLight, false),
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Hit, StateWindowType.ActiveWindow, TransitionReason.HitHeavy, true),
 
+            //翻滚
+            new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.PreHitWindow, TransitionReason.InputDodge, false),
+            new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.ActiveWindow, TransitionReason.InputDodge, false),
+            new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.RecoveryWindow, TransitionReason.InputDodge, true),
+            new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.Always, TransitionReason.InputDodge, true),
+            new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Attack, StateWindowType.Always, TransitionReason.InputAttack, false),
+            
             // 死亡永远可抢占
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
             new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),

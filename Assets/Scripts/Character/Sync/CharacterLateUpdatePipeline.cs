@@ -18,6 +18,7 @@ namespace Character.Sync
     public sealed class CharacterLateUpdatePipeline : MonoBehaviour
     {
         [SerializeField] private RemoteInterpolator _remoteInterpolator;
+        [SerializeField] private RemoteActionApplier _remoteActionApplier;
         [SerializeField] private Animator _animator;
 
         private NetworkIdentity _networkIdentity;
@@ -37,6 +38,9 @@ namespace Character.Sync
         {
             if (_remoteInterpolator == null)
                 _remoteInterpolator = GetComponent<RemoteInterpolator>();
+
+            if (_remoteActionApplier == null)
+                _remoteActionApplier = GetComponent<RemoteActionApplier>();
 
             _networkIdentity = GetComponent<NetworkIdentity>();
             _playerController = GetComponent<PlayerController>();
@@ -113,8 +117,55 @@ namespace Character.Sync
                 return false;
 
             ReleaseSprintOverlayIfNeeded(frame);
-            _combatPresenter.Tick(_animator, frame.StateId);
-            return true;
+
+            var dodgeCtx = ResolveDodgePresentationContext(frame.StateId);
+            return _combatPresenter.TickCombat(_animator, frame.StateId, dodgeCtx: dodgeCtx);
+        }
+
+        private DodgePresentationContext ResolveDodgePresentationContext(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Dodge)
+                return default;
+
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetDodgePresentationContext(out var ctx))
+            {
+                return ctx;
+            }
+
+            var combat = ResolveCombatConfig();
+            if (_remoteInterpolator != null)
+            {
+                var snapshot = ResolveRemoteDodgeSnapshot(_remoteInterpolator.LastAppliedSnapshot);
+                if (snapshot.Tick > 0 && snapshot.TryBuildDodgePresentationContext(combat, out var remoteCtx))
+                    return remoteCtx;
+            }
+
+            return new DodgePresentationContext(
+                DodgeMode.ForwardAlongMove,
+                Vector2.zero,
+                combat.dodgeEvadeDuration,
+                combat.GetDodgeMoveDuration(DodgeMode.ForwardAlongMove),
+                transform.forward);
+        }
+
+        private CharacterCombatConfig ResolveCombatConfig()
+        {
+            return _playerController != null
+                ? GameDataManager.Instance.Player.combat
+                : GameDataManager.Instance.Npc.combat;
+        }
+
+        private StateSnapshot ResolveRemoteDodgeSnapshot(StateSnapshot snapshot)
+        {
+            if (snapshot.StateId != CharacterStateId.Dodge || snapshot.DodgeMode != 0)
+                return snapshot;
+
+            if (_remoteActionApplier == null || _remoteActionApplier.LastDodgeMode == 0)
+                return snapshot;
+
+            return snapshot.WithDodgeMode(_remoteActionApplier.LastDodgeMode);
         }
 
         private bool TryPresentSprint(PresentationFrame frame)

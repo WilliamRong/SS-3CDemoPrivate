@@ -1,6 +1,7 @@
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
+using Character.Presentation;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using Character.Sync;
@@ -30,6 +31,9 @@ namespace Character.Controller
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
 
+        /// <summary>Set on dodge <see cref="DodgeState.Prepare"/>; used for network sync before FSM enters Dodge.</summary>
+        public byte LastPreparedDodgeMode { get; private set; }
+
         public bool TryGetActiveSprintState(out SprintState sprintState)
         {
             if (_fsm?.CurrentState is SprintState active)
@@ -47,6 +51,7 @@ namespace Character.Controller
         private CharacterContext _context;
         private CharacterMotor _motor;
         private CharacterLateUpdatePipeline _lateUpdatePipeline;
+        private ILockOnLocomotionQuery _lockOnQuery;
 
         private void Awake()
         {
@@ -87,6 +92,17 @@ namespace Character.Controller
             _stateRegistry.Register(_deadState);
 
             _fsm.Initialize(_idleState);
+            _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
+        }
+
+        public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
+        {
+            ctx = default;
+            if (_fsm?.CurrentState is not DodgeState dodge)
+                return false;
+
+            ctx = dodge.PresentationContext;
+            return ctx.IsValid;
         }
 
         void Update()
@@ -108,6 +124,20 @@ namespace Character.Controller
                 intent.IsDodgePressed = false;
                 intent.IsJumpPressed = false;
                 intent.IsSprintHeld = false;
+            }
+
+            if (intent.IsDodgePressed && CanPrepareDodgeFromCurrentState())
+            {
+                intent.IsJumpPressed = false;
+                bool lockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
+                _dodgeState.Prepare(intent, CurrentStateId, lockOn);
+                LastPreparedDodgeMode = (byte)_dodgeState.PresentationContext.Mode;
+            }
+            else if (IsInLockedCombatState())
+            {
+                intent.IsDodgePressed = false;
+                intent.IsAttackPressed = false;
+                intent.IsJumpPressed = false;
             }
 
             _fsm.Tick(intent, Time.deltaTime);
@@ -157,6 +187,21 @@ namespace Character.Controller
         {
             if (_authorityGate == null) return true;
             return _authorityGate.CanProcessLocalInput;
+        }
+
+        private bool CanPrepareDodgeFromCurrentState()
+        {
+            return CurrentStateId is not (
+                CharacterStateId.Dodge
+                or CharacterStateId.Hit
+                or CharacterStateId.Dead);
+        }
+
+        private bool IsInLockedCombatState()
+        {
+            return CurrentStateId is CharacterStateId.Dodge
+                or CharacterStateId.Hit
+                or CharacterStateId.Dead;
         }
     }
 }

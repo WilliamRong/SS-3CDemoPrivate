@@ -37,6 +37,11 @@ namespace Character.StateMachine.States
         {
             _timer += deltaTime;
             _motor.Tick(intent, deltaTime);
+            if (intent.IsDodgePressed)
+            {
+                if (_fsm.TryTransition(CharacterStateId.Dodge, _registry, TransitionReason.InputDodge))
+                    return;
+            }
             if (_timer >= _combat.attackDuration)
             {
                 bool hasMove = intent.Move.sqrMagnitude > 0.0001f;

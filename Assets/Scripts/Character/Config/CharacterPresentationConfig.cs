@@ -24,6 +24,10 @@ namespace Character.Config
         public float lightHitCrossFadeDuration = 0.08f;
         public float heavyHitCrossFadeDuration = 0.08f;
         public float deathCrossFadeDuration = 0.08f;
+        [Header("Dodge Animator")]
+        public float dodgeCrossFadeDuration = 0.08f;
+        [Tooltip("Eight-way dodge blend tree axis scale (matches DirectionalDodge tree positions, often 1).")]
+        public float dodgeBlendAxisMax = 1f;
 
         public float GetHitCrossFadeDuration(bool heavyHit)
         {

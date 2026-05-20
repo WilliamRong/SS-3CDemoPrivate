@@ -75,7 +75,7 @@
                 {
                     "name": "",
                     "id": "ff6fdb36-7e09-4899-8b6f-2e0997b82a51",
-                    "path": "<Keyboard>/space",
+                    "path": "<Keyboard>/leftCtrl",
                     "interactions": "",
                     "processors": "",
                     "groups": "PC",
@@ -163,7 +163,7 @@
                 {
                     "name": "",
                     "id": "8d8c7337-7b5e-44af-8e15-7c4764eff3b4",
-                    "path": "<Mouse>/rightButton",
+                    "path": "<Keyboard>/space",
                     "interactions": "",
                     "processors": "",
                     "groups": "PC",

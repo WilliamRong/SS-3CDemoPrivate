@@ -1,6 +1,7 @@
 using System;
 using Character.Config;
 using Character.Controller;
+using Character.Presentation;
 using Character.StateMachine;
 using Core;
 using Mirror;
@@ -31,6 +32,7 @@ namespace Character.Sync
         private CharacterStateId _lastStateId = CharacterStateId.None;
         private CharacterStateId _lastSentStateId = CharacterStateId.None;
         private byte _lastSentSprintPhase;
+        private byte _lastSentDodgeMode;
 
         private void Awake()
         {
@@ -75,6 +77,8 @@ namespace Character.Sync
 
             CharacterStateId stateId = _playerController.CurrentStateId;
             byte sprintPhase = ResolveSprintPhase(stateId);
+            byte dodgeMode = ResolveDodgeMode(stateId);
+            velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
             bool shouldSend = !_hasSentAnySnapshot;
             if (!shouldSend)
@@ -84,7 +88,8 @@ namespace Character.Sync
                 shouldSend = posDelta >= Sync.minPosDeltaToSend
                     || yawDelta >= Sync.minYawDeltaToSend
                     || stateId != _lastSentStateId
-                    || sprintPhase != _lastSentSprintPhase;
+                    || sprintPhase != _lastSentSprintPhase
+                    || dodgeMode != _lastSentDodgeMode;
             }
 
             if (!shouldSend)
@@ -97,7 +102,8 @@ namespace Character.Sync
                 yaw,
                 velocityXZ,
                 stateId,
-                sprintPhase
+                sprintPhase,
+                dodgeMode
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -107,6 +113,37 @@ namespace Character.Sync
             _hasSentAnySnapshot = true;
             _lastSentStateId = stateId;
             _lastSentSprintPhase = sprintPhase;
+            _lastSentDodgeMode = dodgeMode;
+        }
+
+        private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
+        {
+            if (stateId != CharacterStateId.Dodge
+                || !_playerController.TryGetDodgePresentationContext(out var ctx))
+            {
+                return computedVelocityXZ;
+            }
+
+            return ctx.Mode == DodgeMode.LockOn8Way ? ctx.BlendLocal : computedVelocityXZ;
+        }
+
+        private byte ResolveDodgeMode(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Dodge)
+                return 0;
+
+            if (_playerController.TryGetDodgePresentationContext(out var ctx))
+                return (byte)ctx.Mode;
+
+            return _playerController.LastPreparedDodgeMode;
+        }
+
+        private int ResolveActionEventParam(CharacterStateId stateId, ActionType actionType)
+        {
+            if (actionType != ActionType.DodgeStart)
+                return 0;
+
+            return ResolveDodgeMode(stateId);
         }
 
         private static byte ResolveSprintPhase(CharacterStateId stateId, PlayerController player)
@@ -132,7 +169,8 @@ namespace Character.Sync
             ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
             if (actionType != ActionType.None)
             {
-                var evt = new ActionEvent(_nextSeqId++, tick, ResolveActorId(), actionType);
+                int param = ResolveActionEventParam(current, actionType);
+                var evt = new ActionEvent(_nextSeqId++, tick, ResolveActorId(), actionType, param);
                 OnActionEventProduced?.Invoke(evt);
             }
 

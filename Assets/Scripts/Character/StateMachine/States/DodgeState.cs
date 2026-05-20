@@ -2,6 +2,8 @@ using Character.Config;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
+using Character.Presentation;
+using Core;
 
 namespace Character.StateMachine.States
 {
@@ -14,6 +16,11 @@ namespace Character.StateMachine.States
         private readonly CharacterCombatConfig _combat;
 
         private float _timer;
+        private float _duration;
+        private DodgePresentationContext _presentationContext;
+        
+        public CharacterStateId Id { get; } = CharacterStateId.Dodge;
+        public DodgePresentationContext PresentationContext => _presentationContext;
 
         public DodgeState(
             CharacterStateMachine fsm,
@@ -29,30 +36,54 @@ namespace Character.StateMachine.States
             _combat = combat;
         }
 
-        public CharacterStateId Id { get; } = CharacterStateId.Dodge;
+        public void Prepare(CharacterIntent intent, CharacterStateId fromStateId, bool isLockOn)
+        {
+            var presentation = GameDataManager.Instance.Player.presentation;
+            _presentationContext =
+                DodgeModeResolver.Resolve(intent, fromStateId, isLockOn, _context, presentation, _combat);
+            _duration = _presentationContext.Duration;
+        }
+        
 
         public void Enter()
         {
             _timer = 0f;
             _motor.SetSprintActive(false);
             _context.IsInvincible = false;
+            if (!_presentationContext.IsValid)
+                _duration = _combat.dodgeEvadeDuration;
+
+            _motor.BeginDodge(_presentationContext, _combat);
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
+            intent.IsDodgePressed = false;
+            intent.IsAttackPressed = false;
+            intent.IsJumpPressed = false;
+
             _timer += deltaTime;
             _context.IsInvincible = _timer >= _combat.dodgeInvincibleStart && _timer <= _combat.dodgeInvincibleEnd;
             _motor.Tick(intent, deltaTime);
-            if (_timer >= _combat.dodgeDuration)
+
+            if (_timer < _duration)
+                return;
+            
+            bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
+            if (intent.IsSprintHeld && hasMove)
             {
-                bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
-                _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry, TransitionReason.Timeout);
+                _fsm.TryTransition(CharacterStateId.Sprint, _registry, TransitionReason.Timeout);
+                return;
             }
+            _fsm.TryTransition(hasMove ? CharacterStateId.Move : CharacterStateId.Idle, _registry,
+                TransitionReason.Timeout);
         }
 
         public void Exit()
         {
+            _motor.EndDodge();
             _context.IsInvincible = false;
+            _presentationContext = default;
         }
     }
 }

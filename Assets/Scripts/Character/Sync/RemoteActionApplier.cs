@@ -11,6 +11,8 @@ namespace Character.Sync
         public int LastAppliedSeqId {get; private set;} = 0;
         public int LastAppliedTick {get; private set;} = 0;
         public ActionType CurrentRemoteAction {get; private set;} = ActionType.None;
+        /// <summary>Last dodge mode from <see cref="ActionEvent.Param"/> on <see cref="ActionType.DodgeStart"/>.</summary>
+        public byte LastDodgeMode { get; private set; }
 
         private NetworkIdentity _networkIdentity;
 
@@ -44,6 +46,7 @@ namespace Character.Sync
                     break;
                 case ActionType.DodgeStart:
                     CurrentRemoteAction = ActionType.DodgeStart;
+                    LastDodgeMode = (byte)evt.Param;
                     break;
                 case ActionType.Hit:
                     CurrentRemoteAction = ActionType.Hit;
@@ -69,6 +72,7 @@ namespace Character.Sync
             LastAppliedSeqId = 0;
             LastAppliedTick = 0;
             CurrentRemoteAction = ActionType.None;
+            LastDodgeMode = 0;
         }
     }
 }

@@ -25,6 +25,12 @@ MonoBehaviour:
   dodgePreHitEnd: 0.05
   dodgeActiveEnd: 0.18
   dodgeRecoveryEnd: 0.25
+  dodgeBackwardDuration: 0.7
+  dodgeEvadeDuration: 0.9
+  dodgeBackwardMoveDurationRatio: 0.5
+  dodgeEvadeMoveDurationRatio: 0.58
+  dodgeBackwardMoveDistance: 3
+  dodgeEvadeMoveDistance: 4
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

@@ -23,3 +23,5 @@ MonoBehaviour:
   lightHitCrossFadeDuration: 0.08
   heavyHitCrossFadeDuration: 0.08
   deathCrossFadeDuration: 0.08
+  dodgeCrossFadeDuration: 0.08
+  dodgeBlendAxisMax: 1
