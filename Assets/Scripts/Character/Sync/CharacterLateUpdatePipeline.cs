@@ -12,7 +12,7 @@ namespace Character.Sync
 {
     /// <summary>
     /// Single LateUpdate entry for visual follow-up: remote interpolation, then presentation routing.
-    /// Priority: combat overlay (Hit/Dead) → Sprint (layer 0) → post-sprint locomotion → default locomotion.
+    /// Priority: reaction/dodge/attack → guard (full-body or upper-body overlay) → Sprint → locomotion.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CharacterLateUpdatePipeline : MonoBehaviour
@@ -25,7 +25,7 @@ namespace Character.Sync
         private PlayerController _playerController;
         private PlayerAuthorityGate _authorityGate;
         private NpcCharacterDriver _npcDriver;
-        private NPCMotor _npcMotor;
+        private NpcMotor _npcMotor;
         private ILockOnLocomotionQuery _lockOnQuery;
 
         private CharacterLocomotionPresenter _locomotionPresenter;
@@ -46,7 +46,7 @@ namespace Character.Sync
             _playerController = GetComponent<PlayerController>();
             _authorityGate = GetComponent<PlayerAuthorityGate>();
             _npcDriver = GetComponent<NpcCharacterDriver>();
-            _npcMotor = GetComponent<NPCMotor>();
+            _npcMotor = GetComponent<NpcMotor>();
             _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
 
             if (_animator == null)
@@ -71,6 +71,7 @@ namespace Character.Sync
             var frame = BuildPresentationFrame();
 
             if (TryPresentCombat(frame)
+                || TryPresentGuard(frame)
                 || TryPresentSprint(frame)
                 || TryPresentAfterSprint(frame))
             {
@@ -96,14 +97,16 @@ namespace Character.Sync
                 out var stateId,
                 out var velocityXZ,
                 out var isLockOn,
-                out var sprintPhase);
+                out var sprintPhase,
+                out var guardPhase);
 
             return new PresentationFrame(
                 _lastPresentationStateId,
                 stateId,
                 velocityXZ,
                 isLockOn,
-                sprintPhase);
+                sprintPhase,
+                guardPhase);
         }
 
         private void CommitPresentationFrame(PresentationFrame frame)
@@ -120,6 +123,35 @@ namespace Character.Sync
 
             var dodgeCtx = ResolveDodgePresentationContext(frame.StateId);
             return _combatPresenter.TickCombat(_animator, frame.StateId, dodgeCtx: dodgeCtx);
+        }
+
+        private bool TryPresentGuard(PresentationFrame frame)
+        {
+            if (frame.StateId != CharacterStateId.Guard)
+            {
+                if (frame.PreviousStateId == CharacterStateId.Guard)
+                    _combatPresenter.ResetGuardLayers(_animator);
+
+                return false;
+            }
+
+            ReleaseSprintOverlayIfNeeded(frame);
+
+            bool hasMove = frame.VelocityXZ.sqrMagnitude > 0.01f;
+            var phase = ResolveGuardPhase(frame);
+            return _combatPresenter.TickGuard(_animator, phase, hasMove);
+        }
+
+        private GuardState.GuardPhase ResolveGuardPhase(PresentationFrame frame)
+        {
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveGuardState(out var guardState))
+            {
+                return guardState.CurrentPhase;
+            }
+
+            return frame.GuardPhase;
         }
 
         private DodgePresentationContext ResolveDodgePresentationContext(CharacterStateId stateId)
@@ -257,18 +289,20 @@ namespace Character.Sync
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
             out bool isLockOn,
-            out SprintState.SprintPhase sprintPhase)
+            out SprintState.SprintPhase sprintPhase,
+            out GuardState.GuardPhase guardPhase)
         {
             isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
             sprintPhase = SprintState.SprintPhase.Loop;
+            guardPhase = GuardState.GuardPhase.Start;
 
-            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase))
+            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase, out guardPhase))
                 return;
 
             if (TryResolveFromServerNpc(out stateId, out velocityXZ))
                 return;
 
-            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase))
+            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase, out guardPhase))
                 return;
 
             stateId = CharacterStateId.Idle;
@@ -278,11 +312,13 @@ namespace Character.Sync
         private bool TryResolveFromLocalPlayer(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
-            out SprintState.SprintPhase sprintPhase)
+            out SprintState.SprintPhase sprintPhase,
+            out GuardState.GuardPhase guardPhase)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
             sprintPhase = SprintState.SprintPhase.Loop;
+            guardPhase = GuardState.GuardPhase.Start;
 
             if (_playerController == null)
                 return false;
@@ -298,6 +334,12 @@ namespace Character.Sync
                 && _playerController.TryGetActiveSprintState(out var sprintState))
             {
                 sprintPhase = sprintState.CurrentPhase;
+            }
+
+            if (stateId == CharacterStateId.Guard
+                && _playerController.TryGetActiveGuardState(out var guardState))
+            {
+                guardPhase = guardState.CurrentPhase;
             }
 
             return true;
@@ -337,11 +379,13 @@ namespace Character.Sync
         private bool TryResolveFromRemoteSnapshot(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
-            out SprintState.SprintPhase sprintPhase)
+            out SprintState.SprintPhase sprintPhase,
+            out GuardState.GuardPhase guardPhase)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
             sprintPhase = SprintState.SprintPhase.Loop;
+            guardPhase = GuardState.GuardPhase.Start;
 
             if (_remoteInterpolator == null)
                 return false;
@@ -353,6 +397,7 @@ namespace Character.Sync
             stateId = snapshot.StateId;
             velocityXZ = snapshot.VelocityXZ;
             sprintPhase = snapshot.GetSprintPhaseOrDefault();
+            guardPhase = snapshot.GetGuardPhaseOrDefault();
             return true;
         }
 
@@ -380,13 +425,15 @@ namespace Character.Sync
                 CharacterStateId stateId,
                 Vector2 velocityXZ,
                 bool isLockOn,
-                SprintState.SprintPhase sprintPhase)
+                SprintState.SprintPhase sprintPhase,
+                GuardState.GuardPhase guardPhase)
             {
                 PreviousStateId = previousStateId;
                 StateId = stateId;
                 VelocityXZ = velocityXZ;
                 IsLockOn = isLockOn;
                 SprintPhase = sprintPhase;
+                GuardPhase = guardPhase;
             }
 
             public CharacterStateId PreviousStateId { get; }
@@ -394,6 +441,7 @@ namespace Character.Sync
             public Vector2 VelocityXZ { get; }
             public bool IsLockOn { get; }
             public SprintState.SprintPhase SprintPhase { get; }
+            public GuardState.GuardPhase GuardPhase { get; }
 
             public bool LeftSprint =>
                 PreviousStateId == CharacterStateId.Sprint && StateId != CharacterStateId.Sprint;
@@ -406,7 +454,8 @@ namespace Character.Sync
                 return id is CharacterStateId.Hit
                     or CharacterStateId.Dead
                     or CharacterStateId.Attack
-                    or CharacterStateId.Dodge;
+                    or CharacterStateId.Dodge
+                    or CharacterStateId.Guard;
             }
         }
     }

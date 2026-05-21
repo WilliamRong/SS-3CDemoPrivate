@@ -22,11 +22,16 @@ namespace Character.StateMachine.States
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);
-            _motor.Tick(intent, deltaTime);
             
             if (intent.IsDodgePressed)
             {
                 _fsm.TryTransition(CharacterStateId.Dodge, _registry, TransitionReason.InputDodge);
+                return;
+            }
+            
+            if (intent.IsGuardHeld)
+            {
+                _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard);
                 return;
             }
 
@@ -35,6 +40,8 @@ namespace Character.StateMachine.States
                 _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
                 return;
             }
+
+            _motor.Tick(intent, deltaTime);
 
             bool hasMove = intent.Move.sqrMagnitude > 0.0001f;
             if (!hasMove)

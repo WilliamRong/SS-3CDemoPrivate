@@ -52,7 +52,7 @@ namespace AI
             if (bt != null)
                 bt.enabled = false;
 
-            var motor = GetComponent<NPCMotor>();
+            var motor = GetComponent<NpcMotor>();
             if (motor != null)
                 motor.enabled = false;
 

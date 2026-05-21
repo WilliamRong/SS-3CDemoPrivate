@@ -33,6 +33,7 @@ namespace Character.Sync
         private CharacterStateId _lastSentStateId = CharacterStateId.None;
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
+        private byte _lastSentGuardPhase;
 
         private void Awake()
         {
@@ -78,6 +79,7 @@ namespace Character.Sync
             CharacterStateId stateId = _playerController.CurrentStateId;
             byte sprintPhase = ResolveSprintPhase(stateId);
             byte dodgeMode = ResolveDodgeMode(stateId);
+            byte guardPhase = ResolveGuardPhase(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
             bool shouldSend = !_hasSentAnySnapshot;
@@ -89,7 +91,8 @@ namespace Character.Sync
                     || yawDelta >= Sync.minYawDeltaToSend
                     || stateId != _lastSentStateId
                     || sprintPhase != _lastSentSprintPhase
-                    || dodgeMode != _lastSentDodgeMode;
+                    || dodgeMode != _lastSentDodgeMode
+                    || guardPhase != _lastSentGuardPhase;
             }
 
             if (!shouldSend)
@@ -103,7 +106,8 @@ namespace Character.Sync
                 velocityXZ,
                 stateId,
                 sprintPhase,
-                dodgeMode
+                dodgeMode,
+                guardPhase
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -114,6 +118,7 @@ namespace Character.Sync
             _lastSentStateId = stateId;
             _lastSentSprintPhase = sprintPhase;
             _lastSentDodgeMode = dodgeMode;
+            _lastSentGuardPhase = guardPhase;
         }
 
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
@@ -159,6 +164,16 @@ namespace Character.Sync
         private byte ResolveSprintPhase(CharacterStateId stateId)
         {
             return ResolveSprintPhase(stateId, _playerController);
+        }
+
+        private byte ResolveGuardPhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Guard || _playerController == null)
+                return 0;
+
+            return _playerController.TryGetActiveGuardState(out var guardState)
+                ? (byte)guardState.CurrentPhase
+                : (byte)0;
         }
 
         private void TryProduceActionEventOnStateChange(int tick)

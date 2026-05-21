@@ -9,33 +9,32 @@ namespace AI
     [Category("NPC")]
     public class BD_MoveToPoint : Action
     {
-        
         [Tooltip("世界空间目标点")]
-        [SerializeField] protected SharedVariable<Vector3> m_Destination;
+        [UnityEngine.Serialization.FormerlySerializedAs("m_Destination")]
+        [SerializeField] protected SharedVariable<Vector3> _destination;
 
-        private NPCMotor m_Motor;
-            
+        private NpcMotor _motor;
+
         public override void OnAwake()
         {
             base.OnAwake();
-            m_Motor = GetComponent<NPCMotor>();
+            _motor = GetComponent<NpcMotor>();
         }
 
         public override void OnStart()
         {
             base.OnStart();
-            if (m_Motor == null || m_Destination == null)
+            if (_motor == null || _destination == null)
                 return;
-            
         }
 
         public override TaskStatus OnUpdate()
         {
-            if(m_Motor == null) return TaskStatus.Failure;
-            
-            return m_Motor.HasReachedDestination() ? TaskStatus.Success : TaskStatus.Running;
+            if (_motor == null) return TaskStatus.Failure;
+
+            return _motor.HasReachedDestination() ? TaskStatus.Success : TaskStatus.Running;
         }
-        
+
         public override void OnEnd()
         {
             base.OnEnd();

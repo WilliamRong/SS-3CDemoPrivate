@@ -21,6 +21,8 @@ namespace Input
         public bool JumpTriggered { get; private set; }
         public bool AttackTriggered { get; private set; }
         public bool DodgeTriggered { get; private set; }
+        
+        public bool IsGuardHeld { get; private set; }
 
         private void Awake()
         {
@@ -75,6 +77,7 @@ namespace Input
                 MoveInput = Vector2.zero;
                 LookInput = Vector2.zero;
                 IsSprinting = false;
+                IsGuardHeld = false;
                 ClearTriggers();
                 return;
             }
@@ -82,6 +85,7 @@ namespace Input
             MoveInput = _inputActions.Player.Move.ReadValue<Vector2>();
             LookInput = _inputActions.Player.Look.ReadValue<Vector2>();
             IsSprinting = _inputActions.Player.Sprint.ReadValue<float>() > 0.5f;
+            IsGuardHeld = _inputActions.Player.Guard.ReadValue<float>() > 0.5f;
         }
 
         private void LateUpdate()

@@ -10,5 +10,6 @@ namespace Character.StateMachine
         Dodge = 5,
         Hit = 6,
         Dead = 7,
+        Guard = 8,
     }
 }

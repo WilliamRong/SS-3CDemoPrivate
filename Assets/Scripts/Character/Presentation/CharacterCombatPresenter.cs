@@ -1,5 +1,6 @@
 using Character.Config;
 using Character.StateMachine;
+using Character.StateMachine.States;
 using UnityEngine;
 
 namespace Character.Presentation
@@ -10,14 +11,23 @@ namespace Character.Presentation
         private CharacterStateId _lastCombatState = CharacterStateId.None;
         private int _lastHash;
         private DodgeMode _lastDodgeMode = DodgeMode.None;
+        private int _lastGuardHash;
+        private int _lastGuardLayerIndex = -1;
+        private GuardState.GuardPhase _lastGuardPhase = GuardState.GuardPhase.None;
+        private bool _lastGuardIsFullBody;
 
         public CharacterCombatPresenter(CharacterPresentationConfig config)
         {
             _config = config;
         }
 
-        public bool TickCombat(Animator animator, CharacterStateId stateId, int actionParams = 0,
-            in DodgePresentationContext dodgeCtx = default)
+        public bool TickCombat(
+            Animator animator,
+            CharacterStateId stateId,
+            int actionParams = 0,
+            in DodgePresentationContext dodgeCtx = default,
+            GuardState.GuardPhase guardPhase = GuardState.GuardPhase.Start,
+            bool guardHasMove = false)
         {
             if (animator == null) return false;
 
@@ -25,20 +35,23 @@ namespace Character.Presentation
             {
                 case CharacterStateId.Hit:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.HitLayerIndex, AnimatorParams.StateHit, _config.GetHitCrossFadeDuration(actionParams != 0));
+                    PlayReaction(animator, AnimatorParams.StateHit, _config.GetHitCrossFadeDuration(actionParams != 0));
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dead:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.DeathLayerIndex, AnimatorParams.StateDeath,
-                        _config.GetDeathCrossFadeDuration());
+                    PlayReaction(animator, AnimatorParams.StateDeath, _config.GetDeathCrossFadeDuration());
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dodge:
                     ResetReactionLayers(animator);
+                    ResetGuardLayers(animator);
                     TickDodge(animator, dodgeCtx);
                     _lastCombatState = stateId;
                     return true;
+                case CharacterStateId.Guard:
+                    _lastCombatState = stateId;
+                    return TickGuard(animator, guardPhase, guardHasMove);
                 case CharacterStateId.Attack:
                     ResetReactionLayers(animator);
                     _lastCombatState = stateId;
@@ -51,8 +64,7 @@ namespace Character.Presentation
         public void ResetReactionLayers(Animator animator)
         {
             if (animator == null) return;
-            animator.SetLayerWeight(AnimatorParams.HitLayerIndex, 0f);
-            animator.SetLayerWeight(AnimatorParams.DeathLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 0f);
             if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead)
             {
                 _lastCombatState = CharacterStateId.None;
@@ -63,10 +75,25 @@ namespace Character.Presentation
         public void ResetActiveCombatLayers(Animator animator)
         {
             if (animator == null) return;
+            animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.DodgeLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
             _lastDodgeMode = DodgeMode.None;
-            if (_lastCombatState is CharacterStateId.Dodge or CharacterStateId.Attack)
+            ResetGuardCache();
+            if (_lastCombatState is CharacterStateId.Dodge or CharacterStateId.Guard or CharacterStateId.Attack)
+            {
+                _lastCombatState = CharacterStateId.None;
+                _lastHash = 0;
+            }
+        }
+
+        public void ResetGuardLayers(Animator animator)
+        {
+            if (animator == null) return;
+            animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            ResetGuardCache();
+            if (_lastCombatState == CharacterStateId.Guard)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;
@@ -77,6 +104,56 @@ namespace Character.Presentation
         {
             ResetReactionLayers(animator);
             ResetActiveCombatLayers(animator);
+        }
+
+        /// <summary>
+        /// Returns true when Guard is full-body and should block locomotion presentation.
+        /// Moving Guard is a temporary split: upper-body guard over layer-0 walk.
+        /// </summary>
+        public bool TickGuard(Animator animator, GuardState.GuardPhase phase, bool hasMove)
+        {
+            if (animator == null) return false;
+            
+            ResetReactionLayers(animator); 
+            animator.SetLayerWeight(AnimatorParams.DodgeLayerIndex, 0f); 
+            _lastDodgeMode = DodgeMode.None;
+
+            bool isFullBody = phase != GuardState.GuardPhase.Loop || !hasMove;
+            int layerIndex = isFullBody
+                ? AnimatorParams.GuardLayerIndex
+                : AnimatorParams.UpperBodyLayerIndex;
+
+            int targetHash = PhaseToGuardHash(phase);
+            if (targetHash == 0)
+                return isFullBody;
+
+            if (isFullBody)
+            {
+                animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+                animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 1f);
+            }
+            else
+            {
+                animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
+                animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 1f);
+            }
+
+            if (phase == _lastGuardPhase
+                && targetHash == _lastGuardHash
+                && layerIndex == _lastGuardLayerIndex
+                && isFullBody == _lastGuardIsFullBody)
+            {
+                return isFullBody;
+            }
+
+            _lastCombatState = CharacterStateId.Guard;
+            _lastGuardPhase = phase;
+            _lastGuardHash = targetHash;
+            _lastGuardLayerIndex = layerIndex;
+            _lastGuardIsFullBody = isFullBody;
+
+            animator.CrossFade(targetHash, _config.guardCrossFadeDuration, layerIndex, 0f);
+            return isFullBody;
         }
 
         private void TickDodge(Animator animator, in DodgePresentationContext ctx)
@@ -108,15 +185,32 @@ namespace Character.Presentation
             animator.CrossFade(targetHash, _config.dodgeCrossFadeDuration, AnimatorParams.DodgeLayerIndex, 0f);
         }
 
-        private void PlayReaction(Animator animator, int layerIndex, int stateHash, float crossFadeDuration)
+        private void PlayReaction(Animator animator, int stateHash, float crossFadeDuration)
         {
-            animator.SetLayerWeight(AnimatorParams.HitLayerIndex, 0f);
-            animator.SetLayerWeight(AnimatorParams.DeathLayerIndex, 0f);
-            animator.SetLayerWeight(layerIndex, 1f);
+            animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 1f);
             if (stateHash == _lastHash && _lastCombatState != CharacterStateId.None)
                 return;
             _lastHash = stateHash;
-            animator.CrossFade(stateHash, crossFadeDuration, layerIndex, 0f);
+            animator.CrossFade(stateHash, crossFadeDuration, AnimatorParams.ReactionLayerIndex, 0f);
+        }
+
+        private static int PhaseToGuardHash(GuardState.GuardPhase phase)
+        {
+            return phase switch
+            {
+                GuardState.GuardPhase.Start => AnimatorParams.StateGuardStart,
+                GuardState.GuardPhase.Loop => AnimatorParams.StateGuardLoop,
+                GuardState.GuardPhase.Exit => AnimatorParams.StateGuardExit,
+                _ => 0,
+            };
+        }
+
+        private void ResetGuardCache()
+        {
+            _lastGuardHash = 0;
+            _lastGuardLayerIndex = -1;
+            _lastGuardPhase = GuardState.GuardPhase.None;
+            _lastGuardIsFullBody = false;
         }
     }
 }

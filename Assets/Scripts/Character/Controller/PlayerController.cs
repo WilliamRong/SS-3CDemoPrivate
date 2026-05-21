@@ -25,6 +25,7 @@ namespace Character.Controller
         private SprintState _sprintState;
         private AttackState _attackState;
         private DodgeState _dodgeState;
+        private GuardState _guardState;
         private HitState _hitState;
         private DeadState _deadState;
 
@@ -80,6 +81,7 @@ namespace Character.Controller
 
             _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
             _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
+            _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat);
             _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
 
@@ -88,6 +90,7 @@ namespace Character.Controller
             _stateRegistry.Register(_sprintState);
             _stateRegistry.Register(_attackState);
             _stateRegistry.Register(_dodgeState);
+            _stateRegistry.Register(_guardState);
             _stateRegistry.Register(_hitState);
             _stateRegistry.Register(_deadState);
 
@@ -116,6 +119,7 @@ namespace Character.Controller
                 IsJumpPressed = _inputHandler.JumpTriggered,
                 IsAttackPressed = _inputHandler.AttackTriggered,
                 IsDodgePressed = _inputHandler.DodgeTriggered,
+                IsGuardHeld = _inputHandler.IsGuardHeld,
             };
 
             if (_context.IsDead)
@@ -124,6 +128,7 @@ namespace Character.Controller
                 intent.IsDodgePressed = false;
                 intent.IsJumpPressed = false;
                 intent.IsSprintHeld = false;
+                intent.IsGuardHeld = false;
             }
 
             if (intent.IsDodgePressed && CanPrepareDodgeFromCurrentState())
@@ -202,6 +207,18 @@ namespace Character.Controller
             return CurrentStateId is CharacterStateId.Dodge
                 or CharacterStateId.Hit
                 or CharacterStateId.Dead;
+        }
+        
+        public bool TryGetActiveGuardState(out GuardState guardState)
+        {
+            if (_fsm?.CurrentState is GuardState active)
+            {
+                guardState = active;
+                return true;
+            }
+
+            guardState = null;
+            return false;
         }
     }
 }

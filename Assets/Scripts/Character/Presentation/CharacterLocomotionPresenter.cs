@@ -62,15 +62,20 @@ namespace Character.Presentation
                 return;
             }
 
-            int targetHash = stateId == CharacterStateId.Move
-                ? AnimatorParams.StateLocomotion
-                : AnimatorParams.StateIdle;
+            int targetHash = stateId switch
+            {
+                CharacterStateId.Move => AnimatorParams.StateLocomotion,
+                CharacterStateId.Guard => AnimatorParams.StateGuardWalk,
+                _ => AnimatorParams.StateIdle,
+            };
 
             if (targetHash == _appliedStateHash)
                 return;
 
-            bool enteringLocomotionTree = stateId == CharacterStateId.Move
-                && _appliedStateHash != AnimatorParams.StateLocomotion;
+            bool enteringLocomotionTree = (stateId == CharacterStateId.Move
+                    && _appliedStateHash != AnimatorParams.StateLocomotion)
+                || (stateId == CharacterStateId.Guard
+                    && _appliedStateHash != AnimatorParams.StateGuardWalk);
 
             float fadeDuration = useFullCrossFade || !enteringLocomotionTree
                 ? _config.locomotionCrossFadeDuration
@@ -120,7 +125,7 @@ namespace Character.Presentation
 
         private static bool IsLocomotionDrivingState(CharacterStateId stateId)
         {
-            return stateId is CharacterStateId.Idle or CharacterStateId.Move;
+            return stateId is CharacterStateId.Idle or CharacterStateId.Move or CharacterStateId.Guard;
         }
 
         private Vector2 ComputeAnimatorBlendVelocity(

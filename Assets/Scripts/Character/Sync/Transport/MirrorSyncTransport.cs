@@ -15,6 +15,7 @@ namespace Character.Sync
         public int StateId;
         public byte SprintPhase;
         public byte DodgeMode;
+        public byte GuardPhase;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -172,7 +173,8 @@ namespace Character.Sync
                 Vz = s.VelocityXZ.y,
                 StateId = (int)s.StateId,
                 SprintPhase = s.SprintPhase,
-                DodgeMode = s.DodgeMode
+                DodgeMode = s.DodgeMode,
+                GuardPhase = s.GuardPhase
             };
         }
 
@@ -186,7 +188,8 @@ namespace Character.Sync
                 new Vector2(m.Vx, m.Vz),
                 (StateMachine.CharacterStateId)m.StateId,
                 m.SprintPhase,
-                m.DodgeMode
+                m.DodgeMode,
+                m.GuardPhase
             );
         }
 

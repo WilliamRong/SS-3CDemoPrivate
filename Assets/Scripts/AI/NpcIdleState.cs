@@ -10,13 +10,13 @@ namespace AI
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterStateRegistry _registry;
         private readonly NpcAiIntentSource _intentSource;
-        private readonly NPCMotor _motor;
+        private readonly NpcMotor _motor;
         
         private const float MinMoveDistSq = 0.0025f; // 0.05f ^2
 
         public CharacterStateId Id => CharacterStateId.Idle;
 
-        public NpcIdleState(CharacterStateMachine fsm,  CharacterStateRegistry registry,  NpcAiIntentSource intentSource, NPCMotor motor)
+        public NpcIdleState(CharacterStateMachine fsm, CharacterStateRegistry registry, NpcAiIntentSource intentSource, NpcMotor motor)
         {
             _fsm = fsm;
             _registry = registry;

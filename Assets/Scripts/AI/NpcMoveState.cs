@@ -9,7 +9,7 @@ namespace AI
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterStateRegistry _registry;
         private readonly NpcAiIntentSource _intentSource;
-        private readonly NPCMotor _motor;
+        private readonly NpcMotor _motor;
         
         public CharacterStateId Id => CharacterStateId.Move;
         
@@ -17,7 +17,7 @@ namespace AI
             CharacterStateMachine fsm,
             CharacterStateRegistry registry,
             NpcAiIntentSource intentSource,
-            NPCMotor motor)
+            NpcMotor motor)
         {
             _fsm = fsm;
             _registry = registry;

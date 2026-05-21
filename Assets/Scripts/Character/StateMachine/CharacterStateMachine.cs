@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Character.Config;
 using Character.Intent;
 
@@ -16,17 +15,6 @@ namespace Character.StateMachine
             _runtime.SetCombatConfig(combatConfig);
         }
 
-        private static readonly Dictionary<CharacterStateId, int> _priority = new()
-        {
-            { CharacterStateId.Idle, 10 },
-            { CharacterStateId.Move, 20 },
-            { CharacterStateId.Sprint, 30 },
-            { CharacterStateId.Attack, 40 },
-            { CharacterStateId.Dodge, 50 },
-            { CharacterStateId.Hit, 60 },
-            { CharacterStateId.Dead, 100 },
-        };
-
         private static readonly CharacterInterruptRule[] _interruptRules =
         {
             // 攻击生效窗内：轻击不可打断，重击可打断
@@ -39,6 +27,12 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.RecoveryWindow, TransitionReason.InputDodge, true),
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.Always, TransitionReason.InputDodge, true),
             new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Attack, StateWindowType.Always, TransitionReason.InputAttack, false),
+            
+            //防御
+            new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Dodge, StateWindowType.Always, TransitionReason.InputDodge,  true),
+            new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Hit,   StateWindowType.Always, TransitionReason.HitLight,    true),
+            new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Hit,   StateWindowType.Always, TransitionReason.HitHeavy,    true),
+            new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Dead,  StateWindowType.Always, TransitionReason.Death,       true),
             
             // 死亡永远可抢占
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
@@ -91,9 +85,7 @@ namespace Character.StateMachine
                 return rule.IsAllowed;
             }
 
-            // // 默认策略：高优先级可打断低优先级
-            // return _priority[incoming] >= _priority[from];
-            // 默认允许，只有命中明确规则时才拦截
+            // Default: allow unless an explicit rule rejects.
             return true;
         }
     }

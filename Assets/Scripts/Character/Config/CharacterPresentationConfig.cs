@@ -28,6 +28,9 @@ namespace Character.Config
         public float dodgeCrossFadeDuration = 0.08f;
         [Tooltip("Eight-way dodge blend tree axis scale (matches DirectionalDodge tree positions, often 1).")]
         public float dodgeBlendAxisMax = 1f;
+        
+        [Header("Guard Animator")]
+        public float guardCrossFadeDuration = 0.1f;
 
         public float GetHitCrossFadeDuration(bool heavyHit)
         {

@@ -40,6 +40,11 @@ namespace Character.Config
         [Tooltip("Horizontal travel distance over move window (Evade / eight-way).")]
         public float dodgeEvadeMoveDistance = 4f;
 
+        
+        [Header("Guard State")]
+        public float guardStartDuration = 0.3f;
+        public float guardExitDuration  = 0.4f;
+        
         [Header("Hit Interrupt Windows")]
         public float hitPreHitEnd = 0.1f;
         public float hitActiveEnd = 0.2f;

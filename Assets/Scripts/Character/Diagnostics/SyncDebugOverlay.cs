@@ -1,8 +1,9 @@
 using Character.Controller;
+using Character.Sync;
 using Mirror;
 using UnityEngine;
 
-namespace Character.Sync
+namespace Character.Diagnostics
 {
     public sealed class SyncDebugOverlay : MonoBehaviour
     {

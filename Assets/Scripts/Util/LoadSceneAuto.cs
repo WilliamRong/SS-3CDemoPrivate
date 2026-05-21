@@ -1,22 +1,20 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Util
 {
+    /// <summary>
+    /// Loads <see cref="_sceneName"/> as soon as the host scene starts.
+    /// Used as a boot-time redirect (e.g. Splash → SampleScene).
+    /// </summary>
     public class LoadSceneAuto : MonoBehaviour
     {
-    
         [SerializeField] private string _sceneName;
-    
-        // Start is called before the first frame update
-        void Start()
-        {
-            UnityEngine.SceneManagement.SceneManager.LoadScene(_sceneName);
-        }
 
-        // Update is called once per frame
-        void Update()
+        private void Start()
         {
-        
+            if (string.IsNullOrEmpty(_sceneName)) return;
+            SceneManager.LoadScene(_sceneName);
         }
     }
 }

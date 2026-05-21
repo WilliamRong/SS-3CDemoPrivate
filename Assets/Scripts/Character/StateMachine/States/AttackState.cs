@@ -13,7 +13,7 @@ namespace Character.StateMachine.States
 
         private float _timer;
 
-        public CharacterStateId Id { get; } = CharacterStateId.Attack;
+        public CharacterStateId Id => CharacterStateId.Attack;
 
         public AttackState(
             CharacterStateMachine fsm,

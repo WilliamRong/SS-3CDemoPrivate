@@ -21,6 +21,8 @@ namespace Character.Sync
         public byte SprintPhase;
         /// <summary>Valid when <see cref="StateId"/> is Dodge; otherwise 0. See <see cref="Presentation.DodgeMode"/>.</summary>
         public byte DodgeMode;
+        /// <summary>Valid when <see cref="StateId"/> is Guard; otherwise 0. See <see cref="GuardState.GuardPhase"/>.</summary>
+        public byte GuardPhase;
 
         public StateSnapshot(
             int tick,
@@ -30,7 +32,8 @@ namespace Character.Sync
             Vector2 velocityXZ,
             CharacterStateId stateId,
             byte sprintPhase = 0,
-            byte dodgeMode = 0)
+            byte dodgeMode = 0,
+            byte guardPhase = 0)
         {
             Tick = tick;
             ActorId = actorId;
@@ -40,6 +43,7 @@ namespace Character.Sync
             StateId = stateId;
             SprintPhase = sprintPhase;
             DodgeMode = dodgeMode;
+            GuardPhase = guardPhase;
             ArrivalTimeSec = 0f;
         }
 
@@ -63,6 +67,17 @@ namespace Character.Sync
                 return Presentation.DodgeMode.None;
 
             return (Presentation.DodgeMode)DodgeMode;
+        }
+
+        public GuardState.GuardPhase GetGuardPhaseOrDefault()
+        {
+            if (StateId != CharacterStateId.Guard)
+                return GuardState.GuardPhase.Start;
+
+            if (GuardPhase > (byte)GuardState.GuardPhase.Exit)
+                return GuardState.GuardPhase.Start;
+
+            return (GuardState.GuardPhase)GuardPhase;
         }
 
         public StateSnapshot WithDodgeMode(byte dodgeMode)
@@ -114,7 +129,7 @@ namespace Character.Sync
 
         public override string ToString()
         {
-            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, " +
+            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, " +
                    $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), " +
                    $"yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
         }

@@ -109,7 +109,14 @@ namespace Character.StateMachine.States
                 FinishTick(intent);
                 return _fsm.TryTransition(CharacterStateId.Dodge, _registry, TransitionReason.InputDodge);
             }
-
+            
+            
+            if (intent.IsGuardHeld)
+            {
+                FinishTick(intent);
+                return _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard);
+            }
+            
             if (intent.IsAttackPressed)
             {
                 FinishTick(intent);

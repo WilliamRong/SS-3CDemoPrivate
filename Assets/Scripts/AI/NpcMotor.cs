@@ -4,13 +4,13 @@ using UnityEngine.AI;
 namespace AI
 {
     [RequireComponent(typeof(NavMeshAgent))]
-    public class NPCMotor : MonoBehaviour
+    public class NpcMotor : MonoBehaviour
     {
         [SerializeField] private NavMeshAgent _agent;
         [SerializeField] private float _stoppingDistance = 0.15f;
-        
+
         public NavMeshAgent Agent => _agent;
-        
+
         private void Awake()
         {
             if (_agent == null)
@@ -19,20 +19,21 @@ namespace AI
             }
         }
 
-        public void SetDestination(Vector3 destination){
+        public void SetDestination(Vector3 destination)
+        {
             if (!CanControlAgent())
                 return;
             _agent.isStopped = false;
             _agent.SetDestination(destination);
         }
-        
-        
+
         /// <summary>停止寻路（停在当前位置）。</summary>
         public void Stop()
         {
             if (!CanControlAgent()) return;
             _agent.isStopped = true;
         }
+
         /// <summary>取消路径，常用于重新设目标前清理。</summary>
         public void ResetPath()
         {
@@ -41,7 +42,7 @@ namespace AI
         }
 
         /// <summary>
-        /// Host 退出 / 场景卸载时 NavMesh 可能已失效，agent 会不在网格上；
+        /// Host 退出 / 场景卸载时 NavMesh 可能已失效，agent 会不在网格上。
         /// </summary>
         private bool CanControlAgent()
         {
@@ -64,10 +65,8 @@ namespace AI
             {
                 return false;
             }
-            
+
             return _agent.velocity.sqrMagnitude < 0.1f;
         }
     }
-    
-   
 }

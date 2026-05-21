@@ -20,6 +20,7 @@ namespace Character.StateMachine
         Death = 7,
         Revive = 8,
         Timeout = 9,
+        InputGuard = 10,
     }
 
 
