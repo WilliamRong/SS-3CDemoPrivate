@@ -15,7 +15,19 @@ namespace Character.Config
         public float heavyHitDuration = 0.8166667f;
 
         [Header("Attack State")]
-        public float attackDuration = 0.5f;
+        public float attackDuration = 0.8166667f;
+        public float attackCombo1Duration = 0.8166667f;
+        public float attackCombo2Duration = 0.9666667f;
+        public float attackCombo3Duration = 0.8666667f;
+        public float attackCombo4Duration = 1.1500001f;
+        public float attackSprintDuration = 0.9833334f;
+        public float attackDodgeDuration = 0.95000005f;
+        public float attackHeavy1StartDuration = 0.8166667f;
+        public float attackHeavy1Duration = 0.73333335f;
+        public float attackHeavy2Duration = 1.1333334f;
+        [Range(0f, 1f)]
+        public float attackComboCancelStartRatio = 0.55f;
+        public float attackDirectionSampleTime = 0.2f;
         public float attackPreHitEnd = 0.1f;
         public float attackActiveEnd = 0.25f;
         public float attackRecoveryEnd = 0.45f;
@@ -39,6 +51,8 @@ namespace Character.Config
         public float dodgeBackwardMoveDistance = 3f;
         [Tooltip("Horizontal travel distance over move window (Evade / eight-way).")]
         public float dodgeEvadeMoveDistance = 4f;
+        [Range(0f, 1f)]
+        public float dodgeAttackCancelStartRatio = 0.5f;
 
         
         [Header("Guard State")]
@@ -62,6 +76,23 @@ namespace Character.Config
                 ? dodgeBackwardMoveDurationRatio
                 : dodgeEvadeMoveDurationRatio;
             return anim * ratio;
+        }
+
+        public float GetAttackDuration(byte attackStep)
+        {
+            return attackStep switch
+            {
+                1 => attackCombo1Duration,
+                2 => attackCombo2Duration,
+                3 => attackCombo3Duration,
+                4 => attackCombo4Duration,
+                5 => attackSprintDuration,
+                6 => attackDodgeDuration,
+                7 => attackHeavy1StartDuration,
+                8 => attackHeavy1Duration,
+                9 => attackHeavy2Duration,
+                _ => attackCombo1Duration,
+            };
         }
         
         public void GetStateWindows(CharacterStateId stateId, out float preHitEnd, out float activeEnd, out float recoveryEnd)

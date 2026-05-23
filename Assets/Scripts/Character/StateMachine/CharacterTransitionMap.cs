@@ -11,8 +11,8 @@ namespace Character.StateMachine
                 { CharacterStateId.Move,   new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Sprint, CharacterStateId.Attack, CharacterStateId.Dodge,CharacterStateId.Guard, CharacterStateId.Hit, CharacterStateId.Dead } },
                 { CharacterStateId.Sprint, new HashSet<CharacterStateId> { CharacterStateId.Move, CharacterStateId.Idle, CharacterStateId.Attack, CharacterStateId.Dodge,CharacterStateId.Guard, CharacterStateId.Hit, CharacterStateId.Dead } },
                 { CharacterStateId.Attack, new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Dodge, CharacterStateId.Hit, CharacterStateId.Dead } },
-                { CharacterStateId.Guard,  new HashSet<CharacterStateId>  {CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Dodge, CharacterStateId.Hit, CharacterStateId.Dead } },
-                { CharacterStateId.Dodge,  new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move,CharacterStateId.Sprint, CharacterStateId.Hit, CharacterStateId.Dead } },
+                { CharacterStateId.Guard,  new HashSet<CharacterStateId>  {CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Attack, CharacterStateId.Dodge, CharacterStateId.Hit, CharacterStateId.Dead } },
+                { CharacterStateId.Dodge,  new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Sprint, CharacterStateId.Attack, CharacterStateId.Hit, CharacterStateId.Dead } },
                 { CharacterStateId.Hit,    new HashSet<CharacterStateId> { CharacterStateId.Idle, CharacterStateId.Move, CharacterStateId.Sprint, CharacterStateId.Dead } },
                 { CharacterStateId.Dead,   new HashSet<CharacterStateId> { CharacterStateId.Idle } }, // revive
             };

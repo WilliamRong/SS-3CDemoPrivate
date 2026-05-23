@@ -59,10 +59,23 @@ namespace Character.StateMachine.States
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             intent.IsDodgePressed = false;
-            intent.IsAttackPressed = false;
             intent.IsJumpPressed = false;
 
             _timer += deltaTime;
+
+            if (intent.IsAttackPressed && CanTransitionToDodgeAttack())
+            {
+                var attackState = _registry.Get(CharacterStateId.Attack) as AttackState;
+                attackState?.PrepareDodgeAttack();
+
+                bool transitioned = _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+                if (!transitioned)
+                    attackState?.PrepareComboAttack();
+
+                return;
+            }
+
+            intent.IsAttackPressed = false;
             _context.IsInvincible = _timer >= _combat.dodgeInvincibleStart && _timer <= _combat.dodgeInvincibleEnd;
             _motor.Tick(intent, deltaTime);
 
@@ -84,6 +97,12 @@ namespace Character.StateMachine.States
             _motor.EndDodge();
             _context.IsInvincible = false;
             _presentationContext = default;
+        }
+
+        private bool CanTransitionToDodgeAttack()
+        {
+            float duration = _duration > 0.0001f ? _duration : _combat.dodgeEvadeDuration;
+            return _timer >= duration * _combat.dodgeAttackCancelStartRatio;
         }
     }
 }

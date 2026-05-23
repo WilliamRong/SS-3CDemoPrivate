@@ -31,6 +31,10 @@ namespace Character.Config
         
         [Header("Guard Animator")]
         public float guardCrossFadeDuration = 0.1f;
+        
+        
+        [Header("Attack Animator")]
+        public float attackCrossFadeDuration = 0.1f;
 
         public float GetHitCrossFadeDuration(bool heavyHit)
         {

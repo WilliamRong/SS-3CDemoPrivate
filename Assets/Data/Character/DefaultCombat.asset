@@ -15,7 +15,18 @@ MonoBehaviour:
   maxHp: 100
   lightHitDuration: 0.8166667
   heavyHitDuration: 0.8166667
-  attackDuration: 0.5
+  attackDuration: 0.8166667
+  attackCombo1Duration: 0.8166667
+  attackCombo2Duration: 0.9666667
+  attackCombo3Duration: 0.8666667
+  attackCombo4Duration: 1.1500001
+  attackSprintDuration: 0.9833334
+  attackDodgeDuration: 0.95000005
+  attackHeavy1StartDuration: 0.8166667
+  attackHeavy1Duration: 0.73333335
+  attackHeavy2Duration: 1.1333334
+  attackComboCancelStartRatio: 0.55
+  attackDirectionSampleTime: 0.2
   attackPreHitEnd: 0.1
   attackActiveEnd: 0.25
   attackRecoveryEnd: 0.45
@@ -31,6 +42,7 @@ MonoBehaviour:
   dodgeEvadeMoveDurationRatio: 0.58
   dodgeBackwardMoveDistance: 3
   dodgeEvadeMoveDistance: 4
+  dodgeAttackCancelStartRatio: 0.5
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

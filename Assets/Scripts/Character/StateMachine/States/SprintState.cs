@@ -120,7 +120,14 @@ namespace Character.StateMachine.States
             if (intent.IsAttackPressed)
             {
                 FinishTick(intent);
-                return _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+                var attackState = _registry.Get(CharacterStateId.Attack) as AttackState;
+                attackState?.PrepareSprintAttack();
+
+                bool transitioned = _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+                if (!transitioned)
+                    attackState?.PrepareComboAttack();
+
+                return transitioned;
             }
 
             return false;

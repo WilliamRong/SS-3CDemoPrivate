@@ -12,9 +12,8 @@ namespace Character.Presentation
         
         public const int LocomotionLayerIndex = 0;
         public const int UpperBodyLayerIndex = 1;
-        public const int GuardLayerIndex = 2;
-        public const int DodgeLayerIndex = 3;
-        public const int ReactionLayerIndex = 4;
+        public const int CombatLayerIndex = 2;
+        public const int ReactionLayerIndex = 3;
 
 
         //locomotion
@@ -41,9 +40,22 @@ namespace Character.Presentation
         public static readonly int StateDodgeDirectional = Animator.StringToHash("DirectionalDodge");
         
         //Guard
-        //GuardLoop在UpperBody层和Guard层存在同名state
+        //GuardLoop exists on UpperBody and Combat layers with same state name.
         public static readonly int StateGuardStart = Animator.StringToHash("GuardStart");
         public static readonly int StateGuardLoop  = Animator.StringToHash("GuardLoop");
         public static readonly int StateGuardExit  = Animator.StringToHash("GuardExit");
+        
+        
+        //attack
+        public static readonly int AttackCombo1 = Animator.StringToHash("Attack_Combo1");
+        public static readonly int AttackCombo2 = Animator.StringToHash("Attack_Combo2");
+        public static readonly int AttackCombo3 = Animator.StringToHash("Attack_Combo3");
+        public static readonly int AttackCombo4 = Animator.StringToHash("Attack_Combo4");
+        public static readonly int AttackHeavy1 = Animator.StringToHash("Attack_Heavy1");
+        public static readonly int AttackHeavy1Start = Animator.StringToHash("Attack_Heavy1_Start");
+        public static readonly int AttackHeavy2 = Animator.StringToHash("Attack_Heavy2");
+        public static readonly int AttackSprint = Animator.StringToHash("Attack_Sprint");
+        public static readonly int AttackDodge = Animator.StringToHash("Attack_Dodge");
+        public static readonly int AttackDodgeToCombo1 = Animator.StringToHash("Attack_Dodge_to_Combo1");
     }
 }

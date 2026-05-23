@@ -37,13 +37,12 @@ namespace Character.StateMachine.States
         {
             SetPhase(GuardPhase.Start);
             _motor.SetSprintActive(false);
-            _motor.SetMovementBlocked(true);
+            _motor.SetMovementBlocked(false);
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             intent.IsSprintHeld = false;
-            intent.IsAttackPressed = false;
             intent.IsJumpPressed = false;
 
             switch (CurrentPhase)
@@ -76,14 +75,12 @@ namespace Character.StateMachine.States
             if (_phaseTimer >= _combatConfig.guardStartDuration)
             {
                 SetPhase(GuardPhase.Loop);
-                _motor.SetMovementBlocked(false);
             }
         }
 
         private void TickLoop(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);
-            _motor.Tick(intent, deltaTime);
 
             if (intent.IsDodgePressed)
             {
@@ -91,10 +88,23 @@ namespace Character.StateMachine.States
                 return;
             }
 
+            if (intent.IsAttackPressed)
+            {
+                var attackState = _registry.Get(CharacterStateId.Attack) as AttackState;
+                attackState?.PrepareHeavyAttack();
+
+                bool transitioned = _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+                if (!transitioned)
+                    attackState?.PrepareComboAttack();
+
+                return;
+            }
+
+            _motor.Tick(intent, deltaTime);
+
             if (!intent.IsGuardHeld)
             {
                 SetPhase(GuardPhase.Exit);
-                _motor.SetMovementBlocked(true);
             }
         }
 

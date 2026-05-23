@@ -16,6 +16,7 @@ namespace Character.Controller
         private InputHandler _inputHandler;
         private PlayerAuthorityGate _authorityGate;
         private CharacterController _characterController;
+        private Animator _animator;
         private Camera _camera;
 
         private CharacterStateMachine _fsm;
@@ -64,8 +65,18 @@ namespace Character.Controller
             _inputHandler = GetComponent<InputHandler>();
             _authorityGate = GetComponent<PlayerAuthorityGate>();
             _characterController = GetComponent<CharacterController>();
+            _animator = GetComponentInChildren<Animator>();
             _camera = Camera.main;
 
+            if (_animator != null)
+            {
+                _animator.applyRootMotion = true;
+                var relay = _animator.GetComponent<AnimatorRootMotionRelay>();
+                if (relay == null)
+                    relay = _animator.gameObject.AddComponent<AnimatorRootMotionRelay>();
+                relay.Initialize(this);
+            }
+            
             var def = GameDataManager.Instance.Player;
 
             _context = new CharacterContext(_characterController, transform, _camera);
@@ -108,6 +119,18 @@ namespace Character.Controller
             return ctx.IsValid;
         }
 
+        public bool TryGetActiveAttackState(out AttackState attackState)
+        {
+            if (_fsm?.CurrentState is AttackState active)
+            {
+                attackState = active;
+                return true;
+            }
+
+            attackState = null;
+            return false;
+        }
+
         void Update()
         {
             if (!CanProcessLocalInput()) return;
@@ -141,7 +164,8 @@ namespace Character.Controller
             else if (IsInLockedCombatState())
             {
                 intent.IsDodgePressed = false;
-                intent.IsAttackPressed = false;
+                if (CurrentStateId != CharacterStateId.Dodge)
+                    intent.IsAttackPressed = false;
                 intent.IsJumpPressed = false;
             }
 
@@ -219,6 +243,16 @@ namespace Character.Controller
 
             guardState = null;
             return false;
+        }
+
+        public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
+        {
+            if (!CanProcessLocalInput()) return;
+            if (_motor == null) return;
+
+            if (CurrentStateId != CharacterStateId.Attack) return;
+
+            _motor.SetAttackRootMotionDelta(deltaPosition, deltaRotation);
         }
     }
 }

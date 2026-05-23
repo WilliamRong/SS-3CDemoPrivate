@@ -26,7 +26,7 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.ActiveWindow, TransitionReason.InputDodge, false),
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.RecoveryWindow, TransitionReason.InputDodge, true),
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dodge, StateWindowType.Always, TransitionReason.InputDodge, true),
-            new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Attack, StateWindowType.Always, TransitionReason.InputAttack, false),
+            new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Attack, StateWindowType.Always, TransitionReason.InputAttack, true),
             
             //防御
             new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Dodge, StateWindowType.Always, TransitionReason.InputDodge,  true),

@@ -16,6 +16,7 @@ namespace Character.Sync
         public byte SprintPhase;
         public byte DodgeMode;
         public byte GuardPhase;
+        public byte AttackComboStep;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -174,7 +175,8 @@ namespace Character.Sync
                 StateId = (int)s.StateId,
                 SprintPhase = s.SprintPhase,
                 DodgeMode = s.DodgeMode,
-                GuardPhase = s.GuardPhase
+                GuardPhase = s.GuardPhase,
+                AttackComboStep = s.AttackComboStep
             };
         }
 
@@ -189,7 +191,8 @@ namespace Character.Sync
                 (StateMachine.CharacterStateId)m.StateId,
                 m.SprintPhase,
                 m.DodgeMode,
-                m.GuardPhase
+                m.GuardPhase,
+                m.AttackComboStep
             );
         }
 

@@ -23,6 +23,8 @@ namespace Character.Sync
         public byte DodgeMode;
         /// <summary>Valid when <see cref="StateId"/> is Guard; otherwise 0. See <see cref="GuardState.GuardPhase"/>.</summary>
         public byte GuardPhase;
+        /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. 1-4 = combo, 5 = sprint attack, 6 = dodge attack, 7-9 = heavy attack.</summary>
+        public byte AttackComboStep;
 
         public StateSnapshot(
             int tick,
@@ -33,7 +35,8 @@ namespace Character.Sync
             CharacterStateId stateId,
             byte sprintPhase = 0,
             byte dodgeMode = 0,
-            byte guardPhase = 0)
+            byte guardPhase = 0,
+            byte attackComboStep = 0)
         {
             Tick = tick;
             ActorId = actorId;
@@ -44,6 +47,7 @@ namespace Character.Sync
             SprintPhase = sprintPhase;
             DodgeMode = dodgeMode;
             GuardPhase = guardPhase;
+            AttackComboStep = attackComboStep;
             ArrivalTimeSec = 0f;
         }
 
@@ -78,6 +82,14 @@ namespace Character.Sync
                 return GuardState.GuardPhase.Start;
 
             return (GuardState.GuardPhase)GuardPhase;
+        }
+
+        public byte GetAttackComboStepOrDefault()
+        {
+            if (StateId != CharacterStateId.Attack)
+                return 1;
+
+            return AttackComboStep is >= 1 and <= AttackState.Heavy2Step ? AttackComboStep : (byte)1;
         }
 
         public StateSnapshot WithDodgeMode(byte dodgeMode)
@@ -129,7 +141,7 @@ namespace Character.Sync
 
         public override string ToString()
         {
-            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, " +
+            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, attackCombo={AttackComboStep}, " +
                    $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), " +
                    $"yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
         }

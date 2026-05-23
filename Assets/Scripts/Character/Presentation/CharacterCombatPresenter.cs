@@ -27,7 +27,8 @@ namespace Character.Presentation
             int actionParams = 0,
             in DodgePresentationContext dodgeCtx = default,
             GuardState.GuardPhase guardPhase = GuardState.GuardPhase.Start,
-            bool guardHasMove = false)
+            bool guardHasMove = false,
+            byte attackComboStep = 1)
         {
             if (animator == null) return false;
 
@@ -54,6 +55,7 @@ namespace Character.Presentation
                     return TickGuard(animator, guardPhase, guardHasMove);
                 case CharacterStateId.Attack:
                     ResetReactionLayers(animator);
+                    TickAttack(animator, attackComboStep);
                     _lastCombatState = stateId;
                     return true;
                 default:
@@ -75,8 +77,7 @@ namespace Character.Presentation
         public void ResetActiveCombatLayers(Animator animator)
         {
             if (animator == null) return;
-            animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
-            animator.SetLayerWeight(AnimatorParams.DodgeLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
             _lastDodgeMode = DodgeMode.None;
             ResetGuardCache();
@@ -90,7 +91,7 @@ namespace Character.Presentation
         public void ResetGuardLayers(Animator animator)
         {
             if (animator == null) return;
-            animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
             ResetGuardCache();
             if (_lastCombatState == CharacterStateId.Guard)
@@ -106,6 +107,23 @@ namespace Character.Presentation
             ResetActiveCombatLayers(animator);
         }
 
+
+        private void TickAttack(Animator animator, byte comboStep)
+        {
+            int targetHash = ComboStepToAttackHash(comboStep);
+            if (targetHash == 0) return;
+            
+            animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
+
+            if (_lastCombatState == CharacterStateId.Attack && _lastHash == targetHash) return;
+
+            _lastHash = targetHash;
+            animator.CrossFade(targetHash, _config.attackCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
+        }
+        
+        
+        
         /// <summary>
         /// Returns true when Guard is full-body and should block locomotion presentation.
         /// Moving Guard is a temporary split: upper-body guard over layer-0 walk.
@@ -115,12 +133,13 @@ namespace Character.Presentation
             if (animator == null) return false;
             
             ResetReactionLayers(animator); 
-            animator.SetLayerWeight(AnimatorParams.DodgeLayerIndex, 0f); 
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f); 
             _lastDodgeMode = DodgeMode.None;
 
-            bool isFullBody = phase != GuardState.GuardPhase.Loop || !hasMove;
+            // Any guard phase can use upper-body overlay while moving, so layer-0 walk stays visible.
+            bool isFullBody = !hasMove;
             int layerIndex = isFullBody
-                ? AnimatorParams.GuardLayerIndex
+                ? AnimatorParams.CombatLayerIndex
                 : AnimatorParams.UpperBodyLayerIndex;
 
             int targetHash = PhaseToGuardHash(phase);
@@ -130,11 +149,11 @@ namespace Character.Presentation
             if (isFullBody)
             {
                 animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
-                animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 1f);
+                animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
             }
             else
             {
-                animator.SetLayerWeight(AnimatorParams.GuardLayerIndex, 0f);
+                animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
                 animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 1f);
             }
 
@@ -176,13 +195,13 @@ namespace Character.Presentation
                 animator.SetFloat(AnimatorParams.DodgeInputZ, ctx.BlendLocal.y);
             }
             
-            animator.SetLayerWeight(AnimatorParams.DodgeLayerIndex, 1f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
             
             if (targetHash == _lastHash && _lastDodgeMode == ctx.Mode)
                 return;
             _lastHash = targetHash;
             _lastDodgeMode = ctx.Mode;
-            animator.CrossFade(targetHash, _config.dodgeCrossFadeDuration, AnimatorParams.DodgeLayerIndex, 0f);
+            animator.CrossFade(targetHash, _config.dodgeCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
         }
 
         private void PlayReaction(Animator animator, int stateHash, float crossFadeDuration)
@@ -202,6 +221,23 @@ namespace Character.Presentation
                 GuardState.GuardPhase.Loop => AnimatorParams.StateGuardLoop,
                 GuardState.GuardPhase.Exit => AnimatorParams.StateGuardExit,
                 _ => 0,
+            };
+        }
+
+        private static int ComboStepToAttackHash(byte comboStep)
+        {
+            return comboStep switch
+            {
+                1 => AnimatorParams.AttackCombo1,
+                2 => AnimatorParams.AttackCombo2,
+                3 => AnimatorParams.AttackCombo3,
+                4 => AnimatorParams.AttackCombo4,
+                5 => AnimatorParams.AttackSprint,
+                6 => AnimatorParams.AttackDodge,
+                7 => AnimatorParams.AttackHeavy1Start,
+                8 => AnimatorParams.AttackHeavy1,
+                9 => AnimatorParams.AttackHeavy2,
+                _ => AnimatorParams.AttackCombo1,
             };
         }
 

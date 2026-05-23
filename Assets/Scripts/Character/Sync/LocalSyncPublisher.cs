@@ -34,6 +34,7 @@ namespace Character.Sync
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
         private byte _lastSentGuardPhase;
+        private byte _lastSentAttackComboStep;
 
         private void Awake()
         {
@@ -80,6 +81,7 @@ namespace Character.Sync
             byte sprintPhase = ResolveSprintPhase(stateId);
             byte dodgeMode = ResolveDodgeMode(stateId);
             byte guardPhase = ResolveGuardPhase(stateId);
+            byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
             bool shouldSend = !_hasSentAnySnapshot;
@@ -92,7 +94,8 @@ namespace Character.Sync
                     || stateId != _lastSentStateId
                     || sprintPhase != _lastSentSprintPhase
                     || dodgeMode != _lastSentDodgeMode
-                    || guardPhase != _lastSentGuardPhase;
+                    || guardPhase != _lastSentGuardPhase
+                    || attackComboStep != _lastSentAttackComboStep;
             }
 
             if (!shouldSend)
@@ -107,7 +110,8 @@ namespace Character.Sync
                 stateId,
                 sprintPhase,
                 dodgeMode,
-                guardPhase
+                guardPhase,
+                attackComboStep
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -119,6 +123,7 @@ namespace Character.Sync
             _lastSentSprintPhase = sprintPhase;
             _lastSentDodgeMode = dodgeMode;
             _lastSentGuardPhase = guardPhase;
+            _lastSentAttackComboStep = attackComboStep;
         }
 
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
@@ -174,6 +179,16 @@ namespace Character.Sync
             return _playerController.TryGetActiveGuardState(out var guardState)
                 ? (byte)guardState.CurrentPhase
                 : (byte)0;
+        }
+
+        private byte ResolveAttackComboStep(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Attack || _playerController == null)
+                return 0;
+
+            return _playerController.TryGetActiveAttackState(out var attackState)
+                ? attackState.CurrentComboStep
+                : (byte)1;
         }
 
         private void TryProduceActionEventOnStateChange(int tick)

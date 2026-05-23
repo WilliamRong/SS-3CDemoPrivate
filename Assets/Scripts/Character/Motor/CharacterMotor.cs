@@ -17,6 +17,10 @@ namespace Character.Motor
         private bool _isSprintActive;
         private bool _movementBlocked;
         private bool _isDodgeActive;
+        private bool _attackRootMotionActive;
+        private bool _hasPendingAttackRootMotion;
+        private Vector3 _pendingAttackDeltaPosition;
+        private float _pendingAttackDeltaYaw;
         private bool _dodgeMoveActive;
         private Vector3 _dodgeWorldDirection;
         private float _dodgeSpeed;
@@ -34,6 +38,12 @@ namespace Character.Motor
             if (_isDodgeActive)
             {
                 TickDodge(intent, dt);
+                return;
+            }
+
+            if (_attackRootMotionActive)
+            {
+                TickAttackRootMotion(intent, dt);
                 return;
             }
 
@@ -99,6 +109,97 @@ namespace Character.Motor
 
             TickVertical(intent, dt);
             _context.Controller.Move(_context.Velocity * dt);
+        }
+
+        public void BeginAttackRootMotion()
+        {
+            if (_attackRootMotionActive)
+                return;
+
+            _attackRootMotionActive = true;
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+            _isSprintActive = false;
+            StopHorizontalMotion();
+        }
+
+        public void EndAttackRootMotion()
+        {
+            _attackRootMotionActive = false;
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+            StopHorizontalMotion();
+        }
+
+        public void SnapAttackDirection(CharacterIntent intent)
+        {
+            if (!TryGetInputWorldDirection(intent, out var inputDir))
+                return;
+
+            _context.Root.rotation = Quaternion.LookRotation(inputDir);
+        }
+
+        public void SetAttackRootMotionDelta(Vector3 deltaPosition, Quaternion deltaRotation)
+        {
+            if (!_attackRootMotionActive)
+                return;
+
+            _hasPendingAttackRootMotion = true;
+            _pendingAttackDeltaPosition += deltaPosition;
+            _pendingAttackDeltaYaw += Mathf.DeltaAngle(0f, deltaRotation.eulerAngles.y);
+        }
+
+        private void TickAttackRootMotion(CharacterIntent intent, float dt)
+        {
+            Vector3 deltaPosition = _hasPendingAttackRootMotion ? _pendingAttackDeltaPosition : Vector3.zero;
+            float deltaYaw = _hasPendingAttackRootMotion ? _pendingAttackDeltaYaw : 0f;
+
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+
+            deltaPosition.y = 0f;
+            if (Mathf.Abs(deltaYaw) > 0.0001f)
+                _context.Root.Rotate(0f, deltaYaw, 0f, Space.World);
+
+            float invDt = dt > 0.0001f ? 1f / dt : 0f;
+            var v = _context.Velocity;
+            v.x = deltaPosition.x * invDt;
+            v.z = deltaPosition.z * invDt;
+            _context.Velocity = v;
+
+            TickVertical(intent, dt);
+            var move = new Vector3(deltaPosition.x, _context.Velocity.y * dt, deltaPosition.z);
+            _context.Controller.Move(move);
+        }
+
+        private bool TryGetInputWorldDirection(CharacterIntent intent, out Vector3 inputDir)
+        {
+            inputDir = Vector3.zero;
+
+            if (intent.Move.sqrMagnitude <= 0.0001f)
+                return false;
+
+            Vector3 rootForward = _context.Root.forward;
+            Vector3 rootRight = _context.Root.right;
+            rootForward.y = 0f;
+            rootRight.y = 0f;
+
+            if (rootForward.sqrMagnitude > 0.0001f)
+                rootForward.Normalize();
+            if (rootRight.sqrMagnitude > 0.0001f)
+                rootRight.Normalize();
+
+            inputDir = rootRight * intent.Move.x + rootForward * intent.Move.y;
+            inputDir.y = 0f;
+
+            if (inputDir.sqrMagnitude <= 0.0001f)
+                return false;
+
+            inputDir.Normalize();
+            return true;
         }
 
         public void SetMovementBlocked(bool blocked)

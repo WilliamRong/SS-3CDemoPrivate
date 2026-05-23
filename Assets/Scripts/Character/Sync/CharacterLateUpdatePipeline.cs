@@ -52,9 +52,6 @@ namespace Character.Sync
             if (_animator == null)
                 _animator = GetComponentInChildren<Animator>();
 
-            if (_animator != null)
-                _animator.applyRootMotion = false;
-
             EnsurePresenters();
         }
 
@@ -98,7 +95,8 @@ namespace Character.Sync
                 out var velocityXZ,
                 out var isLockOn,
                 out var sprintPhase,
-                out var guardPhase);
+                out var guardPhase,
+                out var attackComboStep);
 
             return new PresentationFrame(
                 _lastPresentationStateId,
@@ -106,7 +104,8 @@ namespace Character.Sync
                 velocityXZ,
                 isLockOn,
                 sprintPhase,
-                guardPhase);
+                guardPhase,
+                attackComboStep);
         }
 
         private void CommitPresentationFrame(PresentationFrame frame)
@@ -122,7 +121,11 @@ namespace Character.Sync
             ReleaseSprintOverlayIfNeeded(frame);
 
             var dodgeCtx = ResolveDodgePresentationContext(frame.StateId);
-            return _combatPresenter.TickCombat(_animator, frame.StateId, dodgeCtx: dodgeCtx);
+            return _combatPresenter.TickCombat(
+                _animator,
+                frame.StateId,
+                dodgeCtx: dodgeCtx,
+                attackComboStep: frame.AttackComboStep);
         }
 
         private bool TryPresentGuard(PresentationFrame frame)
@@ -290,19 +293,21 @@ namespace Character.Sync
             out Vector2 velocityXZ,
             out bool isLockOn,
             out SprintState.SprintPhase sprintPhase,
-            out GuardState.GuardPhase guardPhase)
+            out GuardState.GuardPhase guardPhase,
+            out byte attackComboStep)
         {
             isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            attackComboStep = 1;
 
-            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase, out guardPhase))
+            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase, out guardPhase, out attackComboStep))
                 return;
 
             if (TryResolveFromServerNpc(out stateId, out velocityXZ))
                 return;
 
-            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase, out guardPhase))
+            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase, out guardPhase, out attackComboStep))
                 return;
 
             stateId = CharacterStateId.Idle;
@@ -313,12 +318,14 @@ namespace Character.Sync
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
             out SprintState.SprintPhase sprintPhase,
-            out GuardState.GuardPhase guardPhase)
+            out GuardState.GuardPhase guardPhase,
+            out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            attackComboStep = 1;
 
             if (_playerController == null)
                 return false;
@@ -340,6 +347,12 @@ namespace Character.Sync
                 && _playerController.TryGetActiveGuardState(out var guardState))
             {
                 guardPhase = guardState.CurrentPhase;
+            }
+
+            if (stateId == CharacterStateId.Attack
+                && _playerController.TryGetActiveAttackState(out var attackState))
+            {
+                attackComboStep = attackState.CurrentComboStep;
             }
 
             return true;
@@ -380,12 +393,14 @@ namespace Character.Sync
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
             out SprintState.SprintPhase sprintPhase,
-            out GuardState.GuardPhase guardPhase)
+            out GuardState.GuardPhase guardPhase,
+            out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            attackComboStep = 1;
 
             if (_remoteInterpolator == null)
                 return false;
@@ -398,6 +413,7 @@ namespace Character.Sync
             velocityXZ = snapshot.VelocityXZ;
             sprintPhase = snapshot.GetSprintPhaseOrDefault();
             guardPhase = snapshot.GetGuardPhaseOrDefault();
+            attackComboStep = snapshot.GetAttackComboStepOrDefault();
             return true;
         }
 
@@ -426,7 +442,8 @@ namespace Character.Sync
                 Vector2 velocityXZ,
                 bool isLockOn,
                 SprintState.SprintPhase sprintPhase,
-                GuardState.GuardPhase guardPhase)
+                GuardState.GuardPhase guardPhase,
+                byte attackComboStep)
             {
                 PreviousStateId = previousStateId;
                 StateId = stateId;
@@ -434,6 +451,7 @@ namespace Character.Sync
                 IsLockOn = isLockOn;
                 SprintPhase = sprintPhase;
                 GuardPhase = guardPhase;
+                AttackComboStep = attackComboStep;
             }
 
             public CharacterStateId PreviousStateId { get; }
@@ -442,6 +460,7 @@ namespace Character.Sync
             public bool IsLockOn { get; }
             public SprintState.SprintPhase SprintPhase { get; }
             public GuardState.GuardPhase GuardPhase { get; }
+            public byte AttackComboStep { get; }
 
             public bool LeftSprint =>
                 PreviousStateId == CharacterStateId.Sprint && StateId != CharacterStateId.Sprint;
