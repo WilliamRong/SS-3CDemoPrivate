@@ -1,6 +1,7 @@
 using AI;
 using Character.Config;
 using Character.Controller;
+using Character.LockOn;
 using Character.Presentation;
 using Character.StateMachine;
 using Character.StateMachine.States;
@@ -93,7 +94,9 @@ namespace Character.Sync
             ResolvePresentation(
                 out var stateId,
                 out var velocityXZ,
+                out var moveInput,
                 out var isLockOn,
+                out var lockTargetNetId,
                 out var sprintPhase,
                 out var guardPhase,
                 out var attackComboStep);
@@ -102,7 +105,9 @@ namespace Character.Sync
                 _lastPresentationStateId,
                 stateId,
                 velocityXZ,
+                moveInput,
                 isLockOn,
+                lockTargetNetId,
                 sprintPhase,
                 guardPhase,
                 attackComboStep);
@@ -238,6 +243,7 @@ namespace Character.Sync
                 transform,
                 frame.StateId,
                 frame.VelocityXZ,
+                frame.MoveInput,
                 frame.IsLockOn);
 
             return true;
@@ -253,6 +259,7 @@ namespace Character.Sync
                 transform,
                 frame.StateId,
                 frame.VelocityXZ,
+                frame.MoveInput,
                 frame.IsLockOn);
         }
 
@@ -291,38 +298,63 @@ namespace Character.Sync
         private void ResolvePresentation(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
+            out Vector2 moveInput,
             out bool isLockOn,
+            out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out byte attackComboStep)
         {
-            isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
+            stateId = CharacterStateId.Idle;
+            velocityXZ = Vector2.zero;
+            moveInput = Vector2.zero;
+            isLockOn = false;
+            lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
             attackComboStep = 1;
 
-            if (TryResolveFromLocalPlayer(out stateId, out velocityXZ, out sprintPhase, out guardPhase, out attackComboStep))
+            if (TryResolveFromLocalPlayer(
+                    out stateId,
+                    out velocityXZ,
+                    out moveInput,
+                    out isLockOn,
+                    out lockTargetNetId,
+                    out sprintPhase,
+                    out guardPhase,
+                    out attackComboStep))
                 return;
 
             if (TryResolveFromServerNpc(out stateId, out velocityXZ))
                 return;
 
-            if (TryResolveFromRemoteSnapshot(out stateId, out velocityXZ, out sprintPhase, out guardPhase, out attackComboStep))
+            if (TryResolveFromRemoteSnapshot(
+                    out stateId,
+                    out velocityXZ,
+                    out moveInput,
+                    out isLockOn,
+                    out lockTargetNetId,
+                    out sprintPhase,
+                    out guardPhase,
+                    out attackComboStep))
                 return;
-
-            stateId = CharacterStateId.Idle;
-            velocityXZ = Vector2.zero;
         }
 
         private bool TryResolveFromLocalPlayer(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
+            out Vector2 moveInput,
+            out bool isLockOn,
+            out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
+            moveInput = Vector2.zero;
+            isLockOn = false;
+            lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
             attackComboStep = 1;
@@ -336,6 +368,15 @@ namespace Character.Sync
             stateId = _playerController.CurrentStateId;
             var velocity = _playerController.Velocity;
             velocityXZ = new Vector2(velocity.x, velocity.z);
+            moveInput = _playerController.LastMoveInput;
+            isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
+
+            if (isLockOn && _lockOnQuery.CurrentTarget != null)
+            {
+                var lockOnTarget = _lockOnQuery.CurrentTarget.GetComponentInParent<LockOnTarget>();
+                if (lockOnTarget != null)
+                    lockOnTarget.TryGetNetworkId(out lockTargetNetId);
+            }
 
             if (stateId == CharacterStateId.Sprint
                 && _playerController.TryGetActiveSprintState(out var sprintState))
@@ -392,12 +433,18 @@ namespace Character.Sync
         private bool TryResolveFromRemoteSnapshot(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
+            out Vector2 moveInput,
+            out bool isLockOn,
+            out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
+            moveInput = Vector2.zero;
+            isLockOn = false;
+            lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
             attackComboStep = 1;
@@ -411,6 +458,9 @@ namespace Character.Sync
 
             stateId = snapshot.StateId;
             velocityXZ = snapshot.VelocityXZ;
+            moveInput = snapshot.GetMoveInputOrDefault();
+            isLockOn = snapshot.IsLockOnActive;
+            lockTargetNetId = snapshot.LockTargetNetId;
             sprintPhase = snapshot.GetSprintPhaseOrDefault();
             guardPhase = snapshot.GetGuardPhaseOrDefault();
             attackComboStep = snapshot.GetAttackComboStepOrDefault();
@@ -440,7 +490,9 @@ namespace Character.Sync
                 CharacterStateId previousStateId,
                 CharacterStateId stateId,
                 Vector2 velocityXZ,
+                Vector2 moveInput,
                 bool isLockOn,
+                uint lockTargetNetId,
                 SprintState.SprintPhase sprintPhase,
                 GuardState.GuardPhase guardPhase,
                 byte attackComboStep)
@@ -448,7 +500,9 @@ namespace Character.Sync
                 PreviousStateId = previousStateId;
                 StateId = stateId;
                 VelocityXZ = velocityXZ;
+                MoveInput = moveInput;
                 IsLockOn = isLockOn;
+                LockTargetNetId = lockTargetNetId;
                 SprintPhase = sprintPhase;
                 GuardPhase = guardPhase;
                 AttackComboStep = attackComboStep;
@@ -457,7 +511,9 @@ namespace Character.Sync
             public CharacterStateId PreviousStateId { get; }
             public CharacterStateId StateId { get; }
             public Vector2 VelocityXZ { get; }
+            public Vector2 MoveInput { get; }
             public bool IsLockOn { get; }
+            public uint LockTargetNetId { get; }
             public SprintState.SprintPhase SprintPhase { get; }
             public GuardState.GuardPhase GuardPhase { get; }
             public byte AttackComboStep { get; }

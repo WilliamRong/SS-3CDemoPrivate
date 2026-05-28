@@ -17,11 +17,13 @@ MonoBehaviour:
   locomotionBlendReferenceSpeed: 5
   velocityEpsilon: 0.05
   freeMoveBlendScale: 1
-  blendAxisMax: 2
-  runForwardBlendZ: 2
+  blendAxisMax: 1
+  runForwardBlendZ: 1
   sprintCrossFadeDuration: 0.15
   lightHitCrossFadeDuration: 0.08
   heavyHitCrossFadeDuration: 0.08
   deathCrossFadeDuration: 0.08
   dodgeCrossFadeDuration: 0.08
   dodgeBlendAxisMax: 1
+  guardCrossFadeDuration: 0.1
+  attackCrossFadeDuration: 0.1

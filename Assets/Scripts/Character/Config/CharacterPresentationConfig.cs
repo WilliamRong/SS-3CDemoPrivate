@@ -14,8 +14,8 @@ namespace Character.Config
 
         [Header("Blend Tree")]
         public float freeMoveBlendScale = 1f;
-        public float blendAxisMax = 2f;
-        public float runForwardBlendZ = 2f;
+        public float blendAxisMax = 1f;
+        public float runForwardBlendZ = 1f;
 
         [Header("Sprint Animator")]
         public float sprintCrossFadeDuration = 0.15f;

@@ -1,3 +1,5 @@
+using UnityEngine;
+
 namespace Character.Presentation
 {
     /// <summary>
@@ -7,5 +9,6 @@ namespace Character.Presentation
     public interface ILockOnLocomotionQuery
     {
         bool IsLockOnActive { get; }
+        Transform CurrentTarget { get; }
     }
 }

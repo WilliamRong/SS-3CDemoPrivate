@@ -17,6 +17,10 @@ namespace Character.Sync
         public byte DodgeMode;
         public byte GuardPhase;
         public byte AttackComboStep;
+        public byte LockOnActive;
+        public uint LockTargetNetId;
+        public float MoveInputX;
+        public float MoveInputY;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -176,7 +180,11 @@ namespace Character.Sync
                 SprintPhase = s.SprintPhase,
                 DodgeMode = s.DodgeMode,
                 GuardPhase = s.GuardPhase,
-                AttackComboStep = s.AttackComboStep
+                AttackComboStep = s.AttackComboStep,
+                LockOnActive = s.LockOnActive,
+                LockTargetNetId = s.LockTargetNetId,
+                MoveInputX = s.MoveInputX,
+                MoveInputY = s.MoveInputY,
             };
         }
 
@@ -192,7 +200,11 @@ namespace Character.Sync
                 m.SprintPhase,
                 m.DodgeMode,
                 m.GuardPhase,
-                m.AttackComboStep
+                m.AttackComboStep,  
+                m.LockOnActive,
+                m.LockTargetNetId,
+                m.MoveInputX,
+                m.MoveInputY
             );
         }
 

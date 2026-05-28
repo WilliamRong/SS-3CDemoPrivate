@@ -3,6 +3,7 @@ using Character.Config;
 using Character.Controller;
 using Character.Presentation;
 using Character.StateMachine;
+using Character.LockOn;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -18,6 +19,13 @@ namespace Character.Sync
         [SerializeField] private int _actorId = 1;
         [SerializeField] private NetworkIdentity _networkIdentity;
 
+        //锁定相关
+        [SerializeField] private PlayerLockOnController _lockOnController;
+        private byte _lastSentLockOnActive;
+        private uint _lastSentLockTargetNetId;
+        private Vector2 _lastSentMoveInput;
+        private const float MoveInputSendThresholdSqr = 0.01f;
+        
         public event Action<StateSnapshot> OnSnapshotProduced;
         public event Action<ActionEvent> OnActionEventProduced;
 
@@ -42,6 +50,7 @@ namespace Character.Sync
             if (_playerController == null) _playerController = GetComponent<PlayerController>();
             if (_authorityGate == null) _authorityGate = GetComponent<PlayerAuthorityGate>();
             if (_networkIdentity == null) _networkIdentity = GetComponent<NetworkIdentity>();
+            if (_lockOnController == null) _lockOnController = GetComponent<PlayerLockOnController>();
         }
 
         private void Update()
@@ -84,6 +93,8 @@ namespace Character.Sync
             byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
+            ResolveLockOnSync(out byte lockOnActive, out uint lockTargetNetId, out Vector2 moveInput);
+            
             bool shouldSend = !_hasSentAnySnapshot;
             if (!shouldSend)
             {
@@ -95,7 +106,10 @@ namespace Character.Sync
                     || sprintPhase != _lastSentSprintPhase
                     || dodgeMode != _lastSentDodgeMode
                     || guardPhase != _lastSentGuardPhase
-                    || attackComboStep != _lastSentAttackComboStep;
+                    || attackComboStep != _lastSentAttackComboStep
+                    || lockOnActive != _lastSentLockOnActive
+                    || lockTargetNetId != _lastSentLockTargetNetId
+                    || (moveInput - _lastSentMoveInput).sqrMagnitude >= MoveInputSendThresholdSqr;
             }
 
             if (!shouldSend)
@@ -111,7 +125,11 @@ namespace Character.Sync
                 sprintPhase,
                 dodgeMode,
                 guardPhase,
-                attackComboStep
+                attackComboStep,
+                lockOnActive,
+                lockTargetNetId,
+                moveInput.x,
+                moveInput.y
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -124,6 +142,9 @@ namespace Character.Sync
             _lastSentDodgeMode = dodgeMode;
             _lastSentGuardPhase = guardPhase;
             _lastSentAttackComboStep = attackComboStep;
+            _lastSentLockOnActive = lockOnActive;
+            _lastSentLockTargetNetId = lockTargetNetId;
+            _lastSentMoveInput = moveInput;
         }
 
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
@@ -213,6 +234,21 @@ namespace Character.Sync
                 return (int)_networkIdentity.netId;
 
             return _actorId;
+        }
+        
+        private void ResolveLockOnSync(out byte lockOnActive, out uint lockTargetNetId, out Vector2 moveInput)
+        {
+            lockOnActive = 0;
+            lockTargetNetId = 0;
+            moveInput = Vector2.zero;
+
+            if (_lockOnController == null || !_lockOnController.TryGetSyncState(out lockTargetNetId))
+                return;
+
+            lockOnActive = 1;
+            moveInput = _playerController != null
+                ? _playerController.LastMoveInput
+                : Vector2.zero;
         }
     }
 }

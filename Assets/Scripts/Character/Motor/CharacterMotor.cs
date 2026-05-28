@@ -14,6 +14,8 @@ namespace Character.Motor
         private Vector3 _currentHorizontalVelocity;
         private Vector3 _horizontalVelocityRef;
 
+        private ILockOnLocomotionQuery _lockOnQuery;
+
         private bool _isSprintActive;
         private bool _movementBlocked;
         private bool _isDodgeActive;
@@ -33,6 +35,11 @@ namespace Character.Motor
             _config = config;
         }
 
+        public void SetLockOnQuery(ILockOnLocomotionQuery query)
+        {
+            _lockOnQuery = query;
+        }
+        
         public void Tick(CharacterIntent intent, float dt)
         {
             if (_isDodgeActive)
@@ -221,6 +228,52 @@ namespace Character.Motor
         }
 
         private void TickHorizontal(CharacterIntent intent, float dt)
+        {
+            if (_lockOnQuery != null && _lockOnQuery.IsLockOnActive && _lockOnQuery.CurrentTarget != null)
+            {
+                TickLockOnHorizontal(intent, dt, _lockOnQuery.CurrentTarget);
+                return;
+            }
+            
+            TickFreeHorizontal(intent, dt);
+        }
+
+        private void TickLockOnHorizontal(CharacterIntent intent, float dt, Transform target)
+        {
+            _context.GetCameraBasis(out var camForward, out var camRight);
+
+            var inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
+            inputDir.y = 0f;
+            
+            if(inputDir.sqrMagnitude > 0.0001f) inputDir.Normalize();
+
+            var toTarget = target.position - _context.Root.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > 0.0001f)
+            {
+                var targetRot = Quaternion.LookRotation(toTarget.normalized);
+                _context.Root.rotation = Quaternion.Slerp(
+                    _context.Root.rotation,
+                    targetRot,
+                    _config.rotationSlerpSpeed * dt);
+            }
+
+            var speed = _config.moveSpeed;
+            var targetHorizontal = inputDir * speed;
+
+            _currentHorizontalVelocity = Vector3.SmoothDamp(
+                _currentHorizontalVelocity,
+                targetHorizontal,
+                ref _horizontalVelocityRef,
+                _config.smoothTime);
+
+            var v = _context.Velocity;
+            v.x = _currentHorizontalVelocity.x;
+            v.z = _currentHorizontalVelocity.z;
+            _context.Velocity = v;
+        }
+        
+        private void TickFreeHorizontal(CharacterIntent intent, float dt)
         {
             _context.GetCameraBasis(out var camForward, out var camRight);
 

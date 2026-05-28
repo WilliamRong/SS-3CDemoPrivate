@@ -29,6 +29,8 @@ namespace Character.Controller
         private GuardState _guardState;
         private HitState _hitState;
         private DeadState _deadState;
+        
+        public Vector2 LastMoveInput { get; private set; }
 
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
@@ -79,10 +81,13 @@ namespace Character.Controller
             
             var def = GameDataManager.Instance.Player;
 
+            _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
+
             _context = new CharacterContext(_characterController, transform, _camera);
             _context.ConfigureHealth(def.combat.maxHp);
 
             _motor = new CharacterMotor(_context, def.locomotion);
+            _motor.SetLockOnQuery(_lockOnQuery);
 
             _fsm = new CharacterStateMachine(def.combat);
             _stateRegistry = new CharacterStateRegistry();
@@ -106,7 +111,6 @@ namespace Character.Controller
             _stateRegistry.Register(_deadState);
 
             _fsm.Initialize(_idleState);
-            _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
         }
 
         public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
@@ -169,6 +173,7 @@ namespace Character.Controller
                 intent.IsJumpPressed = false;
             }
 
+            LastMoveInput = intent.Move;
             _fsm.Tick(intent, Time.deltaTime);
             Velocity = _context.Velocity;
 

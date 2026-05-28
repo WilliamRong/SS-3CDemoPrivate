@@ -21,6 +21,7 @@ namespace Input
         public bool JumpTriggered { get; private set; }
         public bool AttackTriggered { get; private set; }
         public bool DodgeTriggered { get; private set; }
+        public bool LockOnTriggered { get; private set; }
         
         public bool IsGuardHeld { get; private set; }
 
@@ -36,6 +37,7 @@ namespace Input
             _inputActions.Player.Jump.performed += OnJumpPerformed;
             _inputActions.Player.Attack.performed += OnAttackPerformed;
             _inputActions.Player.Dodge.performed += OnDodgePerformed;
+            _inputActions.Player.LockOn.performed += OnLockOnPerformed;
         }
 
         private void OnDisable()
@@ -43,6 +45,7 @@ namespace Input
             _inputActions.Player.Jump.performed -= OnJumpPerformed;
             _inputActions.Player.Attack.performed -= OnAttackPerformed;
             _inputActions.Player.Dodge.performed -= OnDodgePerformed;
+            _inputActions.Player.LockOn.performed -= OnLockOnPerformed;
             _inputActions.Disable();
             
             // 补充：禁用时清理脉冲，避免残留
@@ -67,6 +70,12 @@ namespace Input
         {
             if (!CanProcessLocalInput()) return;
             DodgeTriggered = true;
+        }
+        
+        private void OnLockOnPerformed(InputAction.CallbackContext obj)
+        {
+            if (!CanProcessLocalInput()) return;
+            LockOnTriggered = true;
         }
         
         // Update is called once per frame
@@ -98,6 +107,7 @@ namespace Input
             JumpTriggered = false;
             AttackTriggered = false;
             DodgeTriggered = false;
+            LockOnTriggered = false;
         }
 
         private bool CanProcessLocalInput()

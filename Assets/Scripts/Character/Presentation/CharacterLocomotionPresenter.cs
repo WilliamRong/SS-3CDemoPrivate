@@ -29,6 +29,7 @@ namespace Character.Presentation
             Transform presentationRoot,
             CharacterStateId stateId,
             Vector2 worldVelocityXZ,
+            Vector2 moveInput,
             bool isLockOn)
         {
             if (animator == null)
@@ -36,7 +37,7 @@ namespace Character.Presentation
 
             _appliedStateHash = HashNone;
             ApplyState(animator, stateId, useFullCrossFade: true);
-            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, isLockOn);
+            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, moveInput, isLockOn);
         }
 
         public void Tick(
@@ -44,13 +45,14 @@ namespace Character.Presentation
             Transform presentationRoot,
             CharacterStateId stateId,
             Vector2 worldVelocityXZ,
+            Vector2 moveInput,
             bool isLockOn)
         {
             if (animator == null)
                 return;
 
             ApplyState(animator, stateId, useFullCrossFade: false);
-            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, isLockOn);
+            ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, moveInput, isLockOn);
         }
 
         private void ApplyState(Animator animator, CharacterStateId stateId, bool useFullCrossFade)
@@ -104,6 +106,7 @@ namespace Character.Presentation
             Transform presentationRoot,
             CharacterStateId stateId,
             Vector2 worldVelocityXZ,
+            Vector2 moveInput,
             bool isLockOn)
         {
             if (!IsLocomotionDrivingState(stateId))
@@ -116,6 +119,7 @@ namespace Character.Presentation
             Vector2 blendXZ = ComputeAnimatorBlendVelocity(
                 presentationRoot,
                 worldVelocityXZ,
+                moveInput,
                 isLockOn,
                 stateId);
 
@@ -128,14 +132,27 @@ namespace Character.Presentation
             return stateId is CharacterStateId.Idle or CharacterStateId.Move or CharacterStateId.Guard;
         }
 
+        private Vector2 ComputeLockOnBlendInput(Vector2 moveInput)
+        {
+            float epsilon = _config.velocityEpsilon;
+            if (moveInput.sqrMagnitude <= epsilon * epsilon)
+                return Vector2.zero;
+
+            return Vector2.ClampMagnitude(moveInput, 1f);
+        }
+
         private Vector2 ComputeAnimatorBlendVelocity(
             Transform presentationRoot,
             Vector2 worldVelocityXZ,
+            Vector2 moveInput,
             bool isLockOn,
             CharacterStateId stateId)
         {
             if (stateId == CharacterStateId.Idle)
                 return Vector2.zero;
+
+            if (isLockOn)
+                return ComputeLockOnBlendInput(moveInput);
 
             var worldVelocity = new Vector3(worldVelocityXZ.x, 0f, worldVelocityXZ.y);
             float refSpeed = _config.locomotionBlendReferenceSpeed;
@@ -147,23 +164,15 @@ namespace Character.Presentation
             {
                 float mag = worldVelocity.magnitude;
                 if (mag < epsilon)
-                    return new Vector2(0f, _config.runForwardBlendZ);
+                    return new Vector2(0f, runZ);
 
                 float normalized = Mathf.Clamp(mag / refSpeed * runZ, 0f, axisMax);
                 return new Vector2(0f, normalized * _config.freeMoveBlendScale);
             }
 
-            if (isLockOn)
-            {
-                Vector3 localVelocity = presentationRoot.InverseTransformDirection(worldVelocity);
-                return new Vector2(
-                    Mathf.Clamp(localVelocity.x / refSpeed * runZ, -axisMax, axisMax),
-                    Mathf.Clamp(localVelocity.z / refSpeed * runZ, -axisMax, axisMax));
-            }
-
             float forwardSpeed = Vector3.Dot(worldVelocity, presentationRoot.forward);
             if (Mathf.Abs(forwardSpeed) < epsilon)
-                return new Vector2(0f, _config.runForwardBlendZ);
+                return new Vector2(0f, runZ);
 
             float normalizedZ = Mathf.Clamp(
                 forwardSpeed / refSpeed * runZ * _config.freeMoveBlendScale,

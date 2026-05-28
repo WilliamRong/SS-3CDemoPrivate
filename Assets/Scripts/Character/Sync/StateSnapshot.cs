@@ -25,7 +25,16 @@ namespace Character.Sync
         public byte GuardPhase;
         /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. 1-4 = combo, 5 = sprint attack, 6 = dodge attack, 7-9 = heavy attack.</summary>
         public byte AttackComboStep;
-
+        
+        /// <summary>1 = locked on a target; otherwise 0.</summary>
+        public byte LockOnActive;
+        /// <summary>Mirror NetworkIdentity.netId of lock target; 0 when not locked.</summary>
+        public uint LockTargetNetId;
+        /// <summary>Locomotion blend input X while locked (VelocityX).</summary>
+        public float MoveInputX;
+        /// <summary>Locomotion blend input Z while locked (VelocityZ).</summary>
+        public float MoveInputY;
+        
         public StateSnapshot(
             int tick,
             int actorId,
@@ -36,7 +45,11 @@ namespace Character.Sync
             byte sprintPhase = 0,
             byte dodgeMode = 0,
             byte guardPhase = 0,
-            byte attackComboStep = 0)
+            byte attackComboStep = 0,
+            byte lockOnActive = 0,
+            uint lockTargetNetId = 0,
+            float moveInputX = 0f,
+            float moveInputY = 0f)
         {
             Tick = tick;
             ActorId = actorId;
@@ -48,8 +61,16 @@ namespace Character.Sync
             DodgeMode = dodgeMode;
             GuardPhase = guardPhase;
             AttackComboStep = attackComboStep;
+            LockOnActive = lockOnActive;
+            LockTargetNetId = lockTargetNetId;
+            MoveInputX = moveInputX;
+            MoveInputY = moveInputY;
             ArrivalTimeSec = 0f;
         }
+        
+        public bool IsLockOnActive => LockOnActive != 0;
+
+        public Vector2 GetMoveInputOrDefault() => new Vector2(MoveInputX, MoveInputY);
 
         public SprintState.SprintPhase GetSprintPhaseOrDefault()
         {
@@ -141,9 +162,10 @@ namespace Character.Sync
 
         public override string ToString()
         {
-            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, attackCombo={AttackComboStep}, " +
-                   $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), " +
-                   $"yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
+            return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, " +
+                   $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, attackCombo={AttackComboStep}, " +
+                   $"lockOn={LockOnActive}, lockTarget={LockTargetNetId}, moveInput=({MoveInputX:F2},{MoveInputY:F2}), " +
+                   $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
         }
     }
 }
