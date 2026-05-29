@@ -31,6 +31,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 2401825596774786525}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2651735782481282562
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6318992592383005253}
+  m_Layer: 0
+  m_Name: FollowPointTP
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6318992592383005253
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2651735782481282562}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.29, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2401825596774786525}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &3638829530761909756
 GameObject:
   m_ObjectHideFlags: 0
@@ -56,7 +87,8 @@ GameObject:
   - component: {fileID: 7711002200334455666}
   - component: {fileID: -6764813204625197364}
   - component: {fileID: -2686001157926491741}
-  - component: {fileID: 9988776655443322110}
+  - component: {fileID: 9223372036854775807}
+  - component: {fileID: 7711002200334455668}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -79,6 +111,8 @@ Transform:
   m_Children:
   - {fileID: 8428103791361844796}
   - {fileID: 3635202687615855870}
+  - {fileID: 6318992592383005253}
+  - {fileID: 2862486917698189099}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &724524946989506975
@@ -189,6 +223,7 @@ MonoBehaviour:
   _authorityGate: {fileID: 0}
   _actorId: 1
   _networkIdentity: {fileID: 0}
+  _lockOnController: {fileID: 0}
 --- !u!114 &5566778899001122334
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -204,38 +239,12 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
+  _followPointTpName: FollowPointTP
+  _followPointLockOnName: FollowPointLockOn
   _lookAtPointName: LookAtPoint
   _retryIntervalSeconds: 0.2
   _maxRetryCount: 30
   _logBinding: 1
---- !u!114 &9988776655443322110
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3638829530761909756}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b7e4c91a2d8f4e6a9b0c1d2e3f4a5b6c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _freeLookPath: Cameras/TP
-  _lockOnPath: Cameras/LockOn
-  _freeLookPriority: 10
-  _lockOnActivePriority: 20
-  _lockOnInactivePriority: 0
-  _lockDistanceTpMultiplier: 1.2
-  _separationDistanceExtra: 1.5
-  _nearSeparation: 2
-  _farSeparation: 10
-  _bodyDamping: 1.5
-  _bodyYawDamping: 1.2
-  _lockScreenY: 0.6
-  _aimHorizontalDamping: 1.2
-  _aimVerticalDamping: 1.2
-  _aimSoftZoneWidth: 0.55
-  _aimSoftZoneHeight: 0.45
 --- !u!114 &8899001122334455667
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -363,6 +372,8 @@ MonoBehaviour:
   _screenCenterWeight: 2
   _distanceWeight: 0.2
   _priorityWeight: 1
+  _showLockOnDebug: 0
+  _debugScanEveryFrame: 1
 --- !u!114 &-2686001157926491741
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -379,6 +390,67 @@ MonoBehaviour:
   _root: {fileID: 2401825596774786525}
   _lockPriority: 0
   _canBeLocked: 1
+--- !u!114 &9223372036854775807
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7e4c91a2d8f4e6a9b0c1d2e3f4a5b6c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _config: {fileID: 11400000, guid: a1b2c3d4e5f6478990a1b2c3d4e5f709, type: 2}
+--- !u!114 &7711002200334455668
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8c3f1e2b4d6478990ab12cd34ef5678, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _lockOn: {fileID: -6764813204625197364}
+  _reticleSprite: {fileID: 0}
+  _reticleSize: 22
+  _reticleColor: {r: 1, g: 1, b: 1, a: 1}
+  _maxJumpPixels: 120
+--- !u!1 &8125715752719416665
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2862486917698189099}
+  m_Layer: 0
+  m_Name: FollowPointLockOn
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2862486917698189099
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8125715752719416665}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1.05, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2401825596774786525}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &3032580700155682088
 PrefabInstance:
   m_ObjectHideFlags: 0

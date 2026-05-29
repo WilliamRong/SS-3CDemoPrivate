@@ -195,6 +195,7 @@ namespace Character.LockOn
 
             if (_requireCameraForward && _camera != null)
             {
+                // Only used when acquiring a new target; locked targets stay valid when behind the player.
                 var dir = toTarget.normalized;
                 float dot = Vector3.Dot(_camera.transform.forward, dir);
                 if (dot < _cameraForwardDotMin)
@@ -206,7 +207,11 @@ namespace Character.LockOn
 
         private bool IsTargetStillValid(ILockOnTarget target)
         {
-            return IsTargetCandidate(target);
+            if (target == null || !target.CanBeLocked || target.Root == transform)
+                return false;
+
+            var toTarget = target.LockPoint.position - transform.position;
+            return toTarget.sqrMagnitude <= _lockRadius * _lockRadius;
         }
 
         private float ScoreTarget(ILockOnTarget target)

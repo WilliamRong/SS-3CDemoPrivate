@@ -17,6 +17,7 @@ namespace Core
         public CharacterDefinition Player => _catalog.player;
         public CharacterDefinition Npc => _catalog.npc;
         public NetworkSyncConfig NetworkSync => _catalog.networkSync;
+        public PlayerCameraRigConfig PlayerCameraRig => _catalog.playerCameraRig;
 
         private void Awake()
         {

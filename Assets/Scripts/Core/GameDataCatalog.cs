@@ -15,5 +15,8 @@ namespace Core
 
         [Header("Systems")]
         public NetworkSyncConfig networkSync;
+
+        [Header("Camera")]
+        public PlayerCameraRigConfig playerCameraRig;
     }
 }

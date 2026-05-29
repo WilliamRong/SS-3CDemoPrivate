@@ -6,44 +6,26 @@ namespace Core
 {
     /// <summary>
     /// Drives FreeLook / LockOn Cinemachine rigs for the local player.
-    /// Lock-on: camera behind player (Follow), looking at target (LookAt), with damped follow.
+    /// All tunable values live in <see cref="PlayerCameraRigConfig"/>.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PlayerCameraRigController : MonoBehaviour
     {
-        [Header("Scene Paths")]
-        [SerializeField] private string _freeLookPath = "Cameras/TP";
-        [SerializeField] private string _lockOnPath = "Cameras/LockOn";
-
-        [Header("Priority")]
-        [SerializeField] private int _freeLookPriority = 10;
-        [SerializeField] private int _lockOnActivePriority = 20;
-        [SerializeField] private int _lockOnInactivePriority = 0;
-
-        [Header("Lock-On Body (behind player)")]
-        [SerializeField] private float _lockDistanceTpMultiplier = 1.2f;
-        [SerializeField] private float _separationDistanceExtra = 1.5f;
-        [SerializeField] private float _nearSeparation = 2f;
-        [SerializeField] private float _farSeparation = 10f;
-        [SerializeField] private float _bodyDamping = 1.5f;
-        [SerializeField] private float _bodyYawDamping = 1.2f;
-
-        [Header("Lock-On Aim (target on screen)")]
-        [SerializeField] private float _lockScreenY = 0.6f;
-        [SerializeField] private float _aimHorizontalDamping = 1.2f;
-        [SerializeField] private float _aimVerticalDamping = 1.2f;
-        [SerializeField] private float _aimSoftZoneWidth = 0.55f;
-        [SerializeField] private float _aimSoftZoneHeight = 0.45f;
+        [SerializeField] private PlayerCameraRigConfig _config;
 
         private CinemachineFreeLook _freeLook;
         private CinemachineVirtualCamera _lockOnVcam;
         private CinemachineTransposer _lockTransposer;
-        private CinemachineComposer _lockComposer;
+        private CinemachineGroupComposer _lockGroupComposer;
+        private CinemachineTargetGroup _lockTargetGroup;
+        private Transform _lockPivot;
         private ILockOnLocomotionQuery _lockOnQuery;
+        private Transform _playerFollowTp;
+        private Transform _playerFollowLockOn;
         private Transform _playerLookAt;
 
-        private float _tpLockBaseDistance;
-        private float _tpLockFollowHeight;
+        private Quaternion _pivotYaw = Quaternion.identity;
+        private bool _pivotYawInitialized;
         private float _savedXAxisMaxSpeed;
         private float _savedYAxisMaxSpeed;
         private bool _freeLookInputSaved;
@@ -52,16 +34,25 @@ namespace Core
 
         public bool IsInitialized => _initialized;
 
-        public bool TryInitialize(Transform playerLookAt)
+        public bool TryInitialize(Transform playerFollowTp, Transform playerFollowLockOn, Transform playerLookAt)
         {
-            if (playerLookAt == null)
+            if (playerFollowTp == null && playerFollowLockOn == null && playerLookAt == null)
                 return false;
 
-            _playerLookAt = playerLookAt;
+            var config = ResolveConfig();
+            if (config == null)
+            {
+                Debug.LogWarning("[PlayerCameraRigController] Missing PlayerCameraRigConfig.");
+                return false;
+            }
+
+            _playerFollowTp = playerFollowTp ?? playerFollowLockOn ?? playerLookAt;
+            _playerFollowLockOn = playerFollowLockOn ?? playerFollowTp ?? playerLookAt;
+            _playerLookAt = playerLookAt ?? _playerFollowTp;
             _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
 
-            var freeLookGo = FindSceneObject(_freeLookPath);
-            var lockOnGo = FindSceneObject(_lockOnPath);
+            var freeLookGo = FindSceneObject(config.freeLookPath);
+            var lockOnGo = FindSceneObject(config.lockOnPath);
             if (freeLookGo == null || lockOnGo == null)
                 return false;
 
@@ -70,107 +61,105 @@ namespace Core
             if (_freeLook == null || _lockOnVcam == null)
                 return false;
 
-            _lockTransposer = _lockOnVcam.GetCinemachineComponent<CinemachineTransposer>();
-            _lockComposer = _lockOnVcam.GetCinemachineComponent<CinemachineComposer>();
-            if (_lockTransposer == null || _lockComposer == null)
-            {
-                Debug.LogWarning("[PlayerCameraRigController] LockOn vcam needs Transposer + Composer.");
+            if (!EnsureLockOnPipeline())
                 return false;
-            }
 
-            ConfigureLockOnComponents();
+            EnsureLockHelpers();
+            ApplyConfig(config);
 
-            _freeLook.Follow = _playerLookAt;
+            _freeLook.Follow = _playerFollowTp;
             _freeLook.LookAt = _playerLookAt;
-            _freeLook.Priority = _freeLookPriority;
+            _freeLook.Priority = config.freeLookPriority;
 
-            _lockOnVcam.Follow = _playerLookAt;
-            _lockOnVcam.LookAt = null;
-            _lockOnVcam.Priority = _lockOnInactivePriority;
+            _lockOnVcam.Follow = _lockPivot;
+            _lockOnVcam.LookAt = _lockTargetGroup.transform;
+            _lockOnVcam.Priority = config.lockOnInactivePriority;
 
             _wasLockOnActive = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
             if (_wasLockOnActive && _lockOnQuery.CurrentTarget != null)
-                ApplyLockOnState(_lockOnQuery.CurrentTarget);
+                ApplyLockOnState(_lockOnQuery.CurrentTarget, config);
             else
-                ApplyLockOffState();
+                ApplyLockOffState(config);
 
             _initialized = true;
             return true;
         }
 
-        private void ConfigureLockOnComponents()
+        private PlayerCameraRigConfig ResolveConfig()
         {
-            _lockTransposer.m_BindingMode = CinemachineTransposer.BindingMode.LockToTargetWithWorldUp;
-            _lockTransposer.m_XDamping = _bodyDamping;
-            _lockTransposer.m_YDamping = _bodyDamping;
-            _lockTransposer.m_ZDamping = _bodyDamping;
-            _lockTransposer.m_YawDamping = _bodyYawDamping;
-            _lockTransposer.m_PitchDamping = _bodyYawDamping;
+            if (_config != null)
+                return _config;
 
-            _lockComposer.m_ScreenX = 0.5f;
-            _lockComposer.m_ScreenY = _lockScreenY;
-            _lockComposer.m_HorizontalDamping = _aimHorizontalDamping;
-            _lockComposer.m_VerticalDamping = _aimVerticalDamping;
-            _lockComposer.m_SoftZoneWidth = _aimSoftZoneWidth;
-            _lockComposer.m_SoftZoneHeight = _aimSoftZoneHeight;
-            _lockComposer.m_DeadZoneWidth = 0.05f;
-            _lockComposer.m_DeadZoneHeight = 0.04f;
-            _lockComposer.m_CenterOnActivate = false;
-
-            RefreshLockOnFramingFromFreeLook();
+            return GameDataManager.Instance != null
+                ? GameDataManager.Instance.PlayerCameraRig
+                : null;
         }
 
-        private void RefreshLockOnFramingFromFreeLook()
+        private void ApplyConfig(PlayerCameraRigConfig config)
         {
-            if (_freeLook == null)
-                return;
-
-            SampleFreeLookOrbit(out float tpRadius, out float tpHeight, out float rigOffsetY);
-            _tpLockBaseDistance = tpRadius * _lockDistanceTpMultiplier;
-            _tpLockFollowHeight = tpHeight + rigOffsetY;
-            UpdateFollowOffset(_tpLockBaseDistance);
+            config.ApplyToTransposer(_lockTransposer);
+            config.ApplyToGroupComposer(_lockGroupComposer);
         }
 
-        private void SampleFreeLookOrbit(out float radius, out float height, out float rigOffsetY)
+        private bool EnsureLockOnPipeline()
         {
-            radius = 3.25f;
-            height = 0.5f;
-            rigOffsetY = 1.09f;
+            var owner = _lockOnVcam.GetComponentOwner();
+            if (owner == null)
+                return false;
 
-            var orbits = _freeLook.m_Orbits;
-            if (orbits == null || orbits.Length < 3)
-                return;
-
-            float yNorm = Mathf.InverseLerp(
-                _freeLook.m_YAxis.m_MinValue,
-                _freeLook.m_YAxis.m_MaxValue,
-                _freeLook.m_YAxis.Value);
-
-            if (yNorm < 0.5f)
+            foreach (var c in owner.GetComponents<CinemachineComponentBase>())
             {
-                float t = yNorm * 2f;
-                radius = Mathf.Lerp(orbits[2].m_Radius, orbits[1].m_Radius, t);
-                height = Mathf.Lerp(orbits[2].m_Height, orbits[1].m_Height, t);
-            }
-            else
-            {
-                float t = (yNorm - 0.5f) * 2f;
-                radius = Mathf.Lerp(orbits[1].m_Radius, orbits[0].m_Radius, t);
-                height = Mathf.Lerp(orbits[1].m_Height, orbits[0].m_Height, t);
+                if (c is CinemachineTransposer || c is CinemachineGroupComposer)
+                    continue;
+                Destroy(c);
             }
 
-            var middleRig = _freeLook.GetRig(1);
-            if (middleRig == null)
-                return;
+            _lockTransposer = owner.GetComponent<CinemachineTransposer>();
+            if (_lockTransposer == null)
+                _lockTransposer = owner.gameObject.AddComponent<CinemachineTransposer>();
 
-            var orbital = middleRig.GetCinemachineComponent<CinemachineOrbitalTransposer>();
-            if (orbital != null)
-                rigOffsetY = orbital.m_FollowOffset.y;
+            _lockGroupComposer = owner.GetComponent<CinemachineGroupComposer>();
+            if (_lockGroupComposer == null)
+                _lockGroupComposer = owner.gameObject.AddComponent<CinemachineGroupComposer>();
+
+            return true;
+        }
+
+        private void EnsureLockHelpers()
+        {
+            if (_lockPivot == null)
+            {
+                var pivotGo = new GameObject("LockOnPivot");
+                pivotGo.hideFlags = HideFlags.HideAndDontSave;
+                _lockPivot = pivotGo.transform;
+            }
+
+            if (_lockTargetGroup == null)
+            {
+                var groupGo = new GameObject("LockOnTargetGroup");
+                groupGo.hideFlags = HideFlags.HideAndDontSave;
+                _lockTargetGroup = groupGo.AddComponent<CinemachineTargetGroup>();
+                _lockTargetGroup.m_PositionMode = CinemachineTargetGroup.PositionMode.GroupCenter;
+                _lockTargetGroup.m_RotationMode = CinemachineTargetGroup.RotationMode.Manual;
+                _lockTargetGroup.m_UpdateMethod = CinemachineTargetGroup.UpdateMethod.LateUpdate;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_lockPivot != null)
+                Destroy(_lockPivot.gameObject);
+            if (_lockTargetGroup != null)
+                Destroy(_lockTargetGroup.gameObject);
         }
 
         private void LateUpdate()
         {
             if (!_initialized || _lockOnQuery == null)
+                return;
+
+            var config = ResolveConfig();
+            if (config == null)
                 return;
 
             bool active = _lockOnQuery.IsLockOnActive;
@@ -179,54 +168,101 @@ namespace Core
             if (active != _wasLockOnActive)
             {
                 if (active && target != null)
-                    ApplyLockOnState(target);
+                    ApplyLockOnState(target, config);
                 else
-                    ApplyLockOffState();
+                    ApplyLockOffState(config);
 
                 _wasLockOnActive = active;
             }
 
             if (active && target != null)
-                UpdateLockOnDistance(target);
+            {
+                UpdateLockTargetGroup(target, config);
+                UpdateLockPivot(target, config);
+            }
         }
 
-        private void ApplyLockOnState(Transform target)
+        private void ApplyLockOnState(Transform target, PlayerCameraRigConfig config)
         {
-            RefreshLockOnFramingFromFreeLook();
-            _lockOnVcam.Follow = _playerLookAt;
-            _lockOnVcam.LookAt = target;
-            UpdateLockOnDistance(target);
+            ApplyConfig(config);
+            CapturePivotYaw(target);
+            UpdateLockTargetGroup(target, config);
+            UpdateLockPivot(target, config);
             SetFreeLookInputEnabled(false);
-            _lockOnVcam.Priority = _lockOnActivePriority;
+            _lockOnVcam.Priority = config.lockOnActivePriority;
         }
 
-        private void ApplyLockOffState()
+        private void ApplyLockOffState(PlayerCameraRigConfig config)
         {
-            _lockOnVcam.LookAt = null;
-            _lockOnVcam.Priority = _lockOnInactivePriority;
+            ClearLockTargetGroup();
+            _lockOnVcam.Priority = config.lockOnInactivePriority;
             SetFreeLookInputEnabled(true);
         }
 
-        private void UpdateLockOnDistance(Transform target)
+        private void UpdateLockPivot(Transform target, PlayerCameraRigConfig config)
         {
-            var playerPos = _playerLookAt.position;
-            var targetPos = target.position;
-            float separation = Vector2.Distance(
-                new Vector2(playerPos.x, playerPos.z),
-                new Vector2(targetPos.x, targetPos.z));
+            if (_lockPivot == null || _playerFollowLockOn == null)
+                return;
 
-            float maxDistance = _tpLockBaseDistance + _separationDistanceExtra;
-            float distance = Mathf.Lerp(
-                _tpLockBaseDistance,
-                maxDistance,
-                Mathf.InverseLerp(_nearSeparation, _farSeparation, separation));
+            _lockPivot.position = _playerFollowLockOn.position;
 
-            UpdateFollowOffset(distance);
+            var desiredYaw = ComputePivotYaw(target);
+            if (config.pivotYawDamping <= 0f)
+                _pivotYaw = desiredYaw;
+            else
+                _pivotYaw = Quaternion.Slerp(
+                    _pivotYaw,
+                    desiredYaw,
+                    1f - Mathf.Exp(-Time.deltaTime / config.pivotYawDamping));
+
+            _lockPivot.rotation = _pivotYaw;
         }
 
-        private void UpdateFollowOffset(float distance)
+        private void CapturePivotYaw(Transform target)
         {
-            _lockTransposer.m_FollowOffset = new Vector3(0f, _tpLockFollowHeight, -distance);
+            _pivotYaw = ComputePivotYaw(target);
+            _pivotYawInitialized = true;
+        }
+
+        private Quaternion ComputePivotYaw(Transform target)
+        {
+            var toTarget = target.position - _playerFollowLockOn.position;
+            toTarget.y = 0f;
+
+            if (toTarget.sqrMagnitude <= 0.0001f)
+                return _pivotYawInitialized ? _pivotYaw : Quaternion.identity;
+
+            return Quaternion.LookRotation(toTarget.normalized, Vector3.up);
+        }
+
+        private void UpdateLockTargetGroup(Transform target, PlayerCameraRigConfig config)
+        {
+            if (_lockTargetGroup == null || target == null)
+                return;
+
+            _lockTargetGroup.m_Targets = new CinemachineTargetGroup.Target[]
+            {
+                new CinemachineTargetGroup.Target
+                {
+                    target = _playerFollowLockOn,
+                    weight = config.playerFramingWeight,
+                    radius = config.playerFramingRadius
+                },
+                new CinemachineTargetGroup.Target
+                {
+                    target = target,
+                    weight = config.targetFramingWeight,
+                    radius = config.targetFramingRadius
+                }
+            };
+        }
+
+        private void ClearLockTargetGroup()
+        {
+            if (_lockTargetGroup == null)
+                return;
+
+            _lockTargetGroup.m_Targets = System.Array.Empty<CinemachineTargetGroup.Target>();
         }
 
         private void SetFreeLookInputEnabled(bool enabled)
