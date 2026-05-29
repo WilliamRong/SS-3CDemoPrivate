@@ -71,3 +71,12 @@ Thumbs.db
 
 # TextMeshPro backup
 [Aa]ssets/[Tt]ext[Mm]esh [Pp]ro/
+
+# Opsive commercial assets (install locally from Asset Store; do not commit)
+Packages/com.opsive.behaviordesigner/
+Packages/com.opsive.graphdesigner/
+Packages/com.opsive.shared/
+Assets/Opsive/
+Assets/Opsive.meta
+Assets/Samples/Opsive Behavior Designer/
+Assets/Samples/Opsive Behavior Designer.meta
