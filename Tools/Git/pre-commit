@@ -1,0 +1,22 @@
+#!/bin/sh
+# Prevent Opsive commercial assets from being committed.
+
+blocked_patterns='^(Packages/com\.opsive\.|Assets/Opsive(/|$)|Assets/Opsive\.meta$|Assets/Samples/Opsive Behavior Designer(/|$)|Assets/Samples/Opsive Behavior Designer\.meta$)'
+
+blocked_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E "$blocked_patterns" || true)
+if [ -n "$blocked_files" ]; then
+  echo "ERROR: Opsive commercial assets must not be committed:" >&2
+  echo "$blocked_files" >&2
+  echo "Install Behavior Designer Pro locally from the Asset Store instead." >&2
+  exit 1
+fi
+
+if git diff --cached --name-only --diff-filter=ACM | grep -Fx "Packages/packages-lock.json" >/dev/null; then
+  if grep -q 'com\.opsive\.' "Packages/packages-lock.json"; then
+    echo "ERROR: Packages/packages-lock.json still references com.opsive.* packages." >&2
+    echo "Run: powershell -ExecutionPolicy Bypass -File Tools/Git/strip-opsive-lock.ps1" >&2
+    exit 1
+  fi
+fi
+
+exit 0
