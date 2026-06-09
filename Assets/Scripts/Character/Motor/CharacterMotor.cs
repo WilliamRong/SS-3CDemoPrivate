@@ -15,6 +15,7 @@ namespace Character.Motor
         private Vector3 _horizontalVelocityRef;
 
         private ILockOnLocomotionQuery _lockOnQuery;
+        public bool IsLockOnActive => _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
 
         private bool _isSprintActive;
         private bool _movementBlocked;
@@ -73,6 +74,13 @@ namespace Character.Motor
             _isSprintActive = false;
             _dodgeWorldDirection = ctx.WorldMoveDirection;
 
+            // 前翻滚动画是前向播放，需要先把角色转向位移方向
+            if (ctx.Mode == DodgeMode.ForwardAlongMove && ctx.WorldMoveDirection.sqrMagnitude > 0.0001f)
+            {
+                _context.Root.rotation = Quaternion.LookRotation(ctx.WorldMoveDirection);
+            }
+            
+            
             float distance = ctx.Mode == DodgeMode.NeutralBackward
                 ? combat.dodgeBackwardMoveDistance
                 : combat.dodgeEvadeMoveDistance;
@@ -189,17 +197,22 @@ namespace Character.Motor
             if (intent.Move.sqrMagnitude <= 0.0001f)
                 return false;
 
-            Vector3 rootForward = _context.Root.forward;
-            Vector3 rootRight = _context.Root.right;
-            rootForward.y = 0f;
-            rootRight.y = 0f;
-
-            if (rootForward.sqrMagnitude > 0.0001f)
-                rootForward.Normalize();
-            if (rootRight.sqrMagnitude > 0.0001f)
-                rootRight.Normalize();
-
-            inputDir = rootRight * intent.Move.x + rootForward * intent.Move.y;
+            //角色自身局部空间
+            // Vector3 rootForward = _context.Root.forward;
+            // Vector3 rootRight = _context.Root.right;
+            // rootForward.y = 0f;
+            // rootRight.y = 0f;
+            //
+            // if (rootForward.sqrMagnitude > 0.0001f)
+            //     rootForward.Normalize();
+            // if (rootRight.sqrMagnitude > 0.0001f)
+            //     rootRight.Normalize();
+            //
+            // inputDir = rootRight * intent.Move.x + rootForward * intent.Move.y;
+            
+            //相机空间
+            _context.GetCameraBasis(out var camForward, out var camRight);
+            inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
             inputDir.y = 0f;
 
             if (inputDir.sqrMagnitude <= 0.0001f)

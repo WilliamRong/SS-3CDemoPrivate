@@ -325,7 +325,15 @@ namespace Character.Sync
                     out attackComboStep))
                 return;
 
-            if (TryResolveFromServerNpc(out stateId, out velocityXZ))
+            if (TryResolveFromServerNpc(
+                    out stateId,
+                    out velocityXZ,
+                    out moveInput,
+                    out isLockOn,
+                    out lockTargetNetId,
+                    out sprintPhase,
+                    out guardPhase,
+                    out attackComboStep))
                 return;
 
             if (TryResolveFromRemoteSnapshot(
@@ -410,10 +418,24 @@ namespace Character.Sync
             return true;
         }
 
-        private bool TryResolveFromServerNpc(out CharacterStateId stateId, out Vector2 velocityXZ)
+        private bool TryResolveFromServerNpc(
+            out CharacterStateId stateId,
+            out Vector2 velocityXZ,
+            out Vector2 moveInput,
+            out bool isLockOn,
+            out uint lockTargetNetId,
+            out SprintState.SprintPhase sprintPhase,
+            out GuardState.GuardPhase guardPhase,
+            out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
+            moveInput = Vector2.zero;
+            isLockOn = false;
+            lockTargetNetId = 0;
+            sprintPhase = SprintState.SprintPhase.Loop;
+            guardPhase = GuardState.GuardPhase.Start;
+            attackComboStep = 1;
 
             if (_npcDriver == null || _playerController != null)
                 return false;
@@ -426,6 +448,31 @@ namespace Character.Sync
             var agent = _npcMotor != null ? _npcMotor.Agent : null;
             if (agent != null)
                 velocityXZ = new Vector2(agent.velocity.x, agent.velocity.z);
+
+            if (stateId == CharacterStateId.Dodge
+                && _npcDriver.TryGetDodgePresentationContext(out var dodgeCtx)
+                && dodgeCtx.Mode == DodgeMode.LockOn8Way)
+            {
+                velocityXZ = dodgeCtx.BlendLocal;
+            }
+
+            if (stateId == CharacterStateId.Sprint
+                && _npcDriver.TryGetActiveSprintState(out var sprintState))
+            {
+                sprintPhase = sprintState.CurrentPhase;
+            }
+
+            if (stateId == CharacterStateId.Guard
+                && _npcDriver.TryGetActiveGuardState(out var guardState))
+            {
+                guardPhase = guardState.CurrentPhase;
+            }
+
+            if (stateId == CharacterStateId.Attack
+                && _npcDriver.TryGetActiveAttackState(out var attackState))
+            {
+                attackComboStep = attackState.CurrentComboStep;
+            }
 
             return true;
         }

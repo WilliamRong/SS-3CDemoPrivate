@@ -1,5 +1,6 @@
 using AI;
 using Character.Config;
+using Character.Presentation;
 using Character.StateMachine;
 using Core;
 using Mirror;
@@ -15,19 +16,31 @@ namespace Character.Sync
         [SerializeField] private NetTickClock _clock;
         [SerializeField] private MirrorSyncTransport _transport;
         [SerializeField] private NpcCharacterDriver _npcDriver;
+        [SerializeField] private NpcMotor _npcMotor;
 
         private NetworkSyncConfig Sync => GameDataManager.Instance.NetworkSync;
 
         private bool _hasSentAnySnapshot;
         private Vector3 _lastSentPos;
         private float _lastSentYaw;
+        
+        // 事件去重：上一帧逻辑状态（发 ActionEvent）
         private CharacterStateId _lastStateId = CharacterStateId.None;
+        // 快照去重：上次已发送的快照内容
+        private CharacterStateId _lastSentStateId = CharacterStateId.None;
+        private byte _lastSentSprintPhase;
+        private byte _lastSentDodgeMode;
+        private byte _lastSentGuardPhase;
+        private byte _lastSentAttackComboStep;
+        
         private int _nextSeqId = 1;
 
         private void Awake()
         {
             if (_npcDriver == null)
                 _npcDriver = GetComponent<NpcCharacterDriver>();
+            if(_npcMotor == null)
+                _npcMotor = GetComponent<NpcMotor>();
         }
 
         public override void OnStartServer()
@@ -64,21 +77,34 @@ namespace Character.Sync
             Vector3 pos = transform.position;
             float yaw = transform.eulerAngles.y;
 
-            Vector2 velocityXZ = Vector2.zero;
-            if (_hasSentAnySnapshot)
-            {
-                float dt = Mathf.Max(_clock.TickInterval, 0.0001f);
-                Vector3 dp = pos - _lastSentPos;
-                velocityXZ = new Vector2(dp.x / dt, dp.z / dt);
-            }
+            Vector2 velocityXZ = ResolveVelocityXZ();
+            CharacterStateId stateId = ResolveCurrentStateId();
 
+            byte sprintPhase = ResolveSprintPhase(stateId);
+            byte dodgeMode = ResolveDodgeMode(stateId);
+            byte guardPhase = ResolveGuardPhase(stateId);
+            byte attackComboStep = ResolveAttackComboStep(stateId);
+            velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
+            
+            // NPC 当前无锁定：字段置 0；以后有 NpcLockOn 再补
+            byte lockOnActive = 0;
+            uint lockTargetNetId = 0;
+            float moveInputX = 0f;
+            float moveInputY = 0f;
+            
             bool shouldSend = !_hasSentAnySnapshot;
 
             if (!shouldSend)
             {
                 float posDelta = (pos - _lastSentPos).sqrMagnitude;
                 float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
-                shouldSend = posDelta > Sync.minPosDeltaToSend || yawDelta > Sync.minYawDeltaToSend;
+                shouldSend = posDelta >= Sync.minPosDeltaToSend
+                             || yawDelta >= Sync.minYawDeltaToSend
+                             || stateId != _lastSentStateId
+                             || sprintPhase != _lastSentSprintPhase
+                             || dodgeMode != _lastSentDodgeMode
+                             || guardPhase != _lastSentGuardPhase
+                             || attackComboStep != _lastSentAttackComboStep;
             }
 
             if (!shouldSend) return;
@@ -89,7 +115,15 @@ namespace Character.Sync
                 pos,
                 yaw,
                 velocityXZ,
-                ResolveCurrentStateId()
+                stateId,
+                sprintPhase,
+                dodgeMode,
+                guardPhase,
+                attackComboStep,
+                lockOnActive,
+                lockTargetNetId,
+                moveInputX,
+                moveInputY
             );
 
             _transport.BroadcastSnapshotFromServer(snapshot);
@@ -97,28 +131,101 @@ namespace Character.Sync
             _lastSentPos = pos;
             _lastSentYaw = yaw;
             _hasSentAnySnapshot = true;
+            _lastSentStateId = stateId;
+            _lastSentSprintPhase = sprintPhase;
+            _lastSentDodgeMode = dodgeMode;
+            _lastSentGuardPhase = guardPhase;
+            _lastSentAttackComboStep = attackComboStep;
+        }
+        
+
+        private Vector2 ResolveVelocityXZ()
+        {
+            var agent = _npcMotor != null ? _npcMotor.Agent : null;
+            if(agent != null)
+                return new Vector2(agent.velocity.x, agent.velocity.z);
+            
+            if(!_hasSentAnySnapshot)
+                return Vector2.zero;
+            
+            float dt = Mathf.Max(_clock.TickInterval, 0.0001f);
+            Vector3 dp = transform.position - _lastSentPos;
+            return new Vector2(dp.x / dt, dp.z / dt);
+        }
+
+        private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 velocityXZ)
+        {
+            if (stateId != CharacterStateId.Dodge || _npcDriver == null ||
+                !_npcDriver.TryGetDodgePresentationContext(out var ctx))
+            {
+                return velocityXZ;
+            }
+
+            return ctx.Mode == DodgeMode.LockOn8Way ? ctx.BlendLocal : velocityXZ;
+        }
+
+        private byte ResolveSprintPhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Sprint || _npcDriver == null) return 0;
+
+            return _npcDriver.TryGetActiveSprintState(out var sprintState) ? (byte)sprintState.CurrentPhase : (byte)0;
+        }
+
+        private byte ResolveDodgeMode(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Dodge || _npcDriver == null)
+                return 0;
+            if (_npcDriver.TryGetDodgePresentationContext(out var ctx))
+                return (byte)ctx.Mode;
+            return _npcDriver.LastPreparedDodgeMode;
+        }
+
+        private byte ResolveGuardPhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Guard || _npcDriver == null)
+                return 0;
+            return _npcDriver.TryGetActiveGuardState(out var guardState)
+                ? (byte)guardState.CurrentPhase
+                : (byte)0;
+        }
+
+        private byte ResolveAttackComboStep(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Attack || _npcDriver == null)
+                return 0;
+            return _npcDriver.TryGetActiveAttackState(out var attackState)
+                ? attackState.CurrentComboStep
+                : (byte)1;
         }
 
         private void TrySendActionOnStateChange(int tick)
         {
-            CharacterStateId currentStateId = ResolveCurrentStateId();
-            if (currentStateId == _lastStateId) return;
-
-            ActionType actionType = CharacterStateActionMapping.MapStateToActionType(currentStateId);
+            CharacterStateId current = ResolveCurrentStateId();
+            if (current == _lastStateId) return;
+            
+            ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
             if (actionType != ActionType.None)
             {
-                var evt = new ActionEvent(
-                    _nextSeqId,
-                    tick,
-                    (int)netId,
-                    actionType);
+                int param = ResolveActionEventParam(current, actionType);
+                var evt = new ActionEvent(_nextSeqId++, tick, (int)netId, actionType, param);
                 _transport.BroadcastActionFromServer(evt);
-                _nextSeqId++;
             }
 
-            _lastStateId = currentStateId;
+            _lastStateId = current;
         }
 
+        private int ResolveActionEventParam(CharacterStateId stateId, ActionType actionType)
+        {
+            if (actionType == ActionType.DodgeStart) return ResolveDodgeMode(stateId);
+
+            if (actionType == ActionType.Hit && _npcDriver != null && _npcDriver.TryGetActiveHitState(out var hitState))
+            {
+                return hitState.IsHeavyHit ? 1 : 0;
+            }
+
+            return 0;
+        }
+        
         private CharacterStateId ResolveCurrentStateId()
         {
             if (_npcDriver != null)

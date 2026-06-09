@@ -139,6 +139,8 @@ namespace Character.StateMachine.States
             if (previousTimer <= sampleTime && _timer >= sampleTime)
             {
                 _hasSampledDirection = true;
+                //锁定时不改变方向
+                if (_motor.IsLockOnActive) return;
                 _motor.SnapAttackDirection(intent);
             }
         }
