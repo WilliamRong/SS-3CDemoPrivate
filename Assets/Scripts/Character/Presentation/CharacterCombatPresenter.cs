@@ -1,3 +1,4 @@
+using Character.Combat;
 using Character.Config;
 using Character.StateMachine;
 using Character.StateMachine.States;
@@ -110,7 +111,7 @@ namespace Character.Presentation
 
         private void TickAttack(Animator animator, byte comboStep)
         {
-            int targetHash = ComboStepToAttackHash(comboStep);
+            int targetHash = AttackIdToHash(AttackMoveIdExtensions.FromByte(comboStep));
             if (targetHash == 0) return;
             
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
@@ -224,19 +225,19 @@ namespace Character.Presentation
             };
         }
 
-        private static int ComboStepToAttackHash(byte comboStep)
+        private static int AttackIdToHash(AttackMoveId attackId)
         {
-            return comboStep switch
+            return attackId switch
             {
-                1 => AnimatorParams.AttackCombo1,
-                2 => AnimatorParams.AttackCombo2,
-                3 => AnimatorParams.AttackCombo3,
-                4 => AnimatorParams.AttackCombo4,
-                5 => AnimatorParams.AttackSprint,
-                6 => AnimatorParams.AttackDodge,
-                7 => AnimatorParams.AttackHeavy1Start,
-                8 => AnimatorParams.AttackHeavy1,
-                9 => AnimatorParams.AttackHeavy2,
+                AttackMoveId.Combo1 => AnimatorParams.AttackCombo1,
+                AttackMoveId.Combo2 => AnimatorParams.AttackCombo2,
+                AttackMoveId.Combo3 => AnimatorParams.AttackCombo3,
+                AttackMoveId.Combo4 => AnimatorParams.AttackCombo4,
+                AttackMoveId.Sprint => AnimatorParams.AttackSprint,
+                AttackMoveId.Dodge => AnimatorParams.AttackDodge,
+                AttackMoveId.Heavy1Start => AnimatorParams.AttackHeavy1Start,
+                AttackMoveId.Heavy1 => AnimatorParams.AttackHeavy1,
+                AttackMoveId.Heavy2 => AnimatorParams.AttackHeavy2,
                 _ => AnimatorParams.AttackCombo1,
             };
         }

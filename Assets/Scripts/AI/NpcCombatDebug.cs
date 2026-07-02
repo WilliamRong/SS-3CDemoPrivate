@@ -1,6 +1,8 @@
+using Character.Combat;
 using Character.Presentation;
 using Mirror;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace AI
 {
@@ -14,7 +16,8 @@ namespace AI
     {
         [SerializeField] private NpcCharacterDriver _driver;
         [SerializeField] private bool _enableHotkeys = true;
-        [SerializeField] private byte _attackComboStep = 1;
+        [FormerlySerializedAs("_attackComboStep")]
+        [SerializeField] private AttackMoveId _attackId = AttackMoveId.Combo1;
         [SerializeField] private float _guardLoopHoldDuration = 2f;
         [SerializeField] private float _sprintHoldDuration = 1.5f;
 
@@ -48,7 +51,7 @@ namespace AI
         public void TriggerAttack()
         {
             if (!IsServerAuthority()) return;
-            _driver.ServerTryEnterAttack(_attackComboStep);
+            _driver.ServerTryEnterAttack(_attackId);
         }
 
         [ContextMenu("Combat/Dodge Forward")]

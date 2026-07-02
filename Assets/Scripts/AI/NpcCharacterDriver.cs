@@ -1,3 +1,4 @@
+using Character.Combat;
 using Character.Config;
 using Character.Intent;
 using Character.Presentation;
@@ -143,11 +144,16 @@ namespace AI
         
         
         // —— Server 调试入口（验收用，后续可换成 BT Task）——
-        public bool ServerTryEnterAttack(byte comboStep = 1)
+        public bool ServerTryEnterAttack(AttackMoveId attackId = AttackMoveId.Combo1)
         {
             if (!isServer || _attack == null) return false;
-            _attack.Prepare(comboStep);
+            _attack.Prepare(attackId);
             return _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+        }
+
+        public bool ServerTryEnterAttack(byte attackStep)
+        {
+            return ServerTryEnterAttack(AttackMoveIdExtensions.FromByte(attackStep));
         }
         public bool ServerTryEnterDodge(DodgeMode mode, Vector3 worldDir, Vector2 blendLocal = default)
         {

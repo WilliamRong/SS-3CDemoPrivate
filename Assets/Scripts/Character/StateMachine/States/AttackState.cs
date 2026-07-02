@@ -1,4 +1,5 @@
 using Character.Config;
+using Character.Combat;
 using Character.Intent;
 using Character.Motor;
 
@@ -6,26 +7,19 @@ namespace Character.StateMachine.States
 {
     public sealed class AttackState : ICharacterState
     {
-        public const byte Combo1Step = 1;
-        public const byte Combo4Step = 4;
-        public const byte SprintAttackStep = 5;
-        public const byte DodgeAttackStep = 6;
-        public const byte Heavy1StartStep = 7;
-        public const byte Heavy1Step = 8;
-        public const byte Heavy2Step = 9;
-
         private readonly CharacterStateMachine _fsm;
         private readonly CharacterMotor _motor;
         private readonly CharacterStateRegistry _registry;
         private readonly CharacterCombatConfig _combat;
 
         private float _timer;
-        private byte _currentAttackStep = Combo1Step;
-        private byte _preparedAttackStep = Combo1Step;
+        private AttackMoveId _currentAttackId = AttackMoveId.Combo1;
+        private AttackMoveId _preparedAttackId = AttackMoveId.Combo1;
         private bool _hasSampledDirection;
 
         public CharacterStateId Id => CharacterStateId.Attack;
-        public byte CurrentComboStep => _currentAttackStep;
+        public AttackMoveId CurrentAttackId => _currentAttackId;
+        public byte CurrentComboStep => _currentAttackId.ToByte();
 
         public AttackState(
             CharacterStateMachine fsm,
@@ -41,8 +35,8 @@ namespace Character.StateMachine.States
 
         public void Enter()
         {
-            BeginAttack(_preparedAttackStep);
-            _preparedAttackStep = Combo1Step;
+            BeginAttack(_preparedAttackId);
+            _preparedAttackId = AttackMoveId.Combo1;
             _motor.SetSprintActive(false);
         }
 
@@ -58,23 +52,23 @@ namespace Character.StateMachine.States
 
             TrySampleAttackDirection(intent, previousTimer);
 
-            if (_currentAttackStep == Heavy1StartStep && _timer >= CurrentDuration)
+            if (_currentAttackId == AttackMoveId.Heavy1Start && _timer >= CurrentDuration)
             {
-                BeginAttack(Heavy1Step);
+                BeginAttack(AttackMoveId.Heavy1);
                 _motor.Tick(intent, deltaTime);
                 return;
             }
 
             if (intent.IsAttackPressed && CanCancelToNextHeavy())
             {
-                BeginAttack(Heavy2Step);
+                BeginAttack(AttackMoveId.Heavy2);
                 _motor.Tick(intent, deltaTime);
                 return;
             }
 
             if (intent.IsAttackPressed && CanCancelToNextCombo())
             {
-                BeginAttack((byte)(_currentAttackStep + 1));
+                BeginAttack(_currentAttackId.NextCombo());
                 _motor.Tick(intent, deltaTime);
                 return;
             }
@@ -91,37 +85,37 @@ namespace Character.StateMachine.States
         public void Exit()
         {
             _motor.EndAttackRootMotion();
-            _currentAttackStep = Combo1Step;
-            _preparedAttackStep = Combo1Step;
+            _currentAttackId = AttackMoveId.Combo1;
+            _preparedAttackId = AttackMoveId.Combo1;
             _timer = 0f;
             _hasSampledDirection = false;
         }
 
         public void PrepareSprintAttack()
         {
-            _preparedAttackStep = SprintAttackStep;
+            _preparedAttackId = AttackMoveId.Sprint;
         }
 
         public void PrepareDodgeAttack()
         {
-            _preparedAttackStep = DodgeAttackStep;
+            _preparedAttackId = AttackMoveId.Dodge;
         }
 
         public void PrepareHeavyAttack()
         {
-            _preparedAttackStep = Heavy1StartStep;
+            _preparedAttackId = AttackMoveId.Heavy1Start;
         }
 
         public void PrepareComboAttack()
         {
-            _preparedAttackStep = Combo1Step;
+            _preparedAttackId = AttackMoveId.Combo1;
         }
 
-        private float CurrentDuration => _combat.GetAttackDuration(_currentAttackStep);
+        private float CurrentDuration => _combat.GetAttackDuration(_currentAttackId);
 
-        private void BeginAttack(byte attackStep)
+        private void BeginAttack(AttackMoveId attackId)
         {
-            _currentAttackStep = attackStep > Heavy2Step ? Heavy2Step : attackStep;
+            _currentAttackId = attackId.ClampOrDefault();
             _timer = 0f;
             _hasSampledDirection = false;
             _motor.BeginAttackRootMotion();
@@ -129,7 +123,7 @@ namespace Character.StateMachine.States
 
         private void TrySampleAttackDirection(CharacterIntent intent, float previousTimer)
         {
-            if (_currentAttackStep == SprintAttackStep)
+            if (_currentAttackId == AttackMoveId.Sprint)
                 return;
 
             if (_hasSampledDirection)
@@ -147,7 +141,7 @@ namespace Character.StateMachine.States
 
         private bool CanCancelToNextCombo()
         {
-            if (_currentAttackStep < Combo1Step || _currentAttackStep >= Combo4Step)
+            if (!_currentAttackId.CanAdvanceCombo())
                 return false;
 
             return _timer >= CurrentDuration * _combat.attackComboCancelStartRatio;
@@ -155,7 +149,7 @@ namespace Character.StateMachine.States
 
         private bool CanCancelToNextHeavy()
         {
-            if (_currentAttackStep != Heavy1Step)
+            if (_currentAttackId != AttackMoveId.Heavy1)
                 return false;
 
             return _timer >= CurrentDuration * _combat.attackComboCancelStartRatio;

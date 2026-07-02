@@ -9,13 +9,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e1a2b3c4d5e6478990a1b2c3d4e5f602, type: 3}
-  m_Name: DefaultCombat
+  m_Script: {fileID: 11500000, guid: 70d06c97ee824d04a9b54a7f6f6f387d, type: 3}
+  m_Name: DefaultAttackSet
   m_EditorClassIdentifier: 
-  maxHp: 100
-  lightHitDuration: 0.8166667
-  heavyHitDuration: 0.8166667
-  attackDefinitions:
+  entries:
   - step: 1
     value:
       displayName: Attack_Combo1
@@ -120,25 +117,3 @@ MonoBehaviour:
         endNormalized: 0.45
         slot: 1
         damageMultiplier: 1
-  attackSet: {fileID: 0}
-  attackComboCancelStartRatio: 0.55
-  attackDirectionSampleTime: 0.2
-  attackPreHitEnd: 0.1
-  attackActiveEnd: 0.25
-  attackRecoveryEnd: 0.45
-  dodgeDuration: 0.2
-  dodgeInvincibleStart: 0.05
-  dodgeInvincibleEnd: 0.18
-  dodgePreHitEnd: 0.05
-  dodgeActiveEnd: 0.18
-  dodgeRecoveryEnd: 0.25
-  dodgeBackwardDuration: 0.7
-  dodgeEvadeDuration: 0.9
-  dodgeBackwardMoveDurationRatio: 0.5
-  dodgeEvadeMoveDurationRatio: 0.58
-  dodgeBackwardMoveDistance: 3
-  dodgeEvadeMoveDistance: 4
-  dodgeAttackCancelStartRatio: 0.5
-  hitPreHitEnd: 0.1
-  hitActiveEnd: 0.2
-  hitRecoveryEnd: 0.8166667

@@ -25,6 +25,7 @@ GameObject:
   - component: {fileID: 8047551887256629842}
   - component: {fileID: -7918275830378384027}
   - component: {fileID: 8076450636329337052}
+  - component: {fileID: 552117939308328530}
   m_Layer: 0
   m_Name: NPC
   m_TagString: Untagged
@@ -488,6 +489,24 @@ Rigidbody:
   m_Interpolate: 0
   m_Constraints: 0
   m_CollisionDetection: 0
+--- !u!114 &552117939308328530
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e535e8ebf680af4da0bfe1d08d3fada, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _teamId: 2
+  _combatConfig: {fileID: 0}
+  _playerController: {fileID: 0}
+  _npcDriver: {fileID: 4848292120172089545}
+  _networkIdentity: {fileID: 4630831168275000313}
+  _canReceiveHit: 1
 --- !u!1 &4896968938517736490
 GameObject:
   m_ObjectHideFlags: 0
@@ -498,6 +517,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3883784170384835444}
   - component: {fileID: 6571566959354584036}
+  - component: {fileID: 2128599153140017498}
   m_Layer: 7
   m_Name: Hurtbox
   m_TagString: Untagged
@@ -543,6 +563,22 @@ CapsuleCollider:
   m_Height: 1.76
   m_Direction: 1
   m_Center: {x: 0, y: 0.95, z: 0}
+--- !u!114 &2128599153140017498
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4896968938517736490}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b1ce22d0eb127b4f9ac7f9933c70793, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _owner: {fileID: 552117939308328530}
+  _hurtCollider: {fileID: 6571566959354584036}
+  _partName: Body
+  _damageMultiplier: 1
 --- !u!1 &5286053366831448437
 GameObject:
   m_ObjectHideFlags: 0

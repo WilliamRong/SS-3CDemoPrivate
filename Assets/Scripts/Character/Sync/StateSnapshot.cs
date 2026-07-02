@@ -1,3 +1,4 @@
+using Character.Combat;
 using Character.Config;
 using Character.Presentation;
 using Character.StateMachine;
@@ -23,7 +24,7 @@ namespace Character.Sync
         public byte DodgeMode;
         /// <summary>Valid when <see cref="StateId"/> is Guard; otherwise 0. See <see cref="GuardState.GuardPhase"/>.</summary>
         public byte GuardPhase;
-        /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. 1-4 = combo, 5 = sprint attack, 6 = dodge attack, 7-9 = heavy attack.</summary>
+        /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. Encodes <see cref="AttackMoveId"/> as a byte.</summary>
         public byte AttackComboStep;
         
         /// <summary>1 = locked on a target; otherwise 0.</summary>
@@ -110,7 +111,7 @@ namespace Character.Sync
             if (StateId != CharacterStateId.Attack)
                 return 1;
 
-            return AttackComboStep is >= 1 and <= AttackState.Heavy2Step ? AttackComboStep : (byte)1;
+            return AttackMoveIdExtensions.FromByte(AttackComboStep).ToByte();
         }
 
         public StateSnapshot WithDodgeMode(byte dodgeMode)

@@ -1,4 +1,5 @@
 using Character.Config;
+using Character.Combat;
 using Character.Intent;
 using Character.StateMachine;
 using UnityEngine;
@@ -13,9 +14,10 @@ namespace AI
         private readonly CharacterCombatConfig _combatConfig;
 
         private float _timer;
-        private byte _comboStep = 1;
+        private AttackMoveId _attackId = AttackMoveId.Combo1;
         
-        public byte CurrentComboStep => _comboStep;
+        public AttackMoveId CurrentAttackId => _attackId;
+        public byte CurrentComboStep => _attackId.ToByte();
         
         public CharacterStateId Id { get; } = CharacterStateId.Attack;
 
@@ -28,7 +30,9 @@ namespace AI
             _combatConfig = combatConfig;
         }
         
-        public void Prepare(byte comboStep) => _comboStep = comboStep is >= 1 and <= 9 ? comboStep: (byte)1;
+        public void Prepare(byte comboStep) => _attackId = AttackMoveIdExtensions.FromByte(comboStep);
+
+        public void Prepare(AttackMoveId attackId) => _attackId = attackId.ClampOrDefault();
         
         
         public void Enter()
@@ -40,7 +44,7 @@ namespace AI
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _timer += deltaTime;
-            if(_timer < _combatConfig.GetAttackDuration(_comboStep)) return;
+            if(_timer < _combatConfig.GetAttackDuration(_attackId)) return;
 
             _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.Timeout);
         }
@@ -48,7 +52,7 @@ namespace AI
         public void Exit()
         {
             _timer = 0f;
-            _comboStep = 1;
+            _attackId = AttackMoveId.Combo1;
         }
     }
 }

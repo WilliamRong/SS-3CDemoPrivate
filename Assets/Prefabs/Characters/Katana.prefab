@@ -155,6 +155,7 @@ GameObject:
   - component: {fileID: 5911170292180146716}
   - component: {fileID: 7902343363067777323}
   - component: {fileID: 5464069388104196288}
+  - component: {fileID: 3856116516416714584}
   m_Layer: 6
   m_Name: Hitbox
   m_TagString: Untagged
@@ -212,3 +213,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7a684c6ec23188499f4951123ffcded, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &3856116516416714584
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7183762053168405359}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d338e7408dfeac4087d5d43c3668bd6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _owner: {fileID: 0}
+  _shapeCollider: {fileID: 7902343363067777323}
+  _slot: 1
+  _hurtBoxMask:
+    serializedVersion: 2
+    m_Bits: 128
+  _queryTriggerInteraction: 2
