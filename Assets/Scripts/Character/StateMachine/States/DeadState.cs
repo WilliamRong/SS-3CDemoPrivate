@@ -17,6 +17,7 @@ namespace Character.StateMachine.States
         public void Enter()
         {
             _motor.SetSprintActive(false);
+            _motor.BeginReactionRootMotion();
             _motor.SetMovementBlocked(true);
         }
 
@@ -27,6 +28,7 @@ namespace Character.StateMachine.States
 
         public void Exit()
         {
+            _motor.EndReactionRootMotion();
             _motor.SetMovementBlocked(false);
         }
     }

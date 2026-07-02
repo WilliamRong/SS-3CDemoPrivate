@@ -2,11 +2,16 @@ using UnityEngine;
 
 namespace Character.Controller
 {
+    public interface IAnimatorRootMotionReceiver
+    {
+        void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation);
+    }
+
     [RequireComponent(typeof(Animator))]
     public sealed class AnimatorRootMotionRelay : MonoBehaviour
     {
         private Animator _animator;
-        private PlayerController _owner;
+        private IAnimatorRootMotionReceiver _receiver;
 
         private void Awake()
         {
@@ -15,17 +20,22 @@ namespace Character.Controller
 
         public void Initialize(PlayerController owner)
         {
-            _owner = owner;
+            Initialize((IAnimatorRootMotionReceiver)owner);
+        }
+
+        public void Initialize(IAnimatorRootMotionReceiver receiver)
+        {
+            _receiver = receiver;
             if (_animator == null)
                 _animator = GetComponent<Animator>();
         }
 
         private void OnAnimatorMove()
         {
-            if (_owner == null || _animator == null)
+            if (_receiver == null || _animator == null)
                 return;
 
-            _owner.HandleAnimatorRootMotion(_animator.deltaPosition, _animator.deltaRotation);
+            _receiver.HandleAnimatorRootMotion(_animator.deltaPosition, _animator.deltaRotation);
         }
     }
 }

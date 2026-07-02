@@ -21,6 +21,7 @@ namespace Character.Motor
         private bool _movementBlocked;
         private bool _isDodgeActive;
         private bool _attackRootMotionActive;
+        private bool _reactionRootMotionActive;
         private bool _hasPendingAttackRootMotion;
         private Vector3 _pendingAttackDeltaPosition;
         private float _pendingAttackDeltaYaw;
@@ -52,6 +53,12 @@ namespace Character.Motor
             if (_attackRootMotionActive)
             {
                 TickAttackRootMotion(intent, dt);
+                return;
+            }
+
+            if (_reactionRootMotionActive)
+            {
+                TickReactionRootMotion(intent, dt);
                 return;
             }
 
@@ -131,6 +138,7 @@ namespace Character.Motor
             if (_attackRootMotionActive)
                 return;
 
+            _reactionRootMotionActive = false;
             _attackRootMotionActive = true;
             _hasPendingAttackRootMotion = false;
             _pendingAttackDeltaPosition = Vector3.zero;
@@ -148,6 +156,29 @@ namespace Character.Motor
             StopHorizontalMotion();
         }
 
+        public void BeginReactionRootMotion()
+        {
+            if (_reactionRootMotionActive)
+                return;
+
+            _attackRootMotionActive = false;
+            _reactionRootMotionActive = true;
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+            _isSprintActive = false;
+            StopHorizontalMotion();
+        }
+
+        public void EndReactionRootMotion()
+        {
+            _reactionRootMotionActive = false;
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+            StopHorizontalMotion();
+        }
+
         public void SnapAttackDirection(CharacterIntent intent)
         {
             if (!TryGetInputWorldDirection(intent, out var inputDir))
@@ -158,7 +189,7 @@ namespace Character.Motor
 
         public void SetAttackRootMotionDelta(Vector3 deltaPosition, Quaternion deltaRotation)
         {
-            if (!_attackRootMotionActive)
+            if (!_attackRootMotionActive && !_reactionRootMotionActive)
                 return;
 
             _hasPendingAttackRootMotion = true;
@@ -167,6 +198,30 @@ namespace Character.Motor
         }
 
         private void TickAttackRootMotion(CharacterIntent intent, float dt)
+        {
+            Vector3 deltaPosition = _hasPendingAttackRootMotion ? _pendingAttackDeltaPosition : Vector3.zero;
+            float deltaYaw = _hasPendingAttackRootMotion ? _pendingAttackDeltaYaw : 0f;
+
+            _hasPendingAttackRootMotion = false;
+            _pendingAttackDeltaPosition = Vector3.zero;
+            _pendingAttackDeltaYaw = 0f;
+
+            deltaPosition.y = 0f;
+            if (Mathf.Abs(deltaYaw) > 0.0001f)
+                _context.Root.Rotate(0f, deltaYaw, 0f, Space.World);
+
+            float invDt = dt > 0.0001f ? 1f / dt : 0f;
+            var v = _context.Velocity;
+            v.x = deltaPosition.x * invDt;
+            v.z = deltaPosition.z * invDt;
+            _context.Velocity = v;
+
+            TickVertical(intent, dt);
+            var move = new Vector3(deltaPosition.x, _context.Velocity.y * dt, deltaPosition.z);
+            _context.Controller.Move(move);
+        }
+
+        private void TickReactionRootMotion(CharacterIntent intent, float dt)
         {
             Vector3 deltaPosition = _hasPendingAttackRootMotion ? _pendingAttackDeltaPosition : Vector3.zero;
             float deltaYaw = _hasPendingAttackRootMotion ? _pendingAttackDeltaYaw : 0f;

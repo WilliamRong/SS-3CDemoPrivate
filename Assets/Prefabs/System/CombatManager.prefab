@@ -45,6 +45,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _serverAuthoritative: 1
-  _applyDamage: 0
+  _applyDamage: 1
   _logValidHits: 1
   _maxOverlapResults: 32

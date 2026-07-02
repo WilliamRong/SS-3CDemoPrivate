@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Character.Controller
 {
-    public class PlayerController : MonoBehaviour
+    public class PlayerController : MonoBehaviour, IAnimatorRootMotionReceiver
     {
         private InputHandler _inputHandler;
         private PlayerAuthorityGate _authorityGate;
@@ -255,7 +255,11 @@ namespace Character.Controller
             if (!CanProcessLocalInput()) return;
             if (_motor == null) return;
 
-            if (CurrentStateId != CharacterStateId.Attack) return;
+            if (CurrentStateId is not (
+                    CharacterStateId.Attack
+                    or CharacterStateId.Hit
+                    or CharacterStateId.Dead))
+                return;
 
             _motor.SetAttackRootMotionDelta(deltaPosition, deltaRotation);
         }

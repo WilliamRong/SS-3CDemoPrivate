@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Character.Combat;
 using Character.Presentation;
 using Input;
 using UnityEngine;
@@ -13,6 +14,8 @@ namespace Character.LockOn
         [SerializeField] private LayerMask _targetMask = ~0;
         [SerializeField] private bool _requireCameraForward = true;
         [SerializeField] private float _cameraForwardDotMin = -0.1f;
+        [SerializeField] private bool _autoSwitchOnTargetDeath = true;
+        [SerializeField] private bool _autoSwitchRequiresCameraForward;
 
         [Header("Score")]
         [SerializeField] private float _screenCenterWeight = 2f;
@@ -29,6 +32,7 @@ namespace Character.LockOn
 
         private InputHandler _input;
         private Camera _camera;
+        private CombatActor _ownerActor;
         private ILockOnTarget _currentTarget;
 
         public bool IsLockOnActive => _currentTarget != null && _currentTarget.CanBeLocked;
@@ -38,10 +42,17 @@ namespace Character.LockOn
         {
             _input = GetComponent<InputHandler>();
             _camera = Camera.main;
+            _ownerActor = GetComponent<CombatActor>();
         }
 
         private void Update()
         {
+            if (IsOwnerDead())
+            {
+                ClearLockOn();
+                return;
+            }
+
             if (_input != null && _input.LockOnTriggered)
                 ToggleLockOn();
 
@@ -49,7 +60,7 @@ namespace Character.LockOn
                 ClearLockOn();
 
             if (_currentTarget != null && !IsTargetStillValid(_currentTarget))
-                ClearLockOn();
+                HandleInvalidCurrentTarget();
 
             if (_showLockOnDebug && _debugScanEveryFrame)
                 RefreshDebugScan();
@@ -153,6 +164,14 @@ namespace Character.LockOn
 
         private bool TryFindBestTarget(out ILockOnTarget bestTarget)
         {
+            return TryFindBestTarget(null, _requireCameraForward, out bestTarget);
+        }
+
+        private bool TryFindBestTarget(
+            ILockOnTarget excludedTarget,
+            bool requireCameraForward,
+            out ILockOnTarget bestTarget)
+        {
             bestTarget = null;
             float bestScore = float.PositiveInfinity;
             
@@ -169,7 +188,8 @@ namespace Character.LockOn
                 if (hit == null) continue;
 
                 var target = hit.GetComponentInParent<ILockOnTarget>();
-                if (target == null || !IsTargetCandidate(target)) continue;
+                if (target == null || ReferenceEquals(target, excludedTarget)) continue;
+                if (!IsTargetCandidate(target, requireCameraForward)) continue;
 
                 float score = ScoreTarget(target);
                 if (score >= bestScore) continue;
@@ -186,6 +206,11 @@ namespace Character.LockOn
 
         private bool IsTargetCandidate(ILockOnTarget target)
         {
+            return IsTargetCandidate(target, _requireCameraForward);
+        }
+
+        private bool IsTargetCandidate(ILockOnTarget target, bool requireCameraForward)
+        {
             if (target == null || !target.CanBeLocked || target.Root == transform)
                 return false;
 
@@ -193,7 +218,7 @@ namespace Character.LockOn
             if (toTarget.sqrMagnitude > _lockRadius * _lockRadius)
                 return false;
 
-            if (_requireCameraForward && _camera != null)
+            if (requireCameraForward && _camera != null)
             {
                 // Only used when acquiring a new target; locked targets stay valid when behind the player.
                 var dir = toTarget.normalized;
@@ -212,6 +237,26 @@ namespace Character.LockOn
 
             var toTarget = target.LockPoint.position - transform.position;
             return toTarget.sqrMagnitude <= _lockRadius * _lockRadius;
+        }
+
+        private void HandleInvalidCurrentTarget()
+        {
+            var previousTarget = _currentTarget;
+            ClearLockOn();
+
+            if (!_autoSwitchOnTargetDeath || previousTarget == null || !previousTarget.IsDead)
+                return;
+
+            bool requireCameraForward = _autoSwitchRequiresCameraForward && _requireCameraForward;
+            if (TryFindBestTarget(previousTarget, requireCameraForward, out var nextTarget))
+            {
+                _currentTarget = nextTarget;
+            }
+        }
+
+        private bool IsOwnerDead()
+        {
+            return _ownerActor != null && _ownerActor.IsDead;
         }
 
         private float ScoreTarget(ILockOnTarget target)

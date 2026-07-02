@@ -372,6 +372,8 @@ MonoBehaviour:
     m_Bits: 4294967295
   _requireCameraForward: 1
   _cameraForwardDotMin: -0.1
+  _autoSwitchOnTargetDeath: 1
+  _autoSwitchRequiresCameraForward: 0
   _screenCenterWeight: 2
   _distanceWeight: 0.2
   _priorityWeight: 1
@@ -390,6 +392,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _lockPoint: {fileID: 3635202687615855870}
+  _useHumanoidChest: 1
+  _chestOffset: {x: 0, y: 0.05, z: 0}
+  _combatActor: {fileID: 946464254992824523}
   _root: {fileID: 2401825596774786525}
   _lockPriority: 0
   _canBeLocked: 1
@@ -466,6 +471,8 @@ MonoBehaviour:
   _combatConfig: {fileID: 0}
   _playerController: {fileID: 6134410188504937041}
   _npcDriver: {fileID: 0}
+  _remoteActionApplier: {fileID: 7711002200334455663}
+  _remoteInterpolator: {fileID: 7711002200334455662}
   _networkIdentity: {fileID: 4232551613056902401}
   _canReceiveHit: 1
 --- !u!1 &7067791028141538116

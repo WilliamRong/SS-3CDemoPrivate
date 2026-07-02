@@ -1,5 +1,6 @@
 using Character.Combat;
 using Character.Config;
+using Character.Controller;
 using Character.Intent;
 using Character.Presentation;
 using Character.StateMachine;
@@ -10,10 +11,11 @@ using UnityEngine;
 namespace AI
 {
     [RequireComponent(typeof(NetworkIdentity))]
-    public class NpcCharacterDriver : NetworkBehaviour
+    public class NpcCharacterDriver : NetworkBehaviour, IAnimatorRootMotionReceiver
     {
         [SerializeField] private NpcAiIntentSource _intentSource;
         [SerializeField] private NpcMotor _motor;
+        [SerializeField] private Animator _animator;
 
         private CharacterStateMachine _fsm;
         private CharacterStateRegistry _registry;
@@ -39,6 +41,16 @@ namespace AI
         {
             if (_intentSource == null) _intentSource = GetComponent<NpcAiIntentSource>();
             if (_motor == null) _motor = GetComponent<NpcMotor>();
+            if (_animator == null) _animator = GetComponentInChildren<Animator>();
+
+            if (_animator != null)
+            {
+                _animator.applyRootMotion = true;
+                var relay = _animator.GetComponent<AnimatorRootMotionRelay>();
+                if (relay == null)
+                    relay = _animator.gameObject.AddComponent<AnimatorRootMotionRelay>();
+                relay.Initialize(this);
+            }
         }
 
         public override void OnStartServer()
@@ -193,6 +205,20 @@ namespace AI
         {
             if (!isServer) return false;
             return _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.Revive);
+        }
+
+        public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
+        {
+            if (!isServer || _motor == null)
+                return;
+
+            if (CurrentStateId is not (
+                    CharacterStateId.Attack
+                    or CharacterStateId.Hit
+                    or CharacterStateId.Dead))
+                return;
+
+            _motor.ApplyRootMotionDelta(deltaPosition, deltaRotation);
         }
     }
 }

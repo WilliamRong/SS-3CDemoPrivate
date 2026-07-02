@@ -68,5 +68,21 @@ namespace AI
 
             return _agent.velocity.sqrMagnitude < 0.1f;
         }
+
+        public void ApplyRootMotionDelta(Vector3 deltaPosition, Quaternion deltaRotation)
+        {
+            if (!CanControlAgent())
+                return;
+
+            deltaPosition.y = 0f;
+            if (deltaPosition.sqrMagnitude > 0.0000001f)
+                _agent.Move(deltaPosition);
+
+            float deltaYaw = Mathf.DeltaAngle(0f, deltaRotation.eulerAngles.y);
+            if (Mathf.Abs(deltaYaw) > 0.0001f)
+                transform.Rotate(0f, deltaYaw, 0f, Space.World);
+
+            _agent.nextPosition = transform.position;
+        }
     }
 }

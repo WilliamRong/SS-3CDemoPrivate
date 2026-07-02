@@ -7,6 +7,7 @@ namespace Character.LockOn
         Transform LockPoint { get; }
         Transform Root { get; }
         bool CanBeLocked { get; }
+        bool IsDead { get; }
         int LockPriority { get; }
     }
 }

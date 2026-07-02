@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using AI;
 using Character.Config;
 using Character.Controller;
 using Character.StateMachine;
+using Character.Sync;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -24,9 +26,16 @@ namespace Character.Combat
         [SerializeField]
         private NpcCharacterDriver _npcDriver;
         [SerializeField]
+        private RemoteActionApplier _remoteActionApplier;
+        [SerializeField]
+        private RemoteInterpolator _remoteInterpolator;
+        [SerializeField]
         private NetworkIdentity _networkIdentity;
         [SerializeField]
         private bool _canReceiveHit = true;
+
+        [SerializeField, Min(0f)]
+        private float _currentHp = 100f;
 
         private readonly Dictionary<AttackMoveId, AttackDefinition> _fallbackDefinitions  = new();
 
@@ -37,8 +46,16 @@ namespace Character.Combat
         private int _nextAttackInstanceId = 1;
 
         private AttackDefinition _trackedAttackDefinition;
+        private float _maxHp = 100f;
+        private bool _healthInitialized;
 
         public int TeamId => _teamId;
+        public float CurrentHp => _currentHp;
+        public float MaxHp => _maxHp;
+        public float HealthRatio => _maxHp > 0f ? Mathf.Clamp01(_currentHp / _maxHp) : 0f;
+
+        public event Action<float, float> HealthChanged;
+        public event Action<float> DamageTaken;
 
         public int ActorId
         {
@@ -58,14 +75,31 @@ namespace Character.Combat
         {
             get
             {
-                if(_playerController != null)
+                if(_currentHp <= 0f)
                 {
-                    return _playerController.CurrentStateId == CharacterStateId.Dead;
+                    return true;
                 }
 
-                if(_npcDriver != null)
+                if(_playerController != null && _playerController.CurrentStateId == CharacterStateId.Dead)
                 {
-                    return _npcDriver.CurrentStateId == CharacterStateId.Dead;
+                    return true;
+                }
+
+                if(_npcDriver != null && _npcDriver.CurrentStateId == CharacterStateId.Dead)
+                {
+                    return true;
+                }
+
+                if(_remoteInterpolator != null
+                   && _remoteInterpolator.LastAppliedSnapshot.Tick > 0)
+                {
+                    return _remoteInterpolator.LastAppliedSnapshot.StateId == CharacterStateId.Dead;
+                }
+
+                if(_remoteActionApplier != null
+                   && _remoteActionApplier.CurrentRemoteAction == ActionType.Dead)
+                {
+                    return true;
                 }
 
                 return false;
@@ -82,6 +116,13 @@ namespace Character.Combat
         private void Awake()
         {
             EnsureReferences();
+            InitializeHealth(force: true);
+        }
+
+        private void Start()
+        {
+            if (_currentHp > 0f)
+                InitializeHealth(force: false);
         }
 
         private void Update()
@@ -117,10 +158,20 @@ namespace Character.Combat
 
             if(_npcDriver != null)
             {
-                return _npcDriver.ServerTryEnterHit(hit.isHeavyHit);
+                if(!ApplyHealthDamage(hit.damage))
+                    return false;
+
+                if(_currentHp <= 0f)
+                {
+                    _npcDriver.ServerTryEnterDead();
+                    return true;
+                }
+
+                _npcDriver.ServerTryEnterHit(hit.isHeavyHit);
+                return true;
             }
 
-            return false;
+            return ApplyHealthDamage(hit.damage);
         }
 
         private void TickAttackRuntime(float deltaTime)
@@ -220,6 +271,34 @@ namespace Character.Combat
             return GameDataManager.Instance.Player != null ? GameDataManager.Instance.Player.combat : null;
         }
 
+        private void InitializeHealth(bool force)
+        {
+            if (_healthInitialized && !force) return;
+
+            CharacterCombatConfig config = ResolveCombatConfig();
+            _maxHp = Mathf.Max(1f, config != null ? config.maxHp : _maxHp);
+            _currentHp = _maxHp;
+            _healthInitialized = true;
+            HealthChanged?.Invoke(_currentHp, _maxHp);
+        }
+
+        private bool ApplyHealthDamage(float damage)
+        {
+            InitializeHealth(force: false);
+
+            if(_currentHp <= 0f) return false;
+
+            float previousHp = _currentHp;
+            _currentHp = Mathf.Max(0f, _currentHp - Mathf.Max(0f, damage));
+            float appliedDamage = previousHp - _currentHp;
+
+            if(appliedDamage <= 0f) return false;
+
+            DamageTaken?.Invoke(appliedDamage);
+            HealthChanged?.Invoke(_currentHp, _maxHp);
+            return true;
+        }
+
 
         private void EnsureReferences()
         {
@@ -231,6 +310,16 @@ namespace Character.Combat
             if(_npcDriver == null)
             {
                 _npcDriver = GetComponent<NpcCharacterDriver>();
+            }
+
+            if(_remoteActionApplier == null)
+            {
+                _remoteActionApplier = GetComponent<RemoteActionApplier>();
+            }
+
+            if(_remoteInterpolator == null)
+            {
+                _remoteInterpolator = GetComponent<RemoteInterpolator>();
             }
             
             if(_networkIdentity == null)
