@@ -1,6 +1,8 @@
 using Character.Controller;
+using Character.Combat;
 using Character.StateMachine;
 using Character.StateMachine.States;
+using Character.Sync;
 using Mirror;
 using UnityEngine;
 
@@ -13,6 +15,7 @@ namespace Character.Diagnostics
     public sealed class CharacterStateDebugOverlay : MonoBehaviour
     {
         [SerializeField] private PlayerController _player;
+        [SerializeField] private RemoteActionApplier _remoteActionApplier;
 
         [Header("Layout")]
         [Tooltip("x：距屏幕右边缘；y：距屏幕上边缘")]
@@ -27,6 +30,8 @@ namespace Character.Diagnostics
         {
             if (_player == null)
                 _player = GetComponent<PlayerController>();
+            if (_remoteActionApplier == null)
+                _remoteActionApplier = GetComponent<RemoteActionApplier>();
         }
 
         private void Update()
@@ -66,7 +71,7 @@ namespace Character.Diagnostics
             string prevText = FormatState(_previous);
 
             float w = 420f;
-            float h = 96f;
+            float h = 128f;
             float x = Screen.width - w - _screenOffset.x;
             var rect = new Rect(x, _screenOffset.y, w, h);
 
@@ -74,6 +79,7 @@ namespace Character.Diagnostics
             GUILayout.Label($"<b>Current</b>:  {curText}", box);
             GUILayout.Label($"<b>Previous</b>: {prevText}", box);
             GUILayout.Label($"<b>Sprint Phase</b>: {FormatSprintPhase()}", box);
+            GUILayout.Label($"<b>Guard Phase</b>:  {FormatGuardPhase()}", box);
             GUILayout.EndArea();
         }
 
@@ -83,6 +89,35 @@ namespace Character.Diagnostics
                 return sprint.CurrentPhase.ToString();
 
             return "—";
+        }
+
+        private string FormatGuardPhase()
+        {
+            if (_remoteActionApplier != null)
+            {
+                if (_remoteActionApplier.CurrentRemoteAction == ActionType.GuardBreak)
+                    return "GuardBreak";
+
+                if (_remoteActionApplier.CurrentRemoteAction == ActionType.GuardHit)
+                    return FormatGuardReaction(_remoteActionApplier.LastGuardReaction);
+            }
+
+            if (_player.TryGetActiveGuardState(out GuardState guard))
+                return guard.CurrentPhase.ToString();
+
+            return "—";
+        }
+
+        private static string FormatGuardReaction(GuardReactionType reaction)
+        {
+            return reaction switch
+            {
+                GuardReactionType.Hit1 => "GuardHit1",
+                GuardReactionType.Hit2 => "GuardHit2",
+                GuardReactionType.Hit3 => "GuardHit3",
+                GuardReactionType.Break => "GuardBreak",
+                _ => "—",
+            };
         }
 
         private string FormatState(CharacterStateId id)

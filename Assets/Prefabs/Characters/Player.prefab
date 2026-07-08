@@ -467,7 +467,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e535e8ebf680af4da0bfe1d08d3fada, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _teamId: 1
+  _teamId: 0
   _combatConfig: {fileID: 0}
   _playerController: {fileID: 6134410188504937041}
   _npcDriver: {fileID: 0}
@@ -475,6 +475,7 @@ MonoBehaviour:
   _remoteInterpolator: {fileID: 7711002200334455662}
   _networkIdentity: {fileID: 4232551613056902401}
   _canReceiveHit: 1
+  _currentHp: 100
 --- !u!1 &7067791028141538116
 GameObject:
   m_ObjectHideFlags: 0

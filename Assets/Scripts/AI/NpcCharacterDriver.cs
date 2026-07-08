@@ -19,7 +19,7 @@ namespace AI
 
         private CharacterStateMachine _fsm;
         private CharacterStateRegistry _registry;
-        
+
         private NpcIdleState _idle;
         private NpcMoveState _move;
         private NpcSprintState _sprint;
@@ -30,13 +30,13 @@ namespace AI
         private NpcDeadState _dead;
 
         private CharacterCombatConfig combatConfig => GameDataManager.Instance.Npc.combat;
-        
-        
+
+
         public CharacterStateId CurrentStateId => _fsm?.CurrentState?.Id ?? CharacterStateId.None;
 
         public byte LastPreparedDodgeMode { get; private set; }
-        
-        
+
+
         private void Awake()
         {
             if (_intentSource == null) _intentSource = GetComponent<NpcAiIntentSource>();
@@ -93,68 +93,68 @@ namespace AI
 
         public bool TryGetActiveSprintState(out NpcSprintState sprintState)
         {
-            
+
             if (_fsm?.CurrentState is NpcSprintState active)
             {
                 sprintState = active;
                 return true;
             }
-            
+
             sprintState = null;
             return false;
         }
         public bool TryGetActiveGuardState(out NpcGuardState guardState)
         {
-            
+
             if (_fsm?.CurrentState is NpcGuardState active)
             {
                 guardState = active;
                 return true;
             }
-            
+
             guardState = null;
             return false;
         }
         public bool TryGetActiveAttackState(out NpcAttackState attackState)
         {
-            
+
             if (_fsm?.CurrentState is NpcAttackState active)
             {
                 attackState = active;
                 return true;
             }
-            
+
             attackState = null;
             return false;
         }
         public bool TryGetActiveHitState(out NpcHitState hitState)
         {
-            
+
             if (_fsm?.CurrentState is NpcHitState active)
             {
                 hitState = active;
                 return true;
             }
-            
+
             hitState = null;
             return false;
         }
         public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
         {
-            
+
             if (_fsm?.CurrentState is NpcDodgeState dodge && dodge.PresentationContext.IsValid)
             {
                 ctx = dodge.PresentationContext;
                 return true;
             }
-            
+
             ctx = default;
             return false;
         }
         public void SetLastPreparedDodgeMode(byte mode) => LastPreparedDodgeMode = mode;
-        
-        
-        
+
+
+
         // —— Server 调试入口（验收用，后续可换成 BT Task）——
         public bool ServerTryEnterAttack(AttackMoveId attackId = AttackMoveId.Combo1)
         {
@@ -176,9 +176,8 @@ namespace AI
         }
         public bool ServerTryEnterGuard(float loopHoldDuration = 2f)
         {
-            if (!isServer || _guard == null) return false;
-            _guard.Prepare(loopHoldDuration);
-            return _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard);
+            if (!isServer) return false;
+            return ForceEnterGuard(loopHoldDuration);
         }
         public bool ServerTryEnterHit(bool isHeavy = false)
         {
@@ -219,6 +218,14 @@ namespace AI
                 return;
 
             _motor.ApplyRootMotionDelta(deltaPosition, deltaRotation);
+        }
+
+
+        public bool ForceEnterGuard(float loopHoldDuration = 2f)
+        {
+            if(_guard == null || _fsm == null || _registry == null) return false;
+            _guard.Prepare(loopHoldDuration);
+            return _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard) || CurrentStateId == CharacterStateId.Guard;
         }
     }
 }

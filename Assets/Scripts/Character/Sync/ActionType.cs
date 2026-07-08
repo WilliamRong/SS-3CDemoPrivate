@@ -7,7 +7,9 @@ namespace Character.Sync
         DodgeStart = 2,
         Hit = 3,
         Dead = 4,
-        Revive = 5
+        Revive = 5,
+        GuardHit = 6,
+        GuardBreak = 7,
     }
 
     public static class ActionTypeExtensions
@@ -22,6 +24,8 @@ namespace Character.Sync
                 ActionType.Hit => "Hit",
                 ActionType.Dead => "Dead",
                 ActionType.Revive => "Revive",
+                ActionType.GuardHit => "GuardHit",
+                ActionType.GuardBreak => "GuardBreak",
                 _ => $"Unknown({(byte)type})"
             };
         }

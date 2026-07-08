@@ -1,4 +1,5 @@
 using AI;
+using Character.Combat;
 using Character.Config;
 using Character.Controller;
 using Character.LockOn;
@@ -68,6 +69,12 @@ namespace Character.Sync
 
             var frame = BuildPresentationFrame();
 
+            if (TryPresentGuardReaction())
+            {
+                CommitPresentationFrame(frame);
+                return;
+            }
+
             if (TryPresentCombat(frame)
                 || TryPresentGuard(frame)
                 || TryPresentSprint(frame)
@@ -126,11 +133,23 @@ namespace Character.Sync
             ReleaseSprintOverlayIfNeeded(frame);
 
             var dodgeCtx = ResolveDodgePresentationContext(frame.StateId);
+            int actionParams = ResolveActionParams(frame.StateId);
             return _combatPresenter.TickCombat(
                 _animator,
                 frame.StateId,
+                actionParams,
                 dodgeCtx: dodgeCtx,
                 attackComboStep: frame.AttackComboStep);
+        }
+
+        private int ResolveActionParams(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Hit || _remoteActionApplier == null)
+                return 0;
+
+            return _remoteActionApplier.CurrentRemoteAction == ActionType.Hit
+                ? _remoteActionApplier.LastHitParam
+                : 0;
         }
 
         private bool TryPresentGuard(PresentationFrame frame)
@@ -148,6 +167,23 @@ namespace Character.Sync
             bool hasMove = frame.VelocityXZ.sqrMagnitude > 0.01f;
             var phase = ResolveGuardPhase(frame);
             return _combatPresenter.TickGuard(_animator, phase, hasMove);
+        }
+
+        private bool TryPresentGuardReaction()
+        {
+            if (_combatPresenter == null || _animator == null)
+                return false;
+
+            if (_remoteActionApplier != null
+                && _remoteActionApplier.TryConsumeGuardReaction(out var reaction))
+            {
+                CharacterCombatConfig combat = ResolveCombatConfig();
+                float hitDuration = combat != null ? combat.guardHitReactionDuration : 0.28f;
+                float breakDuration = combat != null ? combat.guardBreakReactionDuration : 0.65f;
+                return _combatPresenter.PlayGuardReaction(_animator, reaction, hitDuration, breakDuration);
+            }
+
+            return _combatPresenter.TickGuardReaction(_animator);
         }
 
         private GuardState.GuardPhase ResolveGuardPhase(PresentationFrame frame)

@@ -2589,14 +2589,24 @@ dotnet build Assembly-CSharp.csproj --no-restore
 0 error
 ```
 
+Play Mode 当前已验证：
+
+```text
+玩家攻击 NPC
+  -> NPC 正常扣血
+  -> NPC 正常进入受击
+  -> HP 扣完后 NPC 正常进入 Dead
+  -> NPC 死亡后锁定自动切换到周围其他敌人
+  -> Dead NPC 不可再次锁定
+```
+
 ### 下次继续的入口
 
 优先建议下一步：
 
-1. 进 Unity Play Mode 验证：攻击 NPC -> 扣血 -> 弹伤害数字 -> 血条减少 -> 死亡后自动换锁。
-2. 双端验证：客户端是否无法锁定已死亡 NPC，远端 Dead 是否正确传播到 `CombatActor.IsDead`。
-3. 若死亡后血条仍显示，可决定是否在 `NpcHealthBarView` 中 Dead 后隐藏或淡出。
-4. G0 后续可以继续做 Guard 方向防御、减伤/破防/弹反，以及伤害结果的更完整网络同步。
+1. 双端验证：客户端是否无法锁定已死亡 NPC，远端 Dead 是否正确传播到 `CombatActor.IsDead`。
+2. 若死亡后血条仍显示，可决定是否在 `NpcHealthBarView` 中 Dead 后隐藏或淡出。
+3. G0 后续可以继续做 Guard 方向防御、减伤/破防/弹反，以及伤害结果的更完整网络同步。
 
 > 保存记忆
 

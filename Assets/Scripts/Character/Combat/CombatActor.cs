@@ -4,6 +4,7 @@ using AI;
 using Character.Config;
 using Character.Controller;
 using Character.StateMachine;
+using Character.StateMachine.States;
 using Character.Sync;
 using Core;
 using Mirror;
@@ -37,7 +38,7 @@ namespace Character.Combat
         [SerializeField, Min(0f)]
         private float _currentHp = 100f;
 
-        private readonly Dictionary<AttackMoveId, AttackDefinition> _fallbackDefinitions  = new();
+        private readonly Dictionary<AttackMoveId, AttackDefinition> _fallbackDefinitions = new();
 
         private bool _trackingAttack;
         private AttackMoveId _trackedAttackId;
@@ -54,20 +55,24 @@ namespace Character.Combat
         public float MaxHp => _maxHp;
         public float HealthRatio => _maxHp > 0f ? Mathf.Clamp01(_currentHp / _maxHp) : 0f;
 
+        public GuardReactionType LastGuardReactionType { get; private set; }
+
         public event Action<float, float> HealthChanged;
         public event Action<float> DamageTaken;
+
+        public event Action<HitInfo> HitBlocked;
 
         public int ActorId
         {
             get
             {
-                if(_networkIdentity != null && _networkIdentity.netId != 0)
-                return unchecked((int)_networkIdentity.netId);
+                if (_networkIdentity != null && _networkIdentity.netId != 0)
+                    return unchecked((int)_networkIdentity.netId);
 
                 return GetInstanceID();
             }
         }
-        
+
 
         public bool CanReceiveHit => _canReceiveHit && !IsDead;
 
@@ -75,28 +80,28 @@ namespace Character.Combat
         {
             get
             {
-                if(_currentHp <= 0f)
+                if (_currentHp <= 0f)
                 {
                     return true;
                 }
 
-                if(_playerController != null && _playerController.CurrentStateId == CharacterStateId.Dead)
+                if (_playerController != null && _playerController.CurrentStateId == CharacterStateId.Dead)
                 {
                     return true;
                 }
 
-                if(_npcDriver != null && _npcDriver.CurrentStateId == CharacterStateId.Dead)
+                if (_npcDriver != null && _npcDriver.CurrentStateId == CharacterStateId.Dead)
                 {
                     return true;
                 }
 
-                if(_remoteInterpolator != null
+                if (_remoteInterpolator != null
                    && _remoteInterpolator.LastAppliedSnapshot.Tick > 0)
                 {
                     return _remoteInterpolator.LastAppliedSnapshot.StateId == CharacterStateId.Dead;
                 }
 
-                if(_remoteActionApplier != null
+                if (_remoteActionApplier != null
                    && _remoteActionApplier.CurrentRemoteAction == ActionType.Dead)
                 {
                     return true;
@@ -109,7 +114,7 @@ namespace Character.Combat
         private void Reset()
         {
             EnsureReferences();
-            if(_npcDriver != null) _teamId = 2;
+            if (_npcDriver != null) _teamId = 2;
             else _teamId = 1;
         }
 
@@ -135,7 +140,7 @@ namespace Character.Combat
         {
             attack = default;
 
-            if(!_trackingAttack || _trackedAttackDefinition == null) return false;
+            if (!_trackingAttack || _trackedAttackDefinition == null) return false;
 
             attack = new AttackRuntimeInfo(
                 this,
@@ -149,24 +154,40 @@ namespace Character.Combat
 
         public bool ApplyHit(in HitInfo hit)
         {
-            if(!CanReceiveHit) return false;
-            if(_playerController != null)
+            if (!CanReceiveHit) return false;
+
+            LastGuardReactionType = GuardReactionType.None;
+
+            if (TryResolveGuardBreak(hit, out float guardBreakDamageMultiplier))
+            {
+                ApplyGuardBreak(hit, guardBreakDamageMultiplier);
+                LastGuardReactionType = GuardReactionType.Break;
+                return true;
+            }
+
+            if (TryResolveGuard(hit, out float guardDamageMultiplier))
+            {
+                ApplyBlockedHit(hit, guardDamageMultiplier);
+                HitBlocked?.Invoke(hit);
+                LastGuardReactionType = SelectGuardReaction(hit.attackId, hit.isHeavyHit);
+                return true;
+            }
+
+
+            if (_playerController != null)
             {
                 _playerController.ApplyHit(hit.damage, hit.isHeavyHit);
                 return true;
             }
-
-            if(_npcDriver != null)
+            if (_npcDriver != null)
             {
-                if(!ApplyHealthDamage(hit.damage))
+                if (!ApplyHealthDamage(hit.damage))
                     return false;
-
-                if(_currentHp <= 0f)
+                if (_currentHp <= 0f)
                 {
                     _npcDriver.ServerTryEnterDead();
                     return true;
                 }
-
                 _npcDriver.ServerTryEnterHit(hit.isHeavyHit);
                 return true;
             }
@@ -176,13 +197,13 @@ namespace Character.Combat
 
         private void TickAttackRuntime(float deltaTime)
         {
-            if(!TryReadActiveAttackId(out AttackMoveId attackId))
+            if (!TryReadActiveAttackId(out AttackMoveId attackId))
             {
                 StopTrackingAttack();
                 return;
             }
 
-            if(!_trackingAttack || _trackedAttackId != attackId)
+            if (!_trackingAttack || _trackedAttackId != attackId)
             {
                 BeginTrackingAttack(attackId);
                 return;
@@ -199,7 +220,7 @@ namespace Character.Combat
             _trackedAttackInstanceId = _nextAttackInstanceId++;
             _trackedAttackDefinition = ResolveAttackDefinition(_trackedAttackId);
 
-            if(_nextAttackInstanceId == int.MaxValue)
+            if (_nextAttackInstanceId == int.MaxValue)
             {
                 _nextAttackInstanceId = 1;
             }
@@ -215,15 +236,15 @@ namespace Character.Combat
 
         private bool TryReadActiveAttackId(out AttackMoveId attackId)
         {
-            if(_playerController != null 
-            && _playerController.CurrentStateId == CharacterStateId.Attack 
+            if (_playerController != null
+            && _playerController.CurrentStateId == CharacterStateId.Attack
             && _playerController.TryGetActiveAttackState(out var playerAttack))
             {
                 attackId = playerAttack.CurrentAttackId;
                 return true;
             }
 
-            if(_npcDriver != null 
+            if (_npcDriver != null
             && _npcDriver.CurrentStateId == CharacterStateId.Attack
             && _npcDriver.TryGetActiveAttackState(out var npcAttack))
             {
@@ -231,18 +252,179 @@ namespace Character.Combat
                 return true;
             }
 
+            if (_remoteInterpolator != null)
+            {
+                StateSnapshot snapshot = _remoteInterpolator.LastAppliedSnapshot;
+                if (snapshot.Tick > 0 && snapshot.StateId == CharacterStateId.Attack)
+                {
+                    attackId = AttackMoveIdExtensions.FromByte(snapshot.GetAttackComboStepOrDefault());
+                    return true;
+                }
+            }
+
             attackId = AttackMoveId.None;
             return false;
+        }
+
+
+        private bool TryResolveGuard(in HitInfo hit, out float damageMultiplier)
+        {
+            damageMultiplier = 1f;
+
+            CharacterCombatConfig config = ResolveCombatConfig();
+            if (config == null) return false;
+
+            if (!IsGuardLoopActive()) return false;
+
+            if (hit.isHeavyHit && !config.guardCanBlockHeavy)
+                return false;
+
+            if (!IsHitInsideGuardArc(hit, config.guardBlockAngle))
+                return false;
+
+            damageMultiplier = hit.isHeavyHit ? config.guardHeavyDamageMultiplier : config.guardDamageMultiplier;
+
+            damageMultiplier = Mathf.Clamp01(damageMultiplier);
+
+            return true;
+        }
+
+        private bool TryResolveGuardBreak(in HitInfo hit, out float damageMultiplier)
+        {
+            damageMultiplier = 1f;
+
+            CharacterCombatConfig config = ResolveCombatConfig();
+            if (config == null) return false;
+
+            if (!config.guardBreakOnHeavyHit || !hit.isHeavyHit)
+                return false;
+
+            if (!IsGuardLoopActive())
+                return false;
+
+            if (!IsHitInsideGuardArc(hit, config.guardBlockAngle))
+                return false;
+
+            damageMultiplier = Mathf.Clamp01(config.guardBreakDamageMultiplier);
+            return true;
+        }
+
+        private bool IsGuardLoopActive()
+        {
+            if (_playerController != null && _playerController.TryGetActiveGuardState(out var playerGuard))
+            {
+                return playerGuard.CurrentPhase == GuardState.GuardPhase.Loop;
+            }
+
+            if (_npcDriver != null && _npcDriver.TryGetActiveGuardState(out var npcGuard))
+            {
+                return npcGuard.CurrentPhase == GuardState.GuardPhase.Loop;
+            }
+
+            if (_remoteInterpolator != null)
+            {
+                StateSnapshot snapshot = _remoteInterpolator.LastAppliedSnapshot;
+                return snapshot.Tick > 0 && snapshot.StateId == CharacterStateId.Guard && snapshot.GetGuardPhaseOrDefault() == GuardState.GuardPhase.Loop;
+            }
+
+
+            return false;
+        }
+
+        private bool IsHitInsideGuardArc(in HitInfo hit, float guardBlockAngle)
+        {
+            Vector3 incoming = -hit.hitDirection;
+            incoming.y = 0f;
+            if (incoming.sqrMagnitude <= 0.0001f && hit.attacker != null)
+            {
+                incoming = hit.attacker.transform.position - transform.position;
+                incoming.y = 0f;
+            }
+            if (incoming.sqrMagnitude <= 0.0001f)
+                return true;
+            incoming.Normalize();
+            Vector3 forward = transform.forward;
+            forward.y = 0f;
+            if (forward.sqrMagnitude <= 0.0001f)
+                return false;
+            forward.Normalize();
+            float halfAngle = Mathf.Clamp(guardBlockAngle, 0f, 360f) * 0.5f;
+            float threshold = Mathf.Cos(halfAngle * Mathf.Deg2Rad);
+            float dot = Vector3.Dot(forward, incoming);
+            return dot >= threshold;
+        }
+
+        private void ApplyBlockedHit(in HitInfo hit, float damageMultiplier)
+        {
+            float blockedDamage = Mathf.Max(0f, hit.damage * damageMultiplier);
+            if (blockedDamage <= 0f)
+                return;
+            if (_playerController != null)
+            {
+                _playerController.ApplyGuardDamage(blockedDamage);
+                return;
+            }
+            if (_npcDriver != null)
+            {
+                if (!ApplyHealthDamage(blockedDamage))
+                    return;
+                if (_currentHp <= 0f)
+                    _npcDriver.ServerTryEnterDead();
+                return;
+            }
+            ApplyHealthDamage(blockedDamage);
+        }
+
+        private void ApplyGuardBreak(in HitInfo hit, float damageMultiplier)
+        {
+            float damage = Mathf.Max(0f, hit.damage * damageMultiplier);
+
+            if (_playerController != null)
+            {
+                _playerController.ApplyHit(damage, true);
+                return;
+            }
+
+            if (_npcDriver != null)
+            {
+                if (damage > 0f)
+                    ApplyHealthDamage(damage);
+
+                if (_currentHp <= 0f)
+                {
+                    _npcDriver.ServerTryEnterDead();
+                    return;
+                }
+
+                _npcDriver.ServerTryEnterHit(true);
+                return;
+            }
+
+            ApplyHealthDamage(damage);
+        }
+
+        private static GuardReactionType SelectGuardReaction(AttackMoveId attackId, bool isHeavyHit)
+        {
+            if (isHeavyHit) return GuardReactionType.Hit3;
+
+            return attackId switch
+            {
+                AttackMoveId.Combo1 or AttackMoveId.Combo2 => GuardReactionType.Hit1,
+                AttackMoveId.Combo3 or AttackMoveId.Combo4 => GuardReactionType.Hit2,
+                AttackMoveId.Sprint or AttackMoveId.Dodge => GuardReactionType.Hit2,
+                AttackMoveId.Heavy1Start or AttackMoveId.Heavy1 or AttackMoveId.Heavy2 => GuardReactionType.Hit3,
+                _ => GuardReactionType.Hit1,
+            };
         }
 
         private AttackDefinition ResolveAttackDefinition(AttackMoveId attackId)
         {
             attackId = attackId.ClampOrDefault();
             CharacterCombatConfig config = ResolveCombatConfig();
-            if(config != null && config.TryGetAttackDefinition(attackId, out AttackDefinition definition))
+            if (config != null && config.TryGetAttackDefinition(attackId, out AttackDefinition definition))
                 return definition;
 
-            if(!_fallbackDefinitions.TryGetValue(attackId, out var fallback))
+            if (!_fallbackDefinitions.TryGetValue(attackId, out var fallback))
             {
                 fallback = AttackDefinition.CreateFallback(attackId, ResolveFallbackDuration(attackId));
                 _fallbackDefinitions.Add(attackId, fallback);
@@ -260,11 +442,11 @@ namespace Character.Combat
 
         private CharacterCombatConfig ResolveCombatConfig()
         {
-            if(_combatConfig != null) return _combatConfig;
+            if (_combatConfig != null) return _combatConfig;
 
-            if(GameDataManager.Instance == null) return null;
+            if (GameDataManager.Instance == null) return null;
 
-            if(_npcDriver != null)
+            if (_npcDriver != null)
             {
                 return GameDataManager.Instance.Npc != null ? GameDataManager.Instance.Npc.combat : null;
             }
@@ -286,13 +468,13 @@ namespace Character.Combat
         {
             InitializeHealth(force: false);
 
-            if(_currentHp <= 0f) return false;
+            if (_currentHp <= 0f) return false;
 
             float previousHp = _currentHp;
             _currentHp = Mathf.Max(0f, _currentHp - Mathf.Max(0f, damage));
             float appliedDamage = previousHp - _currentHp;
 
-            if(appliedDamage <= 0f) return false;
+            if (appliedDamage <= 0f) return false;
 
             DamageTaken?.Invoke(appliedDamage);
             HealthChanged?.Invoke(_currentHp, _maxHp);
@@ -302,27 +484,27 @@ namespace Character.Combat
 
         private void EnsureReferences()
         {
-            if(_playerController == null)
+            if (_playerController == null)
             {
                 _playerController = GetComponent<PlayerController>();
             }
 
-            if(_npcDriver == null)
+            if (_npcDriver == null)
             {
                 _npcDriver = GetComponent<NpcCharacterDriver>();
             }
 
-            if(_remoteActionApplier == null)
+            if (_remoteActionApplier == null)
             {
                 _remoteActionApplier = GetComponent<RemoteActionApplier>();
             }
 
-            if(_remoteInterpolator == null)
+            if (_remoteInterpolator == null)
             {
                 _remoteInterpolator = GetComponent<RemoteInterpolator>();
             }
-            
-            if(_networkIdentity == null)
+
+            if (_networkIdentity == null)
             {
                 _networkIdentity = GetComponent<NetworkIdentity>();
             }

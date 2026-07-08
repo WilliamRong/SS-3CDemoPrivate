@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Character.Sync;
 using Mirror;
 using UnityEngine;
 
@@ -14,6 +15,10 @@ namespace Character.Combat
         [SerializeField] private bool _logValidHits = true;
         [SerializeField] private int _maxOverlapResults = 32;
 
+
+        [SerializeField] private MirrorSyncTransport _transport;
+        private int _nextServerCombatSeqId = 100000;
+
         private Collider[] _overlapResults;
         private readonly HashSet<HitKey> _resolvedHits = new();
 
@@ -24,7 +29,7 @@ namespace Character.Combat
 
         private void Update()
         {
-            if(!CanResolve()) return;
+            if (!CanResolve()) return;
 
             ResolveAllActiveHitBoxes();
         }
@@ -36,9 +41,9 @@ namespace Character.Combat
 
         private bool CanResolve()
         {
-            if(!_serverAuthoritative) return true;
+            if (!_serverAuthoritative) return true;
 
-            if(!NetworkClient.active && !NetworkServer.active) return true;
+            if (!NetworkClient.active && !NetworkServer.active) return true;
 
             return NetworkServer.active;
         }
@@ -47,26 +52,26 @@ namespace Character.Combat
         {
             var hitBoxes = CombatHitBox.ActiveHitBoxes;
 
-            for(int i = 0; i < hitBoxes.Count; i++)
+            for (int i = 0; i < hitBoxes.Count; i++)
             {
                 CombatHitBox hitBox = hitBoxes[i];
-                if(hitBox == null || !hitBox.IsConfigured()) continue;
+                if (hitBox == null || !hitBox.IsConfigured()) continue;
 
                 CombatActor attacker = hitBox.Owner;
-                if(attacker == null || !attacker.TryGetCurrentAttack(out var attack)) continue;
+                if (attacker == null || !attacker.TryGetCurrentAttack(out var attack)) continue;
 
                 AttackDefinition definition = attack.definition;
-                if(definition.hitWindows == null) continue;
+                if (definition.hitWindows == null) continue;
 
-                for(int windowIndex = 0; windowIndex < definition.hitWindows.Length; windowIndex++)
+                for (int windowIndex = 0; windowIndex < definition.hitWindows.Length; windowIndex++)
                 {
                     AttackHitWindow window = definition.hitWindows[windowIndex];
 
-                    if(!window.IsValid) continue;
+                    if (!window.IsValid) continue;
 
-                    if(window.slot != hitBox.Slot) continue;
+                    if (window.slot != hitBox.Slot) continue;
 
-                    if(!definition.IsWindowActive(windowIndex, attack.elapsedTime)) continue;
+                    if (!definition.IsWindowActive(windowIndex, attack.elapsedTime)) continue;
 
                     ResolveWindow(hitBox, attack, window, windowIndex);
                 }
@@ -77,14 +82,14 @@ namespace Character.Combat
         {
             int count = hitBox.OverlapHurtBoxesNonAlloc(_overlapResults);
 
-            for(int i = 0; i < count; i++)
+            for (int i = 0; i < count; i++)
             {
                 Collider col = _overlapResults[i];
-                if(col == null) continue;
+                if (col == null) continue;
 
                 CombatHurtBox hurtBox = col.GetComponent<CombatHurtBox>();
-                if(hurtBox == null) hurtBox = col.GetComponentInParent<CombatHurtBox>();
-                if(hurtBox == null || !hurtBox.TryGetOwner(out CombatActor target)) continue;
+                if (hurtBox == null) hurtBox = col.GetComponentInParent<CombatHurtBox>();
+                if (hurtBox == null || !hurtBox.TryGetOwner(out CombatActor target)) continue;
 
                 TryResolveHit(hitBox, hurtBox, target, attack, window, windowIndex);
             }
@@ -94,24 +99,24 @@ namespace Character.Combat
         {
             CombatActor attacker = attack.owner;
 
-            if(attacker == null || target == null) return;
+            if (attacker == null || target == null) return;
 
-            if(attacker == target) return;
+            if (attacker == target) return;
 
-            if(attacker.TeamId != 0 && attacker.TeamId == target.TeamId) return;
+            if (attacker.TeamId != 0 && attacker.TeamId == target.TeamId) return;
 
-            if(!target.CanReceiveHit) return;
+            if (!target.CanReceiveHit) return;
 
-            int hitWindowKey = attack.definition.hitSameTargetOnce ? -1: windowIndex;
+            int hitWindowKey = attack.definition.hitSameTargetOnce ? -1 : windowIndex;
             var key = new HitKey(attacker.ActorId, attack.attackInstanceId, target.ActorId, hitWindowKey);
 
-            if(_resolvedHits.Contains(key)) return;
+            if (_resolvedHits.Contains(key)) return;
 
             _resolvedHits.Add(key);
 
             Vector3 direction = target.transform.position - attacker.transform.position;
             direction.y = 0f;
-            if(direction.sqrMagnitude > 0.0001f) direction.Normalize();
+            if (direction.sqrMagnitude > 0.0001f) direction.Normalize();
             else direction = attacker.transform.forward;
 
             float damage = attack.definition.damage * window.DamageMultiplierOrDefault * hurtBox.DamageMultiplier;
@@ -131,20 +136,70 @@ namespace Character.Combat
                 hitDirection = direction
             };
 
-            if(_logValidHits)
+            if (_logValidHits)
             {
                 Debug.Log($"[CombatResolver] Hit resolved: {attacker.name} -> {target.name} | Damage: {damage} | Window: {windowIndex} | Attack: {attack.attackId} | Instance: {attack.attackInstanceId}");
             }
 
-            if(_applyDamage)
+            if (_applyDamage)
             {
-                target.ApplyHit(hit);
+                bool applied = target.ApplyHit(hit);
+                if (!applied)
+                    return;
+
+                if (target.LastGuardReactionType != GuardReactionType.None)
+                {
+                    BroadcastGuardReaction(target);
+                    return;
+                }
+
+                BroadcastHitReaction(target, hit);
             }
 
 
         }
 
 
+
+        private void BroadcastGuardReaction(CombatActor target)
+        {
+            if (!NetworkServer.active)
+                return;
+            if (_transport == null)
+                _transport = FindFirstObjectByType<MirrorSyncTransport>();
+            if (_transport == null)
+                return;
+            ActionType type = target.LastGuardReactionType == GuardReactionType.Break
+                ? ActionType.GuardBreak
+                : ActionType.GuardHit;
+            var evt = new ActionEvent(
+                _nextServerCombatSeqId++,
+                Time.frameCount,
+                target.ActorId,
+                type,
+                (int)target.LastGuardReactionType);
+            _transport.BroadcastActionFromServer(evt);
+        }
+
+        private void BroadcastHitReaction(CombatActor target, in HitInfo hit)
+        {
+            if (!NetworkServer.active)
+                return;
+            if (_transport == null)
+                _transport = FindFirstObjectByType<MirrorSyncTransport>();
+            if (_transport == null)
+                return;
+
+            ActionType type = target.IsDead ? ActionType.Dead : ActionType.Hit;
+            int param = hit.isHeavyHit ? 1 : 0;
+            var evt = new ActionEvent(
+                _nextServerCombatSeqId++,
+                Time.frameCount,
+                target.ActorId,
+                type,
+                param);
+            _transport.BroadcastActionFromServer(evt);
+        }
 
         private readonly struct HitKey : IEquatable<HitKey>
         {

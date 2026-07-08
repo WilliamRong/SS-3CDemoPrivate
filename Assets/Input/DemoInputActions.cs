@@ -113,17 +113,6 @@ public partial class @DemoInputActions: IInputActionCollection2, IDisposable
                     ""isPartOfComposite"": false
                 },
                 {
-                    ""name"": """",
-                    ""id"": ""ff6fdb36-7e09-4899-8b6f-2e0997b82a51"",
-                    ""path"": ""<Keyboard>/leftCtrl"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": ""PC"",
-                    ""action"": ""Jump"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
                     ""name"": ""2D Vector"",
                     ""id"": ""201e8c4c-ad97-4684-b59e-01630813786d"",
                     ""path"": ""2DVector"",

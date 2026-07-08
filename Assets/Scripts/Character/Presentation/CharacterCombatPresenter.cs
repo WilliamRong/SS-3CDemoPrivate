@@ -16,6 +16,8 @@ namespace Character.Presentation
         private int _lastGuardLayerIndex = -1;
         private GuardState.GuardPhase _lastGuardPhase = GuardState.GuardPhase.None;
         private bool _lastGuardIsFullBody;
+        private float _guardReactionTimer;
+        private GuardReactionType _activeGuardReaction = GuardReactionType.None;
 
         public CharacterCombatPresenter(CharacterPresentationConfig config)
         {
@@ -94,12 +96,57 @@ namespace Character.Presentation
             if (animator == null) return;
             animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            _guardReactionTimer = 0f;
+            _activeGuardReaction = GuardReactionType.None;
             ResetGuardCache();
             if (_lastCombatState == CharacterStateId.Guard)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;
             }
+        }
+
+        public bool PlayGuardReaction(
+            Animator animator,
+            GuardReactionType reaction,
+            float hitDuration,
+            float breakDuration)
+        {
+            if (animator == null || reaction == GuardReactionType.None)
+                return false;
+
+            int targetHash = GuardReactionToHash(reaction);
+            if (targetHash == 0)
+                return false;
+
+            ResetReactionLayers(animator);
+            animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
+
+            _activeGuardReaction = reaction;
+            _guardReactionTimer = reaction == GuardReactionType.Break
+                ? Mathf.Max(0.01f, breakDuration)
+                : Mathf.Max(0.01f, hitDuration);
+            _lastCombatState = CharacterStateId.Guard;
+            _lastHash = targetHash;
+
+            animator.CrossFade(targetHash, _config.guardCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
+            return true;
+        }
+
+        public bool TickGuardReaction(Animator animator)
+        {
+            if (animator == null || _guardReactionTimer <= 0f)
+                return false;
+
+            _guardReactionTimer = Mathf.Max(0f, _guardReactionTimer - Time.deltaTime);
+            animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
+
+            if (_guardReactionTimer <= 0f)
+                _activeGuardReaction = GuardReactionType.None;
+
+            return true;
         }
 
         public void ResetAllCombatLayers(Animator animator)
@@ -132,6 +179,9 @@ namespace Character.Presentation
         public bool TickGuard(Animator animator, GuardState.GuardPhase phase, bool hasMove)
         {
             if (animator == null) return false;
+
+            if (TickGuardReaction(animator))
+                return true;
             
             ResetReactionLayers(animator); 
             animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f); 
@@ -225,6 +275,18 @@ namespace Character.Presentation
             };
         }
 
+        private static int GuardReactionToHash(GuardReactionType reaction)
+        {
+            return reaction switch
+            {
+                GuardReactionType.Hit1 => AnimatorParams.StateGuardHit1,
+                GuardReactionType.Hit2 => AnimatorParams.StateGuardHit2,
+                GuardReactionType.Hit3 => AnimatorParams.StateGuardHit3,
+                GuardReactionType.Break => AnimatorParams.StateGuardBreak,
+                _ => 0,
+            };
+        }
+
         private static int AttackIdToHash(AttackMoveId attackId)
         {
             return attackId switch
@@ -248,6 +310,8 @@ namespace Character.Presentation
             _lastGuardLayerIndex = -1;
             _lastGuardPhase = GuardState.GuardPhase.None;
             _lastGuardIsFullBody = false;
+            _guardReactionTimer = 0f;
+            _activeGuardReaction = GuardReactionType.None;
         }
     }
 }

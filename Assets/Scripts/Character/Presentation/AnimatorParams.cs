@@ -9,7 +9,7 @@ namespace Character.Presentation
     {
         public static readonly int VelocityX = Animator.StringToHash("VelocityX");
         public static readonly int VelocityZ = Animator.StringToHash("VelocityZ");
-        
+
         public const int LocomotionLayerIndex = 0;
         public const int UpperBodyLayerIndex = 1;
         public const int CombatLayerIndex = 2;
@@ -26,11 +26,11 @@ namespace Character.Presentation
         public static readonly int StateSprintLoop = Animator.StringToHash("SprintLoop");
         public static readonly int StateSprintBrake = Animator.StringToHash("SprintBrake");
         public static readonly int StateSprintTurn180 = Animator.StringToHash("SprintTurn180");
-        
+
         //reaction
-        public static readonly int StateHit =  Animator.StringToHash("Hit");
+        public static readonly int StateHit = Animator.StringToHash("Hit");
         public static readonly int StateDeath = Animator.StringToHash("Death");
-        
+
         //dodge
         public static readonly int DodgeInputX = Animator.StringToHash("DodgeInputX");
         public static readonly int DodgeInputZ = Animator.StringToHash("DodgeInputZ");
@@ -38,14 +38,18 @@ namespace Character.Presentation
         public static readonly int StateDodgeBackStep = Animator.StringToHash("BackStep");
         public static readonly int StateDodgeNormal = Animator.StringToHash("NormalDodge");
         public static readonly int StateDodgeDirectional = Animator.StringToHash("DirectionalDodge");
-        
+
         //Guard
         //GuardLoop exists on UpperBody and Combat layers with same state name.
         public static readonly int StateGuardStart = Animator.StringToHash("GuardStart");
-        public static readonly int StateGuardLoop  = Animator.StringToHash("GuardLoop");
-        public static readonly int StateGuardExit  = Animator.StringToHash("GuardExit");
-        
-        
+        public static readonly int StateGuardLoop = Animator.StringToHash("GuardLoop");
+        public static readonly int StateGuardExit = Animator.StringToHash("GuardExit");
+        public static readonly int StateGuardHit1 = Animator.StringToHash("GuardHit1");
+        public static readonly int StateGuardHit2 = Animator.StringToHash("GuardHit2");
+        public static readonly int StateGuardHit3 = Animator.StringToHash("GuardHit3");
+        public static readonly int StateGuardBreak = Animator.StringToHash("GuardBreak");
+
+
         //attack
         public static readonly int AttackCombo1 = Animator.StringToHash("Attack_Combo1");
         public static readonly int AttackCombo2 = Animator.StringToHash("Attack_Combo2");

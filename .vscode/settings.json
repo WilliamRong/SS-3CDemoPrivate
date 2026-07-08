@@ -1,5 +1,4 @@
 {
-    // 文件隐藏规则（这部分你原来是对的，保持不变）
     "files.exclude": {
         "**/.DS_Store": true,
         "**/.git": true,
@@ -57,12 +56,7 @@
         "temp/": true,
         "Temp/": true
     },
-    
-    // C# 项目设置（保持你原来的）
-    "dotnet.defaultSolution": "SS-3CDemoPrivate.sln",
-    
-    // ===== Claude Code 配置（单独写在根级别，不要嵌套在 files.exclude 里）=====
-    // 注意：对于扩展启动前的登录检查，更可靠的是同时在「用户设置」里也配置一次
+    "dotnet.defaultSolution": "SS-3CDemoPrivate.slnx",
     "claudeCode.environmentVariables": [
         {
             "name": "ANTHROPIC_BASE_URL",

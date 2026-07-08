@@ -34,6 +34,16 @@ MonoBehaviour:
   dodgeBackwardMoveDistance: 3
   dodgeEvadeMoveDistance: 4
   dodgeAttackCancelStartRatio: 0.5
+  guardStartDuration: 0.3
+  guardExitDuration: 0.4
+  guardBlockAngle: 220
+  guardDamageMultiplier: 0
+  guardHeavyDamageMultiplier: 0.25
+  guardCanBlockHeavy: 1
+  guardBreakOnHeavyHit: 1
+  guardBreakDamageMultiplier: 1
+  guardHitReactionDuration: 0.28
+  guardBreakReactionDuration: 0.65
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

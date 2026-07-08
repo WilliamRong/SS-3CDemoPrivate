@@ -29,7 +29,7 @@ namespace Character.Controller
         private GuardState _guardState;
         private HitState _hitState;
         private DeadState _deadState;
-        
+
         public Vector2 LastMoveInput { get; private set; }
 
         public CharacterStateId CurrentStateId =>
@@ -56,6 +56,7 @@ namespace Character.Controller
         private CharacterMotor _motor;
         private CharacterLateUpdatePipeline _lateUpdatePipeline;
         private ILockOnLocomotionQuery _lockOnQuery;
+        private float _forcedGuardTimer;
 
         private void Awake()
         {
@@ -78,7 +79,7 @@ namespace Character.Controller
                     relay = _animator.gameObject.AddComponent<AnimatorRootMotionRelay>();
                 relay.Initialize(this);
             }
-            
+
             var def = GameDataManager.Instance.Player;
 
             _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
@@ -137,17 +138,31 @@ namespace Character.Controller
 
         void Update()
         {
-            if (!CanProcessLocalInput()) return;
+            bool canProcessLocalInput = CanProcessLocalInput();
+            if (!canProcessLocalInput && _forcedGuardTimer <= 0f) return;
 
-            var intent = new CharacterIntent
+            TickForcedGuardTimer();
+
+            var intent = new CharacterIntent();
+            if (canProcessLocalInput && _inputHandler != null)
             {
-                Move = _inputHandler.MoveInput,
-                IsSprintHeld = _inputHandler.IsSprinting,
-                IsJumpPressed = _inputHandler.JumpTriggered,
-                IsAttackPressed = _inputHandler.AttackTriggered,
-                IsDodgePressed = _inputHandler.DodgeTriggered,
-                IsGuardHeld = _inputHandler.IsGuardHeld,
-            };
+                intent.Move = _inputHandler.MoveInput;
+                intent.IsSprintHeld = _inputHandler.IsSprinting;
+                intent.IsJumpPressed = _inputHandler.JumpTriggered;
+                intent.IsAttackPressed = _inputHandler.AttackTriggered;
+                intent.IsDodgePressed = _inputHandler.DodgeTriggered;
+                intent.IsGuardHeld = _inputHandler.IsGuardHeld;
+            }
+
+            if (_forcedGuardTimer > 0f)
+            {
+                intent.Move = Vector2.zero;
+                intent.IsSprintHeld = false;
+                intent.IsJumpPressed = false;
+                intent.IsAttackPressed = false;
+                intent.IsDodgePressed = false;
+                intent.IsGuardHeld = true;
+            }
 
             if (_context.IsDead)
             {
@@ -185,7 +200,7 @@ namespace Character.Controller
 
         private void LateUpdate()
         {
-            if (!CanProcessLocalInput())
+            if (!CanProcessLocalInput() && _forcedGuardTimer <= 0f)
                 return;
 
             if (_lateUpdatePipeline == null)
@@ -211,16 +226,47 @@ namespace Character.Controller
             _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
 
+
+        public void ApplyGuardDamage(float damage)
+        {
+            if (_context.IsDead || _context.IsInvincible) return;
+
+            _context.ApplyDamage(damage);
+
+            if (_context.IsDead)
+            {
+                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
+            }
+        }
+
         public void Revive(float hp)
         {
             _context.Revive(hp);
             _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive);
         }
 
+        public bool ForceEnterGuard(float holdDuration)
+        {
+            if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null)
+                return false;
+
+            _forcedGuardTimer = Mathf.Max(_forcedGuardTimer, Mathf.Max(0.1f, holdDuration));
+            return _fsm.TryTransition(CharacterStateId.Guard, _stateRegistry, TransitionReason.InputGuard)
+                || CurrentStateId == CharacterStateId.Guard;
+        }
+
         private bool CanProcessLocalInput()
         {
             if (_authorityGate == null) return true;
             return _authorityGate.CanProcessLocalInput;
+        }
+
+        private void TickForcedGuardTimer()
+        {
+            if (_forcedGuardTimer <= 0f)
+                return;
+
+            _forcedGuardTimer = Mathf.Max(0f, _forcedGuardTimer - Time.deltaTime);
         }
 
         private bool CanPrepareDodgeFromCurrentState()
@@ -237,7 +283,7 @@ namespace Character.Controller
                 or CharacterStateId.Hit
                 or CharacterStateId.Dead;
         }
-        
+
         public bool TryGetActiveGuardState(out GuardState guardState)
         {
             if (_fsm?.CurrentState is GuardState active)

@@ -50,11 +50,31 @@ namespace Character.Config
         [Range(0f, 1f)]
         public float dodgeAttackCancelStartRatio = 0.5f;
 
-        
+
         [Header("Guard State")]
         public float guardStartDuration = 0.3f;
-        public float guardExitDuration  = 0.4f;
-        
+        public float guardExitDuration = 0.4f;
+
+        [Header("Guard Block")]
+        [Range(0, 360f)]
+        public float guardBlockAngle = 220f;
+
+        [Range(0, 1f)]
+        public float guardDamageMultiplier = 0f;
+
+        [Range(0f, 1f)]
+        public float guardHeavyDamageMultiplier = 0.25f;
+
+        public bool guardCanBlockHeavy = true;
+
+
+        [Header("Guard Break")]
+        public bool guardBreakOnHeavyHit = false;
+        [Range(0f, 1f)]
+        public float guardBreakDamageMultiplier = 1f;
+        public float guardHitReactionDuration = 0.28f;
+        public float guardBreakReactionDuration = 0.65f;
+
         [Header("Hit Interrupt Windows")]
         public float hitPreHitEnd = 0.1f;
         public float hitActiveEnd = 0.2f;
@@ -91,7 +111,7 @@ namespace Character.Config
                 ? Mathf.Max(0.01f, definition.duration)
                 : FallbackAttackDuration;
         }
-        
+
         public void GetStateWindows(CharacterStateId stateId, out float preHitEnd, out float activeEnd, out float recoveryEnd)
         {
             switch (stateId)

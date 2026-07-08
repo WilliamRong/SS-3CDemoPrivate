@@ -86,14 +86,14 @@ namespace Character.Sync
         public void BroadcastSnapshotFromServer(StateSnapshot snapshot)
         {
             if (!NetworkServer.active) return;
-            
+
             NetworkServer.SendToAll(ToMsg(snapshot));
         }
 
         public void BroadcastActionFromServer(ActionEvent actionEvent)
         {
             if (!NetworkServer.active) return;
-            
+
             NetworkServer.SendToAll(ToMsg(actionEvent));
         }
 
@@ -124,6 +124,17 @@ namespace Character.Sync
             if (_activeInstance != null && _activeInstance._logRelay)
                 Debug.Log($"[MirrorTransport] RelaySnapshot tick={msg.Tick} from conn={conn.connectionId}");
 
+
+            // Server 本机也要吃一份客户端快照，否则 Server 无法用远端快照判断 Guard/LockOn/Attack 等表现状态。
+            if (_activeInstance != null)
+            {
+                StateSnapshot snapshot = FromMsg(msg);
+                snapshot.ArrivalTimeSec = Time.unscaledTime;
+                _activeInstance.OnSnapshotReceived?.Invoke(snapshot);
+            }
+
+
+
             foreach (KeyValuePair<int, NetworkConnectionToClient> kv in NetworkServer.connections)
             {
                 NetworkConnectionToClient target = kv.Value;
@@ -136,6 +147,12 @@ namespace Character.Sync
         {
             if (_activeInstance != null && _activeInstance._logRelay)
                 Debug.Log($"[MirrorTransport] RelayAction seq={msg.SeqId} from conn={conn.connectionId}");
+
+            if (_activeInstance != null)
+            {
+                ActionEvent evt = FromMsg(msg);
+                _activeInstance.OnActionEventReceived?.Invoke(evt);
+            }
 
             foreach (KeyValuePair<int, NetworkConnectionToClient> kv in NetworkServer.connections)
             {
@@ -200,7 +217,7 @@ namespace Character.Sync
                 m.SprintPhase,
                 m.DodgeMode,
                 m.GuardPhase,
-                m.AttackComboStep,  
+                m.AttackComboStep,
                 m.LockOnActive,
                 m.LockTargetNetId,
                 m.MoveInputX,
