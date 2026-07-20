@@ -137,7 +137,7 @@ namespace Character.StateMachine.States
                 return false;
 
             //4.角度差超过阈值
-            return angleDelta >= GetTurnTriggerAngle();
+            return CharacterTurnPlanner.ShouldTurn(_turnCooldown, angleDelta, _presentationConfig);
         }
 
         private bool IsWaitingForLockOnTurn()
@@ -151,13 +151,12 @@ namespace Character.StateMachine.States
         private void BeginTurn(bool turnLeft, float angleDelta)
         {
             _currentPhase = turnLeft ? IdlePhase.TurnLeft : IdlePhase.TurnRight;
-            _targetTurnAngle = Mathf.Min(angleDelta, GetTurnStepAngle());
-            _turnTargetRotation = CalculateStepTargetRotation(turnLeft, _targetTurnAngle);
+            CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(_motor.Root, turnLeft, angleDelta, _presentationConfig);
+            _targetTurnAngle = plan.StepAngle;
+            _turnTargetRotation = plan.TargetRotation;
             _phaseTimer = 0f;
-            _turnDuration = CalculateTurnDuration(_targetTurnAngle);
-            _turnYawSpeed = _turnDuration > 0.0001f
-                ? _targetTurnAngle / _turnDuration
-                : 0f;
+            _turnDuration = plan.Duration;
+            _turnYawSpeed = plan.YawSpeed;
 
             _motor.SetTurnRotationOverride(true);
             _motor.SetMovementBlocked(true);
@@ -199,7 +198,7 @@ namespace Character.StateMachine.States
             _phaseTimer = 0f;
             _turnDuration = 0f;
             _turnYawSpeed = 0f;
-            _turnCooldown = GetTurnCooldown();
+            _turnCooldown = CharacterTurnPlanner.GetCooldown(_presentationConfig);
             _turnTargetRotation = _motor.Root.rotation;
 
             _motor.SetTurnRotationOverride(false);
@@ -214,20 +213,7 @@ namespace Character.StateMachine.States
 
         private bool IsTurnAligned()
         {
-            return Quaternion.Angle(_motor.Root.rotation, _turnTargetRotation) <= GetTurnAngleTolerance();
-        }
-
-        private float CalculateTurnDuration(float angleDelta)
-        {
-            //根据角度计算播放速度
-            float normalizedAngle = Mathf.Clamp01(angleDelta / GetTurnAnimationAngle());
-
-            //小角度快播，大角度慢播
-            float speed = Mathf.Max(
-                0.01f,
-                Mathf.Lerp(GetTurnSpeedMultiplierMax(), GetTurnSpeedMultiplierMin(), normalizedAngle));
-
-            return Mathf.Max(0.01f, GetIdleTurnDuration()) / speed;
+            return CharacterTurnPlanner.IsAligned(_motor.Root.rotation, _turnTargetRotation, _presentationConfig);
         }
 
         public float GetTargetTurnAngle() => _targetTurnAngle;
@@ -245,61 +231,12 @@ namespace Character.StateMachine.States
             if (lockTarget == null)
                 return false;
 
-            Vector3 toTarget = lockTarget.position - _motor.Root.position;
-            toTarget.y = 0f;
-
-            if (toTarget.sqrMagnitude < 0.01f)
-                return false;
-
-            Vector3 direction = toTarget.normalized;
-            float angle = Vector3.SignedAngle(_motor.Root.forward, direction, Vector3.up);
-            angleDelta = Mathf.Abs(angle);
-            turnLeft = angle < 0f;
-            targetRotation = Quaternion.LookRotation(direction);
-            return true;
+            return CharacterTurnPlanner.TryGetFacingDelta(
+                _motor.Root,
+                lockTarget.position,
+                out turnLeft,
+                out angleDelta,
+                out targetRotation);
         }
-
-        private Quaternion CalculateStepTargetRotation(bool turnLeft, float stepAngle)
-        {
-            float signedStep = turnLeft ? -stepAngle : stepAngle;
-            Vector3 targetForward = Quaternion.AngleAxis(signedStep, Vector3.up) * _motor.Root.forward;
-            targetForward.y = 0f;
-
-            return targetForward.sqrMagnitude > 0.0001f
-                ? Quaternion.LookRotation(targetForward.normalized, Vector3.up)
-                : _motor.Root.rotation;
-        }
-
-        private float GetTurnTriggerAngle() => _presentationConfig != null
-            ? Mathf.Max(1f, _presentationConfig.turnTriggerAngle)
-            : 20f;
-
-        private float GetTurnStepAngle() => _presentationConfig != null
-            ? Mathf.Max(1f, _presentationConfig.turnStepAngle)
-            : 180f;
-
-        private float GetTurnCooldown() => _presentationConfig != null
-            ? Mathf.Max(0f, _presentationConfig.turnCooldown)
-            : 0.2f;
-
-        private float GetTurnAngleTolerance() => _presentationConfig != null
-            ? Mathf.Max(0.1f, _presentationConfig.turnAngleTolerance)
-            : 3f;
-
-        private float GetTurnAnimationAngle() => _presentationConfig != null
-            ? Mathf.Max(1f, _presentationConfig.turnAnimationAngle)
-            : 90f;
-
-        private float GetTurnSpeedMultiplierMax() => _presentationConfig != null
-            ? Mathf.Max(0.01f, _presentationConfig.turnSpeedMultiplierMax)
-            : 1.3f;
-
-        private float GetTurnSpeedMultiplierMin() => _presentationConfig != null
-            ? Mathf.Max(0.01f, _presentationConfig.turnSpeedMultiplierMin)
-            : 0.7f;
-
-        private float GetIdleTurnDuration() => _presentationConfig != null
-            ? _presentationConfig.idleTurnDuration
-            : 0.5f;
     }
 }

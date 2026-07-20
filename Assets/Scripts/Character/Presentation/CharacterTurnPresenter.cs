@@ -34,7 +34,7 @@ namespace Character.Presentation
                 return false;
             }
 
-            float speed = CalculateTurnSpeed(targetAngle);
+            float speed = CharacterTurnPlanner.CalculateSpeed(targetAngle, _config);
             animator.SetFloat(AnimatorParams.TurnSpeed, speed);
 
             if (phase == _lastIdlePhase && targetHash == _lastHash)
@@ -69,7 +69,7 @@ namespace Character.Presentation
             if (targetHash == 0)
                 return false;
 
-            float speed = CalculateTurnSpeed(targetAngle);
+            float speed = CharacterTurnPlanner.CalculateSpeed(targetAngle, _config);
             animator.SetFloat(AnimatorParams.TurnSpeed, speed);
 
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
@@ -96,18 +96,6 @@ namespace Character.Presentation
             _lastIdlePhase = IdleState.IdlePhase.None;
             _lastGuardPhase = GuardState.GuardPhase.None;
             _lastHash = 0;
-        }
-
-        private float CalculateTurnSpeed(float angleDelta)
-        {
-            if (_config == null || _config.turnAnimationAngle <= 0.001f)
-                return 1f;
-
-            float normalized = Mathf.Clamp01(angleDelta / _config.turnAnimationAngle);
-            return Mathf.Lerp(
-                _config.turnSpeedMultiplierMax,
-                _config.turnSpeedMultiplierMin,
-                normalized);
         }
     }
 }
