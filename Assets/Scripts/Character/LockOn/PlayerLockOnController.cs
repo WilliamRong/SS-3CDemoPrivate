@@ -35,8 +35,20 @@ namespace Character.LockOn
         private CombatActor _ownerActor;
         private ILockOnTarget _currentTarget;
 
-        public bool IsLockOnActive => _currentTarget != null && _currentTarget.CanBeLocked;
-        public Transform CurrentTarget => IsLockOnActive ? _currentTarget.LockPoint : null;
+        public bool IsLockOnActive => IsTargetReferenceAlive(_currentTarget)
+            && _currentTarget.CanBeLocked
+            && _currentTarget.LockPoint != null;
+
+        public Transform CurrentTarget
+        {
+            get
+            {
+                if (!IsTargetReferenceAlive(_currentTarget) || !_currentTarget.CanBeLocked)
+                    return null;
+
+                return _currentTarget.LockPoint;
+            }
+        }
 
         private void Awake()
         {
@@ -76,24 +88,25 @@ namespace Character.LockOn
 
             foreach (var target in _debugValidCandidates)
             {
-                if (target?.LockPoint == null) continue;
+                if (!TryGetLockPoint(target, out var lockPoint)) continue;
                 Gizmos.color = Color.green;
-                Gizmos.DrawLine(transform.position, target.LockPoint.position);
-                Gizmos.DrawWireSphere(target.LockPoint.position, 0.25f);
+                Gizmos.DrawLine(transform.position, lockPoint.position);
+                Gizmos.DrawWireSphere(lockPoint.position, 0.25f);
             }
 
             foreach (var target in _debugRejectedCandidates)
             {
-                if (target?.LockPoint == null) continue;
+                if (!TryGetLockPoint(target, out var lockPoint)) continue;
                 Gizmos.color = Color.red;
-                Gizmos.DrawLine(transform.position, target.LockPoint.position);
+                Gizmos.DrawLine(transform.position, lockPoint.position);
             }
 
-            if (IsLockOnActive && CurrentTarget != null)
+            Transform currentTarget = CurrentTarget;
+            if (IsLockOnActive && currentTarget != null)
             {
                 Gizmos.color = Color.cyan;
-                Gizmos.DrawLine(transform.position, CurrentTarget.position);
-                Gizmos.DrawWireSphere(CurrentTarget.position, 0.35f);
+                Gizmos.DrawLine(transform.position, currentTarget.position);
+                Gizmos.DrawWireSphere(currentTarget.position, 0.35f);
             }
         }
 
@@ -148,14 +161,15 @@ namespace Character.LockOn
         {
             lockTargetNetId = 0;
 
-            if (!IsLockOnActive || _currentTarget == null) return false;
+            if (!IsLockOnActive || !IsTargetReferenceAlive(_currentTarget)) return false;
 
             if (_currentTarget is LockOnTarget lockOnTarget)
                 return lockOnTarget.TryGetNetworkId(out lockTargetNetId);
 
-            if (_currentTarget.Root != null)
+            Transform root = _currentTarget.Root;
+            if (root != null)
             {
-                var fallback = _currentTarget.Root.GetComponentInParent<LockOnTarget>();
+                var fallback = root.GetComponentInParent<LockOnTarget>();
                 if (fallback != null) return fallback.TryGetNetworkId(out lockTargetNetId);
             }
 
@@ -211,10 +225,15 @@ namespace Character.LockOn
 
         private bool IsTargetCandidate(ILockOnTarget target, bool requireCameraForward)
         {
-            if (target == null || !target.CanBeLocked || target.Root == transform)
+            if (!IsTargetReferenceAlive(target))
                 return false;
 
-            var toTarget = target.LockPoint.position - transform.position;
+            Transform root = target.Root;
+            Transform lockPoint = target.LockPoint;
+            if (root == null || lockPoint == null || !target.CanBeLocked || root == transform)
+                return false;
+
+            var toTarget = lockPoint.position - transform.position;
             if (toTarget.sqrMagnitude > _lockRadius * _lockRadius)
                 return false;
 
@@ -232,10 +251,15 @@ namespace Character.LockOn
 
         private bool IsTargetStillValid(ILockOnTarget target)
         {
-            if (target == null || !target.CanBeLocked || target.Root == transform)
+            if (!IsTargetReferenceAlive(target))
                 return false;
 
-            var toTarget = target.LockPoint.position - transform.position;
+            Transform root = target.Root;
+            Transform lockPoint = target.LockPoint;
+            if (root == null || lockPoint == null || !target.CanBeLocked || root == transform)
+                return false;
+
+            var toTarget = lockPoint.position - transform.position;
             return toTarget.sqrMagnitude <= _lockRadius * _lockRadius;
         }
 
@@ -244,7 +268,7 @@ namespace Character.LockOn
             var previousTarget = _currentTarget;
             ClearLockOn();
 
-            if (!_autoSwitchOnTargetDeath || previousTarget == null || !previousTarget.IsDead)
+            if (!_autoSwitchOnTargetDeath || !IsTargetReferenceAlive(previousTarget) || !previousTarget.IsDead)
                 return;
 
             bool requireCameraForward = _autoSwitchRequiresCameraForward && _requireCameraForward;
@@ -261,18 +285,40 @@ namespace Character.LockOn
 
         private float ScoreTarget(ILockOnTarget target)
         {
-            float distance = Vector3.Distance(transform.position, target.LockPoint.position);
+            if (!TryGetLockPoint(target, out var lockPoint))
+                return float.PositiveInfinity;
+
+            float distance = Vector3.Distance(transform.position, lockPoint.position);
             float screenCenterDistance = 0f;
 
             if (_camera != null)
             {
-                Vector3 viewport = _camera.WorldToViewportPoint(target.LockPoint.position);
+                Vector3 viewport = _camera.WorldToViewportPoint(lockPoint.position);
                 var viewportDelta = new Vector2(viewport.x - 0.5f, viewport.y - 0.5f);
                 screenCenterDistance = viewportDelta.magnitude;
             }
 
             return screenCenterDistance * _screenCenterWeight + distance * _distanceWeight -
                    target.LockPriority * _priorityWeight;
+        }
+
+        private static bool IsTargetReferenceAlive(ILockOnTarget target)
+        {
+            if (target == null)
+                return false;
+
+            return target is not UnityEngine.Object unityObject || unityObject != null;
+        }
+
+        private static bool TryGetLockPoint(ILockOnTarget target, out Transform lockPoint)
+        {
+            lockPoint = null;
+
+            if (!IsTargetReferenceAlive(target))
+                return false;
+
+            lockPoint = target.LockPoint;
+            return lockPoint != null;
         }
     }
 }

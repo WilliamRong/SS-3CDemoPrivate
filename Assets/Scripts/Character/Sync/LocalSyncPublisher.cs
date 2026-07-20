@@ -42,6 +42,7 @@ namespace Character.Sync
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
         private byte _lastSentGuardPhase;
+        private byte _lastSentIdlePhase;
         private byte _lastSentAttackComboStep;
 
         private void Awake()
@@ -90,6 +91,7 @@ namespace Character.Sync
             byte sprintPhase = ResolveSprintPhase(stateId);
             byte dodgeMode = ResolveDodgeMode(stateId);
             byte guardPhase = ResolveGuardPhase(stateId);
+            byte idlePhase = ResolveIdlePhase(stateId);
             byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
@@ -106,6 +108,7 @@ namespace Character.Sync
                     || sprintPhase != _lastSentSprintPhase
                     || dodgeMode != _lastSentDodgeMode
                     || guardPhase != _lastSentGuardPhase
+                    || idlePhase != _lastSentIdlePhase
                     || attackComboStep != _lastSentAttackComboStep
                     || lockOnActive != _lastSentLockOnActive
                     || lockTargetNetId != _lastSentLockTargetNetId
@@ -125,6 +128,7 @@ namespace Character.Sync
                 sprintPhase,
                 dodgeMode,
                 guardPhase,
+                idlePhase,
                 attackComboStep,
                 lockOnActive,
                 lockTargetNetId,
@@ -141,6 +145,7 @@ namespace Character.Sync
             _lastSentSprintPhase = sprintPhase;
             _lastSentDodgeMode = dodgeMode;
             _lastSentGuardPhase = guardPhase;
+            _lastSentIdlePhase = idlePhase;
             _lastSentAttackComboStep = attackComboStep;
             _lastSentLockOnActive = lockOnActive;
             _lastSentLockTargetNetId = lockTargetNetId;
@@ -199,6 +204,16 @@ namespace Character.Sync
 
             return _playerController.TryGetActiveGuardState(out var guardState)
                 ? (byte)guardState.CurrentPhase
+                : (byte)0;
+        }
+
+        private byte ResolveIdlePhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Idle || _playerController == null)
+                return 0;
+
+            return _playerController.TryGetActiveIdleState(out var idleState)
+                ? (byte)idleState.CurrentPhase
                 : (byte)0;
         }
 

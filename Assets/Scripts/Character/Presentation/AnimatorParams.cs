@@ -21,6 +21,10 @@ namespace Character.Presentation
         public static readonly int StateLocomotion = Animator.StringToHash("Locomotion");
         public static readonly int StateGuardWalk = Animator.StringToHash("GuardWalk");
 
+        public static readonly int StateIdleTurnLeft = Animator.StringToHash("IdleTurnLeft");
+        public static readonly int StateIdleTurnRight = Animator.StringToHash("IdleTurnRight");
+        public static readonly int TurnSpeed = Animator.StringToHash("TurnSpeed");
+
         //sprint
         public static readonly int StateSprintStart = Animator.StringToHash("SprintStart");
         public static readonly int StateSprintLoop = Animator.StringToHash("SprintLoop");
@@ -48,6 +52,9 @@ namespace Character.Presentation
         public static readonly int StateGuardHit2 = Animator.StringToHash("GuardHit2");
         public static readonly int StateGuardHit3 = Animator.StringToHash("GuardHit3");
         public static readonly int StateGuardBreak = Animator.StringToHash("GuardBreak");
+        
+        public static readonly int StateGuardTurnLeft = Animator.StringToHash("GuardTurnLeft");
+        public static readonly int StateGuardTurnRight = Animator.StringToHash("GuardTurnRight");
 
 
         //attack

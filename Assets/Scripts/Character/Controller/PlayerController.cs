@@ -92,13 +92,13 @@ namespace Character.Controller
 
             _fsm = new CharacterStateMachine(def.combat);
             _stateRegistry = new CharacterStateRegistry();
-            _idleState = new IdleState(_fsm, _motor, _stateRegistry);
+            _idleState = new IdleState(_fsm, _motor, _stateRegistry, def.presentation, _lockOnQuery);
             _moveState = new MoveState(_fsm, _motor, _stateRegistry);
             _sprintState = new SprintState(_fsm, _motor, _context, _stateRegistry, def.sprint);
 
             _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
             _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
-            _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat);
+            _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat, def.presentation, _lockOnQuery);
             _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
 
@@ -255,6 +255,18 @@ namespace Character.Controller
                 || CurrentStateId == CharacterStateId.Guard;
         }
 
+        public bool ForceExitGuardToIdle()
+        {
+            if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null)
+                return false;
+
+            _forcedGuardTimer = 0f;
+            if (CurrentStateId != CharacterStateId.Guard)
+                return false;
+
+            return _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Timeout);
+        }
+
         private bool CanProcessLocalInput()
         {
             if (_authorityGate == null) return true;
@@ -293,6 +305,18 @@ namespace Character.Controller
             }
 
             guardState = null;
+            return false;
+        }
+
+        public bool TryGetActiveIdleState(out IdleState idleState)
+        {
+            if(_fsm?.CurrentState is IdleState active)
+            {
+                idleState = active;
+                return true;
+            }
+
+            idleState = null;
             return false;
         }
 

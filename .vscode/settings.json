@@ -71,5 +71,6 @@
             "value": "sk-5ee1f2e2c969fe64e7c7eea57c3bf933dc95a0b513886e87cff9f9e05cb45c81"
         }
     ],
-    "claudeCode.disableLoginPrompt": true
+    "claudeCode.disableLoginPrompt": true,
+    "dotnet.preferCSharpExtension": true
 }

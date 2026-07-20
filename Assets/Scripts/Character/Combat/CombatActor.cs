@@ -313,22 +313,31 @@ namespace Character.Combat
         {
             if (_playerController != null && _playerController.TryGetActiveGuardState(out var playerGuard))
             {
-                return playerGuard.CurrentPhase == GuardState.GuardPhase.Loop;
+                return IsBlockingGuardPhase(playerGuard.CurrentPhase);
             }
 
             if (_npcDriver != null && _npcDriver.TryGetActiveGuardState(out var npcGuard))
             {
-                return npcGuard.CurrentPhase == GuardState.GuardPhase.Loop;
+                return IsBlockingGuardPhase(npcGuard.CurrentPhase);
             }
 
             if (_remoteInterpolator != null)
             {
                 StateSnapshot snapshot = _remoteInterpolator.LastAppliedSnapshot;
-                return snapshot.Tick > 0 && snapshot.StateId == CharacterStateId.Guard && snapshot.GetGuardPhaseOrDefault() == GuardState.GuardPhase.Loop;
+                return snapshot.Tick > 0
+                    && snapshot.StateId == CharacterStateId.Guard
+                    && IsBlockingGuardPhase(snapshot.GetGuardPhaseOrDefault());
             }
 
 
             return false;
+        }
+
+        private static bool IsBlockingGuardPhase(GuardState.GuardPhase phase)
+        {
+            return phase is GuardState.GuardPhase.Loop
+                or GuardState.GuardPhase.TurnLeft
+                or GuardState.GuardPhase.TurnRight;
         }
 
         private bool IsHitInsideGuardArc(in HitInfo hit, float guardBlockAngle)

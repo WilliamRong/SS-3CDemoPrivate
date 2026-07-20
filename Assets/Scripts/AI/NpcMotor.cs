@@ -11,6 +11,8 @@ namespace AI
 
         public NavMeshAgent Agent => _agent;
 
+        public Transform Root => transform;
+
         private void Awake()
         {
             if (_agent == null)
@@ -83,6 +85,14 @@ namespace AI
                 transform.Rotate(0f, deltaYaw, 0f, Space.World);
 
             _agent.nextPosition = transform.position;
+        }
+
+        public void RotateTowards(Quaternion targetRotation, float maxDegreesDelta)
+        {
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, maxDegreesDelta);
+
+            if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
+                _agent.nextPosition = transform.position;
         }
     }
 }

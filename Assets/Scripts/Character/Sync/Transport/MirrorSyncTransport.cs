@@ -16,6 +16,7 @@ namespace Character.Sync
         public byte SprintPhase;
         public byte DodgeMode;
         public byte GuardPhase;
+        public byte IdlePhase;
         public byte AttackComboStep;
         public byte LockOnActive;
         public uint LockTargetNetId;
@@ -197,6 +198,7 @@ namespace Character.Sync
                 SprintPhase = s.SprintPhase,
                 DodgeMode = s.DodgeMode,
                 GuardPhase = s.GuardPhase,
+                IdlePhase = s.IdlePhase,
                 AttackComboStep = s.AttackComboStep,
                 LockOnActive = s.LockOnActive,
                 LockTargetNetId = s.LockTargetNetId,
@@ -217,6 +219,7 @@ namespace Character.Sync
                 m.SprintPhase,
                 m.DodgeMode,
                 m.GuardPhase,
+                m.IdlePhase,
                 m.AttackComboStep,
                 m.LockOnActive,
                 m.LockTargetNetId,

@@ -48,8 +48,11 @@ namespace Character.LockOn
         public bool TryGetNetworkId(out uint netId)
         {
             netId = 0;
-            
-            var identity = Root.GetComponentInParent<NetworkIdentity>();
+
+            Transform root = Root;
+            if (root == null) return false;
+
+            var identity = root.GetComponentInParent<NetworkIdentity>();
             if (identity == null || identity.netId == 0) return false;
 
             netId = identity.netId;

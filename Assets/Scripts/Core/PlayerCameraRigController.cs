@@ -76,8 +76,9 @@ namespace Core
             _lockOnVcam.Priority = config.lockOnInactivePriority;
 
             _wasLockOnActive = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
-            if (_wasLockOnActive && _lockOnQuery.CurrentTarget != null)
-                ApplyLockOnState(_lockOnQuery.CurrentTarget, config);
+            Transform initialTarget = _wasLockOnActive ? _lockOnQuery.CurrentTarget : null;
+            if (_wasLockOnActive && initialTarget != null)
+                ApplyLockOnState(initialTarget, config);
             else
                 ApplyLockOffState(config);
 
@@ -163,7 +164,8 @@ namespace Core
                 return;
 
             bool active = _lockOnQuery.IsLockOnActive;
-            Transform target = _lockOnQuery.CurrentTarget;
+            Transform target = active ? _lockOnQuery.CurrentTarget : null;
+            active = active && target != null;
 
             if (active != _wasLockOnActive)
             {

@@ -31,8 +31,10 @@ namespace Character.Sync
         private ILockOnLocomotionQuery _lockOnQuery;
 
         private CharacterLocomotionPresenter _locomotionPresenter;
+        private CharacterTurnPresenter _turnPresenter;
         private CharacterSprintPresenter _sprintPresenter;
         private CharacterCombatPresenter _combatPresenter;
+
 
         private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
 
@@ -76,6 +78,8 @@ namespace Character.Sync
             }
 
             if (TryPresentCombat(frame)
+                || TryPresentIdleTurn(frame)
+                || TryPresentGuardTurn(frame)
                 || TryPresentGuard(frame)
                 || TryPresentSprint(frame)
                 || TryPresentAfterSprint(frame))
@@ -106,6 +110,7 @@ namespace Character.Sync
                 out var lockTargetNetId,
                 out var sprintPhase,
                 out var guardPhase,
+                out var idlePhase,
                 out var attackComboStep);
 
             return new PresentationFrame(
@@ -117,12 +122,62 @@ namespace Character.Sync
                 lockTargetNetId,
                 sprintPhase,
                 guardPhase,
+                idlePhase,
                 attackComboStep);
         }
 
         private void CommitPresentationFrame(PresentationFrame frame)
         {
             _lastPresentationStateId = frame.StateId;
+        }
+
+
+        private bool TryPresentIdleTurn(PresentationFrame frame)
+        {
+            if (frame.StateId != CharacterStateId.Idle)
+                return false;
+
+            IdleState.IdlePhase phase = ResolveIdlePhase(frame);
+            float targetAngle = ResolveIdleTurnAngle(frame, phase);
+
+            return _turnPresenter.TickIdleTurn(_animator, phase, targetAngle);
+        }
+
+
+        private IdleState.IdlePhase ResolveIdlePhase(PresentationFrame frame)
+        {
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveIdleState(out var idleState))
+            {
+                return idleState.CurrentPhase;
+            }
+
+            return frame.IdlePhase;
+        }
+
+        private float ResolveIdleTurnAngle(PresentationFrame frame, IdleState.IdlePhase phase)
+        {
+            if (phase is not (IdleState.IdlePhase.TurnLeft or IdleState.IdlePhase.TurnRight))
+                return 0f;
+
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveIdleState(out var idleState))
+            {
+                return idleState.GetTargetTurnAngle();
+            }
+
+            if (_npcDriver != null
+                && _networkIdentity != null
+                && _networkIdentity.isServer
+                && _npcDriver.TryGetActiveIdleState(out var npcIdleState))
+            {
+                return npcIdleState.GetTargetTurnAngle();
+            }
+
+            CharacterPresentationConfig presentation = ResolvePresentationConfig();
+            return presentation != null ? presentation.turnStepAngle : 180f;
         }
 
         private bool TryPresentCombat(PresentationFrame frame)
@@ -167,6 +222,50 @@ namespace Character.Sync
             bool hasMove = frame.VelocityXZ.sqrMagnitude > 0.01f;
             var phase = ResolveGuardPhase(frame);
             return _combatPresenter.TickGuard(_animator, phase, hasMove);
+        }
+
+
+        private bool TryPresentGuardTurn(PresentationFrame frame)
+        {
+            if (frame.StateId != CharacterStateId.Guard)
+            {
+                if (frame.StateId != CharacterStateId.Idle)
+                    _turnPresenter.Reset();
+
+                return false;
+            }
+
+            GuardState.GuardPhase phase = ResolveGuardPhase(frame);
+            if (phase is not (GuardState.GuardPhase.TurnLeft or GuardState.GuardPhase.TurnRight))
+            {
+                _turnPresenter.Reset();
+                return false;
+            }
+
+            float targetAngle = ResolveGuardTurnAngle(frame, phase);
+            _combatPresenter.ResetGuardLayers(_animator);
+            return _turnPresenter.TickGuardTurn(_animator, phase, targetAngle);
+        }
+
+        private float ResolveGuardTurnAngle(PresentationFrame frame, GuardState.GuardPhase phase)
+        {
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveGuardState(out var guardState))
+            {
+                return guardState.GetTargetTurnAngle();
+            }
+
+            if (_npcDriver != null
+                && _networkIdentity != null
+                && _networkIdentity.isServer
+                && _npcDriver.TryGetActiveGuardState(out var npcGuardState))
+            {
+                return npcGuardState.GetTargetTurnAngle();
+            }
+
+            CharacterPresentationConfig presentation = ResolvePresentationConfig();
+            return presentation != null ? presentation.turnStepAngle : 180f;
         }
 
         private bool TryPresentGuardReaction()
@@ -320,6 +419,7 @@ namespace Character.Sync
         {
             var presentation = ResolvePresentationConfig();
             _locomotionPresenter ??= new CharacterLocomotionPresenter(presentation);
+            _turnPresenter ??= new CharacterTurnPresenter(presentation);
             _sprintPresenter ??= new CharacterSprintPresenter(presentation);
             _combatPresenter ??= new CharacterCombatPresenter(presentation);
         }
@@ -339,6 +439,7 @@ namespace Character.Sync
             out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
+            out IdleState.IdlePhase idlePhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.Idle;
@@ -348,6 +449,7 @@ namespace Character.Sync
             lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
 
             if (TryResolveFromLocalPlayer(
@@ -358,6 +460,7 @@ namespace Character.Sync
                     out lockTargetNetId,
                     out sprintPhase,
                     out guardPhase,
+                    out idlePhase,
                     out attackComboStep))
                 return;
 
@@ -369,6 +472,7 @@ namespace Character.Sync
                     out lockTargetNetId,
                     out sprintPhase,
                     out guardPhase,
+                    out idlePhase,
                     out attackComboStep))
                 return;
 
@@ -380,6 +484,7 @@ namespace Character.Sync
                     out lockTargetNetId,
                     out sprintPhase,
                     out guardPhase,
+                    out idlePhase,
                     out attackComboStep))
                 return;
         }
@@ -392,6 +497,7 @@ namespace Character.Sync
             out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
+            out IdleState.IdlePhase idlePhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
@@ -401,6 +507,7 @@ namespace Character.Sync
             lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
 
             if (_playerController == null)
@@ -415,11 +522,16 @@ namespace Character.Sync
             moveInput = _playerController.LastMoveInput;
             isLockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
 
-            if (isLockOn && _lockOnQuery.CurrentTarget != null)
+            Transform lockTarget = isLockOn ? _lockOnQuery.CurrentTarget : null;
+            if (lockTarget != null)
             {
-                var lockOnTarget = _lockOnQuery.CurrentTarget.GetComponentInParent<LockOnTarget>();
+                var lockOnTarget = lockTarget.GetComponentInParent<LockOnTarget>();
                 if (lockOnTarget != null)
                     lockOnTarget.TryGetNetworkId(out lockTargetNetId);
+            }
+            else
+            {
+                isLockOn = false;
             }
 
             if (stateId == CharacterStateId.Sprint
@@ -432,6 +544,12 @@ namespace Character.Sync
                 && _playerController.TryGetActiveGuardState(out var guardState))
             {
                 guardPhase = guardState.CurrentPhase;
+            }
+
+            if (stateId == CharacterStateId.Idle
+                && _playerController.TryGetActiveIdleState(out var idleState))
+            {
+                idlePhase = idleState.CurrentPhase;
             }
 
             if (stateId == CharacterStateId.Attack
@@ -462,6 +580,7 @@ namespace Character.Sync
             out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
+            out IdleState.IdlePhase idlePhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
@@ -471,6 +590,7 @@ namespace Character.Sync
             lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
 
             if (_npcDriver == null || _playerController != null)
@@ -504,6 +624,12 @@ namespace Character.Sync
                 guardPhase = guardState.CurrentPhase;
             }
 
+            if (stateId == CharacterStateId.Idle
+                && _npcDriver.TryGetActiveIdleState(out var idleState))
+            {
+                idlePhase = idleState.CurrentPhase;
+            }
+
             if (stateId == CharacterStateId.Attack
                 && _npcDriver.TryGetActiveAttackState(out var attackState))
             {
@@ -521,6 +647,7 @@ namespace Character.Sync
             out uint lockTargetNetId,
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
+            out IdleState.IdlePhase idlePhase,
             out byte attackComboStep)
         {
             stateId = CharacterStateId.None;
@@ -530,6 +657,7 @@ namespace Character.Sync
             lockTargetNetId = 0;
             sprintPhase = SprintState.SprintPhase.Loop;
             guardPhase = GuardState.GuardPhase.Start;
+            idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
 
             if (_remoteInterpolator == null)
@@ -546,6 +674,7 @@ namespace Character.Sync
             lockTargetNetId = snapshot.LockTargetNetId;
             sprintPhase = snapshot.GetSprintPhaseOrDefault();
             guardPhase = snapshot.GetGuardPhaseOrDefault();
+            idlePhase = snapshot.GetIdlePhaseOrDefault();
             attackComboStep = snapshot.GetAttackComboStepOrDefault();
             return true;
         }
@@ -578,6 +707,7 @@ namespace Character.Sync
                 uint lockTargetNetId,
                 SprintState.SprintPhase sprintPhase,
                 GuardState.GuardPhase guardPhase,
+                IdleState.IdlePhase idlePhase,
                 byte attackComboStep)
             {
                 PreviousStateId = previousStateId;
@@ -588,6 +718,7 @@ namespace Character.Sync
                 LockTargetNetId = lockTargetNetId;
                 SprintPhase = sprintPhase;
                 GuardPhase = guardPhase;
+                IdlePhase = idlePhase;
                 AttackComboStep = attackComboStep;
             }
 
@@ -599,6 +730,7 @@ namespace Character.Sync
             public uint LockTargetNetId { get; }
             public SprintState.SprintPhase SprintPhase { get; }
             public GuardState.GuardPhase GuardPhase { get; }
+            public IdleState.IdlePhase IdlePhase { get; }
             public byte AttackComboStep { get; }
 
             public bool LeftSprint =>

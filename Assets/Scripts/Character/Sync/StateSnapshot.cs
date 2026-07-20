@@ -24,6 +24,8 @@ namespace Character.Sync
         public byte DodgeMode;
         /// <summary>Valid when <see cref="StateId"/> is Guard; otherwise 0. See <see cref="GuardState.GuardPhase"/>.</summary>
         public byte GuardPhase;
+        /// <summary>Valid when <see cref="StateId"/> is Idle; otherwise 0. See <see cref="IdleState.IdlePhase"/>.</summary>
+        public byte IdlePhase;
         /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. Encodes <see cref="AttackMoveId"/> as a byte.</summary>
         public byte AttackComboStep;
         
@@ -46,6 +48,7 @@ namespace Character.Sync
             byte sprintPhase = 0,
             byte dodgeMode = 0,
             byte guardPhase = 0,
+            byte idlePhase = 0,
             byte attackComboStep = 0,
             byte lockOnActive = 0,
             uint lockTargetNetId = 0,
@@ -61,6 +64,7 @@ namespace Character.Sync
             SprintPhase = sprintPhase;
             DodgeMode = dodgeMode;
             GuardPhase = guardPhase;
+            IdlePhase = idlePhase;
             AttackComboStep = attackComboStep;
             LockOnActive = lockOnActive;
             LockTargetNetId = lockTargetNetId;
@@ -100,10 +104,21 @@ namespace Character.Sync
             if (StateId != CharacterStateId.Guard)
                 return GuardState.GuardPhase.Start;
 
-            if (GuardPhase > (byte)GuardState.GuardPhase.Exit)
+            if (GuardPhase > (byte)GuardState.GuardPhase.TurnRight)
                 return GuardState.GuardPhase.Start;
 
             return (GuardState.GuardPhase)GuardPhase;
+        }
+
+        public IdleState.IdlePhase GetIdlePhaseOrDefault()
+        {
+            if (StateId != CharacterStateId.Idle)
+                return IdleState.IdlePhase.Normal;
+
+            if (IdlePhase > (byte)IdleState.IdlePhase.TurnRight)
+                return IdleState.IdlePhase.Normal;
+
+            return (IdleState.IdlePhase)IdlePhase;
         }
 
         public byte GetAttackComboStepOrDefault()
@@ -164,7 +179,7 @@ namespace Character.Sync
         public override string ToString()
         {
             return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, " +
-                   $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, attackCombo={AttackComboStep}, " +
+                   $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, idlePhase={IdlePhase}, attackCombo={AttackComboStep}, " +
                    $"lockOn={LockOnActive}, lockTarget={LockTargetNetId}, moveInput=({MoveInputX:F2},{MoveInputY:F2}), " +
                    $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
         }

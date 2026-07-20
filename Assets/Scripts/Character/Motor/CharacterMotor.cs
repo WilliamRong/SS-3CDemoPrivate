@@ -11,6 +11,8 @@ namespace Character.Motor
         private readonly CharacterContext _context;
         private readonly CharacterLocomotionConfig _config;
 
+        public Transform Root => _context.Root;
+
         private Vector3 _currentHorizontalVelocity;
         private Vector3 _horizontalVelocityRef;
 
@@ -19,6 +21,7 @@ namespace Character.Motor
 
         private bool _isSprintActive;
         private bool _movementBlocked;
+        private bool _turnRotationOverride;
         private bool _isDodgeActive;
         private bool _attackRootMotionActive;
         private bool _reactionRootMotionActive;
@@ -41,7 +44,7 @@ namespace Character.Motor
         {
             _lockOnQuery = query;
         }
-        
+
         public void Tick(CharacterIntent intent, float dt)
         {
             if (_isDodgeActive)
@@ -86,8 +89,8 @@ namespace Character.Motor
             {
                 _context.Root.rotation = Quaternion.LookRotation(ctx.WorldMoveDirection);
             }
-            
-            
+
+
             float distance = ctx.Mode == DodgeMode.NeutralBackward
                 ? combat.dodgeBackwardMoveDistance
                 : combat.dodgeEvadeMoveDistance;
@@ -264,7 +267,7 @@ namespace Character.Motor
             //     rootRight.Normalize();
             //
             // inputDir = rootRight * intent.Move.x + rootForward * intent.Move.y;
-            
+
             //相机空间
             _context.GetCameraBasis(out var camForward, out var camRight);
             inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
@@ -284,6 +287,11 @@ namespace Character.Motor
                 StopHorizontalMotion();
         }
 
+        public void SetTurnRotationOverride(bool enable)
+        {
+            _turnRotationOverride = enable;
+        }
+
         public void StopHorizontalMotion()
         {
             _currentHorizontalVelocity = Vector3.zero;
@@ -297,12 +305,16 @@ namespace Character.Motor
 
         private void TickHorizontal(CharacterIntent intent, float dt)
         {
-            if (_lockOnQuery != null && _lockOnQuery.IsLockOnActive && _lockOnQuery.CurrentTarget != null)
+            Transform lockOnTarget = _lockOnQuery != null && _lockOnQuery.IsLockOnActive
+                ? _lockOnQuery.CurrentTarget
+                : null;
+
+            if (lockOnTarget != null)
             {
-                TickLockOnHorizontal(intent, dt, _lockOnQuery.CurrentTarget);
+                TickLockOnHorizontal(intent, dt, lockOnTarget);
                 return;
             }
-            
+
             TickFreeHorizontal(intent, dt);
         }
 
@@ -312,18 +324,21 @@ namespace Character.Motor
 
             var inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
             inputDir.y = 0f;
-            
-            if(inputDir.sqrMagnitude > 0.0001f) inputDir.Normalize();
+
+            if (inputDir.sqrMagnitude > 0.0001f) inputDir.Normalize();
 
             var toTarget = target.position - _context.Root.position;
             toTarget.y = 0f;
             if (toTarget.sqrMagnitude > 0.0001f)
             {
-                var targetRot = Quaternion.LookRotation(toTarget.normalized);
-                _context.Root.rotation = Quaternion.Slerp(
-                    _context.Root.rotation,
-                    targetRot,
-                    _config.rotationSlerpSpeed * dt);
+                if (!_turnRotationOverride)
+                {
+                    var targetRot = Quaternion.LookRotation(toTarget.normalized);
+                    _context.Root.rotation = Quaternion.Slerp(
+                        _context.Root.rotation,
+                        targetRot,
+                        _config.rotationSlerpSpeed * dt);
+                }
             }
 
             var speed = _config.moveSpeed;
@@ -340,7 +355,7 @@ namespace Character.Motor
             v.z = _currentHorizontalVelocity.z;
             _context.Velocity = v;
         }
-        
+
         private void TickFreeHorizontal(CharacterIntent intent, float dt)
         {
             _context.GetCameraBasis(out var camForward, out var camRight);
@@ -351,11 +366,14 @@ namespace Character.Motor
             if (hasMoveInput)
             {
                 inputDir.Normalize();
-                var targetRot = Quaternion.LookRotation(inputDir);
-                _context.Root.rotation = Quaternion.Slerp(
-                    _context.Root.rotation,
-                    targetRot,
-                    _config.rotationSlerpSpeed * dt);
+                if (!_turnRotationOverride)
+                {
+                    var targetRot = Quaternion.LookRotation(inputDir);
+                    _context.Root.rotation = Quaternion.Slerp(
+                        _context.Root.rotation,
+                        targetRot,
+                        _config.rotationSlerpSpeed * dt);
+                }
             }
 
             var speed = _isSprintActive ? _config.sprintSpeed : _config.moveSpeed;

@@ -30,7 +30,7 @@ namespace AI
         private NpcDeadState _dead;
 
         private CharacterCombatConfig combatConfig => GameDataManager.Instance.Npc.combat;
-
+        private CharacterPresentationConfig presentationConfig => GameDataManager.Instance.Npc.presentation;
 
         public CharacterStateId CurrentStateId => _fsm?.CurrentState?.Id ?? CharacterStateId.None;
 
@@ -58,12 +58,12 @@ namespace AI
             base.OnStartServer();
             _fsm = new CharacterStateMachine();
             _registry = new CharacterStateRegistry();
-            _idle = new NpcIdleState(_fsm, _registry, _intentSource, _motor);
+            _idle = new NpcIdleState(_fsm, _registry, _intentSource, _motor, presentationConfig);
             _move = new NpcMoveState(_fsm, _registry, _intentSource, _motor);
             _sprint = new NpcSprintState(_fsm, _registry, _motor, combatConfig);
             _attack = new NpcAttackState(_fsm, _registry, _motor, combatConfig);
             _dodge = new NpcDodgeState(_fsm, _registry, _motor, combatConfig);
-            _guard = new NpcGuardState(_fsm, _registry, _motor, combatConfig);
+            _guard = new NpcGuardState(_fsm, _registry, _motor, combatConfig, presentationConfig, _intentSource);
             _hit = new NpcHitState(_fsm, _registry, _motor, combatConfig);
             _dead = new NpcDeadState(_fsm, _registry, _motor);
 
@@ -89,6 +89,18 @@ namespace AI
             CharacterIntent intent = _intentSource != null ? _intentSource.BuildIntent() : default;
 
             _fsm.Tick(intent, Time.deltaTime);
+        }
+
+        public bool TryGetActiveIdleState(out NpcIdleState idleState)
+        {
+            if (_fsm?.CurrentState is NpcIdleState active)
+            {
+                idleState = active;
+                return true;
+            }
+
+            idleState = null;
+            return false;
         }
 
         public bool TryGetActiveSprintState(out NpcSprintState sprintState)
@@ -223,9 +235,27 @@ namespace AI
 
         public bool ForceEnterGuard(float loopHoldDuration = 2f)
         {
-            if(_guard == null || _fsm == null || _registry == null) return false;
+            if (_guard == null || _fsm == null || _registry == null) return false;
             _guard.Prepare(loopHoldDuration);
             return _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard) || CurrentStateId == CharacterStateId.Guard;
+        }
+
+        public bool ForceExitGuardToIdle()
+        {
+            if (_fsm == null || _registry == null || CurrentStateId != CharacterStateId.Guard)
+                return false;
+
+            return _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.Timeout);
+        }
+
+        public void SetGmFacingTarget(Transform target)
+        {
+            _intentSource?.SetGmFacingTarget(target);
+        }
+
+        public void ClearGmFacingTarget()
+        {
+            _intentSource?.ClearGmFacingTarget();
         }
     }
 }
