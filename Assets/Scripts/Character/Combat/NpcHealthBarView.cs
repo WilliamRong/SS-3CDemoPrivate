@@ -1,4 +1,6 @@
 using System.Collections;
+using Character.Controller;
+using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,23 +11,29 @@ namespace Character.Combat
     public sealed class NpcHealthBarView : MonoBehaviour
     {
         [SerializeField] private CombatActor _actor;
+        [SerializeField] private GameObject _healthBarPrefab;
+        [SerializeField] private GameObject _damageTextPrefab;
         [SerializeField] private Vector3 _worldOffset = new(0f, 2.2f, 0f);
-        [SerializeField] private Vector2 _barSize = new(1.25f, 0.12f);
-        [SerializeField] private Color _barColor = new(0.9f, 0.05f, 0.04f, 1f);
-        [SerializeField] private Color _backgroundColor = new(0f, 0f, 0f, 0.65f);
         [SerializeField] private float _damageTextRise = 0.45f;
         [SerializeField] private float _damageTextLifetime = 0.75f;
+        [SerializeField] private string _fillPath = "Background/Fill";
+        [SerializeField] private bool _hideForLocalPlayer = true;
 
         private Canvas _canvas;
         private RectTransform _canvasRect;
         private RectTransform _fillRect;
         private Font _font;
         private Camera _camera;
+        private NetworkIdentity _networkIdentity;
+        private PlayerController _playerController;
+        private float _lastObservedPlayerHp = -1f;
 
         private void Awake()
         {
             if (_actor == null)
                 _actor = GetComponent<CombatActor>();
+            _networkIdentity = GetComponent<NetworkIdentity>();
+            _playerController = GetComponent<PlayerController>();
 
             _camera = Camera.main;
             EnsureUi();
@@ -33,6 +41,22 @@ namespace Character.Combat
 
         private void OnEnable()
         {
+            if (ShouldHideForLocalPlayer())
+            {
+                SetCanvasVisible(false);
+                return;
+            }
+
+            _lastObservedPlayerHp = -1f;
+
+            if (_playerController != null)
+            {
+                _playerController.HealthChanged += OnPlayerHealthChanged;
+                if (_playerController.CurrentHp > 0f || _playerController.MaxHp > 1f)
+                    OnPlayerHealthChanged(_playerController.CurrentHp, _playerController.MaxHp);
+                return;
+            }
+
             if (_actor == null) return;
 
             _actor.HealthChanged += OnHealthChanged;
@@ -42,6 +66,9 @@ namespace Character.Combat
 
         private void OnDisable()
         {
+            if (_playerController != null)
+                _playerController.HealthChanged -= OnPlayerHealthChanged;
+
             if (_actor == null) return;
 
             _actor.HealthChanged -= OnHealthChanged;
@@ -51,6 +78,11 @@ namespace Character.Combat
         private void LateUpdate()
         {
             if (_canvasRect == null) return;
+            if (ShouldHideForLocalPlayer())
+            {
+                SetCanvasVisible(false);
+                return;
+            }
 
             if (_camera == null)
                 _camera = Camera.main;
@@ -73,16 +105,42 @@ namespace Character.Combat
             float ratio = maxHp > 0f ? Mathf.Clamp01(currentHp / maxHp) : 0f;
             _fillRect.anchorMax = new Vector2(ratio, 1f);
 
-            if (_canvas != null)
-                _canvas.enabled = currentHp < maxHp;
+            SetCanvasVisible(currentHp < maxHp);
         }
 
         private void OnDamageTaken(float damage)
         {
             if (_canvasRect == null || damage <= 0f) return;
+            if (ShouldHideForLocalPlayer()) return;
 
-            _canvas.enabled = true;
+            SetCanvasVisible(true);
             StartCoroutine(PlayDamageNumber(damage));
+        }
+
+        private void OnPlayerHealthChanged(float currentHp, float maxHp)
+        {
+            if (_lastObservedPlayerHp >= 0f && currentHp < _lastObservedPlayerHp)
+                OnDamageTaken(_lastObservedPlayerHp - currentHp);
+
+            _lastObservedPlayerHp = currentHp;
+            OnHealthChanged(currentHp, maxHp);
+        }
+
+        private void SetCanvasVisible(bool visible)
+        {
+            if (_canvas != null)
+                _canvas.enabled = visible;
+        }
+
+        private bool ShouldHideForLocalPlayer()
+        {
+            if (!_hideForLocalPlayer || _playerController == null)
+                return false;
+
+            if (!NetworkClient.active)
+                return true;
+
+            return _networkIdentity == null || _networkIdentity.isLocalPlayer;
         }
 
         private void EnsureUi()
@@ -91,54 +149,61 @@ namespace Character.Combat
 
             _font = LoadBuiltinFont();
 
-            var canvasGo = new GameObject("NpcHealthBar");
-            canvasGo.transform.SetParent(transform, false);
+            if (_healthBarPrefab != null)
+            {
+                GameObject healthBarInstance = Instantiate(_healthBarPrefab, transform);
+                healthBarInstance.name = _healthBarPrefab.name;
+            }
 
-            _canvas = canvasGo.AddComponent<Canvas>();
-            _canvas.renderMode = RenderMode.WorldSpace;
-            _canvas.sortingOrder = 20;
+            _canvas = GetComponentInChildren<Canvas>(true);
+            if (_canvas == null)
+            {
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} has no health bar prefab/canvas.", this);
+                return;
+            }
 
             _canvasRect = _canvas.GetComponent<RectTransform>();
-            _canvasRect.sizeDelta = new Vector2(120f, 28f);
-            _canvasRect.localScale = new Vector3(0.01f, 0.01f, 0.01f);
+            Transform fill = _canvasRect.Find(_fillPath);
+            if (fill != null)
+                _fillRect = fill as RectTransform;
 
-            var background = CreateImage("Background", _canvasRect, _backgroundColor);
-            background.anchorMin = new Vector2(0.5f, 0.5f);
-            background.anchorMax = new Vector2(0.5f, 0.5f);
-            background.pivot = new Vector2(0.5f, 0.5f);
-            background.sizeDelta = new Vector2(_barSize.x * 100f, _barSize.y * 100f);
-            background.anchoredPosition = Vector2.zero;
-
-            _fillRect = CreateImage("Fill", background, _barColor);
-            _fillRect.anchorMin = Vector2.zero;
-            _fillRect.anchorMax = Vector2.one;
-            _fillRect.pivot = new Vector2(0f, 0.5f);
-            _fillRect.offsetMin = Vector2.zero;
-            _fillRect.offsetMax = Vector2.zero;
+            if (_fillRect == null)
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} cannot find fill rect at '{_fillPath}'.", this);
         }
 
         private IEnumerator PlayDamageNumber(float damage)
         {
-            var textGo = new GameObject("DamageText");
-            textGo.transform.SetParent(_canvasRect, false);
+            if (_damageTextPrefab == null)
+            {
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} has no damage text prefab.", this);
+                yield break;
+            }
 
-            Text text = textGo.AddComponent<Text>();
+            GameObject textGo = Instantiate(_damageTextPrefab, _canvasRect);
+            textGo.name = _damageTextPrefab.name;
+
+            Text text = textGo.GetComponentInChildren<Text>(true);
+            if (text == null)
+            {
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} damage text prefab has no Text component.", this);
+                Destroy(textGo);
+                yield break;
+            }
+
+            if (text.font == null)
+                text.font = _font;
+
+            Color baseColor = text.color;
             text.raycastTarget = false;
-            text.font = _font;
-            text.alignment = TextAnchor.MiddleCenter;
-            text.fontSize = 18;
-            text.fontStyle = FontStyle.Bold;
-            text.color = _barColor;
             text.text = Mathf.CeilToInt(damage).ToString();
 
-            RectTransform rect = text.rectTransform;
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-            rect.sizeDelta = new Vector2(80f, 28f);
+            RectTransform rect = textGo.GetComponent<RectTransform>();
+            if (rect == null)
+                rect = text.rectTransform;
 
             Vector2 start = new(0f, 18f);
             Vector2 end = start + new Vector2(0f, _damageTextRise * 100f);
+            rect.anchoredPosition = start;
 
             float elapsed = 0f;
             float lifetime = Mathf.Max(0.01f, _damageTextLifetime);
@@ -147,23 +212,11 @@ namespace Character.Combat
                 elapsed += Time.deltaTime;
                 float t = Mathf.Clamp01(elapsed / lifetime);
                 rect.anchoredPosition = Vector2.Lerp(start, end, t);
-                text.color = new Color(_barColor.r, _barColor.g, _barColor.b, 1f - t);
+                text.color = new Color(baseColor.r, baseColor.g, baseColor.b, baseColor.a * (1f - t));
                 yield return null;
             }
 
             Destroy(textGo);
-        }
-
-        private static RectTransform CreateImage(string name, Transform parent, Color color)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-
-            Image image = go.AddComponent<Image>();
-            image.raycastTarget = false;
-            image.color = color;
-
-            return image.rectTransform;
         }
 
         private static Font LoadBuiltinFont()

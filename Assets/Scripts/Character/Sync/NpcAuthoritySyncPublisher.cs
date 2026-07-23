@@ -26,6 +26,7 @@ namespace Character.Sync
         
         // 事件去重：上一帧逻辑状态（发 ActionEvent）
         private CharacterStateId _lastStateId = CharacterStateId.None;
+        private int _lastStateEnterVersion;
         // 快照去重：上次已发送的快照内容
         private CharacterStateId _lastSentStateId = CharacterStateId.None;
         private byte _lastSentSprintPhase;
@@ -216,7 +217,12 @@ namespace Character.Sync
         private void TrySendActionOnStateChange(int tick)
         {
             CharacterStateId current = ResolveCurrentStateId();
-            if (current == _lastStateId) return;
+            int currentEnterVersion = ResolveStateEnterVersion();
+            if (current == _lastStateId
+                && !ShouldSendReenteredAction(current, currentEnterVersion))
+            {
+                return;
+            }
             
             ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
             if (actionType != ActionType.None)
@@ -227,6 +233,13 @@ namespace Character.Sync
             }
 
             _lastStateId = current;
+            _lastStateEnterVersion = currentEnterVersion;
+        }
+
+        private bool ShouldSendReenteredAction(CharacterStateId stateId, int stateEnterVersion)
+        {
+            return stateId == CharacterStateId.Hit
+                && stateEnterVersion != _lastStateEnterVersion;
         }
 
         private int ResolveActionEventParam(CharacterStateId stateId, ActionType actionType)
@@ -246,6 +259,11 @@ namespace Character.Sync
             if (_npcDriver != null)
                 return _npcDriver.CurrentStateId;
             return CharacterStateId.Idle;
+        }
+
+        private int ResolveStateEnterVersion()
+        {
+            return _npcDriver != null ? _npcDriver.StateEnterVersion : 0;
         }
     }
 }

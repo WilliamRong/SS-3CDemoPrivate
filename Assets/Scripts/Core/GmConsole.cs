@@ -22,6 +22,8 @@ namespace Core
     {
         private const float ButtonWidth = 140f;
         private const float ButtonHeight = 28f;
+        private const float Margin = 8f;
+        private const float PanelPadding = 4f;
 
         [SerializeField] private float _playerGuardHoldDuration = 30f;
         [SerializeField] private float _npcGuardHoldDuration = 30f;
@@ -56,20 +58,25 @@ namespace Core
 
         private void OnGUI()
         {
-            var toggleRect = new Rect(8f, 8f, ButtonWidth, ButtonHeight);
+            float panelHeight = ButtonHeight * 2f + PanelPadding * 3f;
+            float x = Mathf.Max(Margin, Screen.width - ButtonWidth - Margin);
+            float toggleY = Mathf.Max(Margin, Screen.height - ButtonHeight - Margin);
+            float panelY = Mathf.Max(Margin, toggleY - panelHeight);
+
+            var toggleRect = new Rect(x, toggleY, ButtonWidth, ButtonHeight);
             if (GUI.Button(toggleRect, _isOpen ? "GM ^" : "GM v"))
                 _isOpen = !_isOpen;
 
             if (!_isOpen) return;
 
-            GUI.Box(new Rect(8f, 8f + ButtonHeight, ButtonWidth, ButtonHeight * 2f + 12f), GUIContent.none);
+            GUI.Box(new Rect(x, panelY, ButtonWidth, panelHeight), GUIContent.none);
 
             string guardText = _allCharactersGuarded ? "所有角色解除防御" : "所有角色防御";
-            if (GUI.Button(new Rect(12f, 12f + ButtonHeight, ButtonWidth - 8f, ButtonHeight), guardText))
+            if (GUI.Button(new Rect(x + PanelPadding, panelY + PanelPadding, ButtonWidth - PanelPadding * 2f, ButtonHeight), guardText))
                 RequestToggleForceGuard();
 
             string npcLockText = _npcLockNearestPlayer ? "NPC解锁玩家" : "NPC锁最近玩家";
-            if (GUI.Button(new Rect(12f, 16f + ButtonHeight * 2f, ButtonWidth - 8f, ButtonHeight), npcLockText))
+            if (GUI.Button(new Rect(x + PanelPadding, panelY + ButtonHeight + PanelPadding * 2f, ButtonWidth - PanelPadding * 2f, ButtonHeight), npcLockText))
                 RequestToggleNpcLockNearestPlayer();
         }
 

@@ -1,3 +1,4 @@
+using System;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
@@ -34,6 +35,13 @@ namespace Character.Controller
 
         public CharacterStateId CurrentStateId =>
             _fsm?.CurrentState?.Id ?? CharacterStateId.None;
+
+        public int StateEnterVersion => _fsm?.StateEnterVersion ?? 0;
+
+        public float CurrentHp => _context?.CurrentHp ?? 0f;
+        public float MaxHp => _context?.MaxHp ?? 1f;
+
+        public event Action<float, float> HealthChanged;
 
         /// <summary>Set on dodge <see cref="DodgeState.Prepare"/>; used for network sync before FSM enters Dodge.</summary>
         public byte LastPreparedDodgeMode { get; private set; }
@@ -86,6 +94,7 @@ namespace Character.Controller
 
             _context = new CharacterContext(_characterController, transform, _camera);
             _context.ConfigureHealth(def.combat.maxHp);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
 
             _motor = new CharacterMotor(_context, def.locomotion);
             _motor.SetLockOnQuery(_lockOnQuery);
@@ -133,6 +142,18 @@ namespace Character.Controller
             }
 
             attackState = null;
+            return false;
+        }
+
+        public bool TryGetActiveHitState(out HitState hitState)
+        {
+            if (_fsm?.CurrentState is HitState active)
+            {
+                hitState = active;
+                return true;
+            }
+
+            hitState = null;
             return false;
         }
 
@@ -216,13 +237,15 @@ namespace Character.Controller
             var combat = GameDataManager.Instance.Player.combat;
 
             _context.ApplyDamage(damage);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+
             if (_context.IsDead)
             {
                 _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
                 return;
             }
 
-            _hitState.ConfigureDuration(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration);
+            _hitState.ConfigureDuration(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit);
             _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
 
@@ -232,6 +255,7 @@ namespace Character.Controller
             if (_context.IsDead || _context.IsInvincible) return;
 
             _context.ApplyDamage(damage);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
 
             if (_context.IsDead)
             {
@@ -242,6 +266,7 @@ namespace Character.Controller
         public void Revive(float hp)
         {
             _context.Revive(hp);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
             _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive);
         }
 

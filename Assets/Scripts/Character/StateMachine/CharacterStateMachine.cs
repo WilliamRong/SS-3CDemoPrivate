@@ -7,6 +7,7 @@ namespace Character.StateMachine
     {
         public ICharacterState CurrentState { get; private set; }
         public CharacterStateId CurrentId => CurrentState?.Id ?? CharacterStateId.None;
+        public int StateEnterVersion { get; private set; }
 
         private readonly CharacterStateRuntime _runtime = new CharacterStateRuntime();
 
@@ -33,6 +34,8 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Hit,   StateWindowType.Always, TransitionReason.HitLight,    true),
             new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Hit,   StateWindowType.Always, TransitionReason.HitHeavy,    true),
             new CharacterInterruptRule(CharacterStateId.Guard, CharacterStateId.Dead,  StateWindowType.Always, TransitionReason.Death,       true),
+            new CharacterInterruptRule(CharacterStateId.Hit, CharacterStateId.Hit, StateWindowType.Always, TransitionReason.HitLight, true),
+            new CharacterInterruptRule(CharacterStateId.Hit, CharacterStateId.Hit, StateWindowType.Always, TransitionReason.HitHeavy, true),
             
             // 死亡永远可抢占
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
@@ -44,6 +47,7 @@ namespace Character.StateMachine
         {
             CurrentState = initialState;
             CurrentState.Enter();
+            StateEnterVersion++;
             _runtime.OnStateEntered(initialState.Id);
         }
 
@@ -55,7 +59,7 @@ namespace Character.StateMachine
 
         public bool TryTransition(CharacterStateId targetId, CharacterStateRegistry registry, TransitionReason reason = TransitionReason.Any)
         {
-            if (targetId == CurrentId) return false;
+            if (targetId == CurrentId && !CanReenterCurrentState(targetId, reason)) return false;
             if (!CharacterTransitionMap.CanTransition(CurrentId, targetId)) return false;
             if (!CanInterrupt(CurrentId, targetId, _runtime.GetCurrentWindowType(), reason)) return false;
 
@@ -71,7 +75,14 @@ namespace Character.StateMachine
             CurrentState.Exit();
             CurrentState = newState;
             CurrentState.Enter();
+            StateEnterVersion++;
             _runtime.OnStateEntered(newStateId);
+        }
+
+        private static bool CanReenterCurrentState(CharacterStateId targetId, TransitionReason reason)
+        {
+            return targetId == CharacterStateId.Hit
+                && reason is TransitionReason.HitLight or TransitionReason.HitHeavy;
         }
 
         private static bool CanInterrupt(CharacterStateId from, CharacterStateId incoming, StateWindowType window, TransitionReason reason)

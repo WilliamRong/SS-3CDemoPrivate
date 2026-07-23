@@ -13,8 +13,10 @@ namespace Character.StateMachine.States
 
         private float _timer;
         private float _duration;
+        private bool _isHeavyHit;
 
         public CharacterStateId Id { get; } = CharacterStateId.Hit;
+        public bool IsHeavyHit => _isHeavyHit;
 
         public HitState(
             CharacterStateMachine fsm,
@@ -29,8 +31,9 @@ namespace Character.StateMachine.States
             _duration = _combat.lightHitDuration;
         }
 
-        public void ConfigureDuration(float duration)
+        public void ConfigureDuration(float duration, bool isHeavyHit = false)
         {
+            _isHeavyHit = isHeavyHit;
             _duration = duration > 0f ? duration : _combat.lightHitDuration;
         }
 

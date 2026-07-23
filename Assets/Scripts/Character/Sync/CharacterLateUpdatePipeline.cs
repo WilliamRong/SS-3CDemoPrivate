@@ -37,6 +37,7 @@ namespace Character.Sync
 
 
         private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
+        private int _lastPresentationStateEnterVersion;
 
         private void Awake()
         {
@@ -111,11 +112,14 @@ namespace Character.Sync
                 out var sprintPhase,
                 out var guardPhase,
                 out var idlePhase,
-                out var attackComboStep);
+                out var attackComboStep,
+                out var stateEnterVersion);
 
             return new PresentationFrame(
                 _lastPresentationStateId,
+                _lastPresentationStateEnterVersion,
                 stateId,
+                stateEnterVersion,
                 velocityXZ,
                 moveInput,
                 isLockOn,
@@ -129,6 +133,7 @@ namespace Character.Sync
         private void CommitPresentationFrame(PresentationFrame frame)
         {
             _lastPresentationStateId = frame.StateId;
+            _lastPresentationStateEnterVersion = frame.StateEnterVersion;
         }
 
 
@@ -194,12 +199,31 @@ namespace Character.Sync
                 frame.StateId,
                 actionParams,
                 dodgeCtx: dodgeCtx,
-                attackComboStep: frame.AttackComboStep);
+                attackComboStep: frame.AttackComboStep,
+                forceRestart: frame.EnteredState);
         }
 
         private int ResolveActionParams(CharacterStateId stateId)
         {
-            if (stateId != CharacterStateId.Hit || _remoteActionApplier == null)
+            if (stateId != CharacterStateId.Hit)
+                return 0;
+
+            if (_playerController != null
+                && HasLocalPresentationAuthority()
+                && _playerController.TryGetActiveHitState(out var playerHitState))
+            {
+                return playerHitState.IsHeavyHit ? 1 : 0;
+            }
+
+            if (_npcDriver != null
+                && _networkIdentity != null
+                && _networkIdentity.isServer
+                && _npcDriver.TryGetActiveHitState(out var npcHitState))
+            {
+                return npcHitState.IsHeavyHit ? 1 : 0;
+            }
+
+            if (_remoteActionApplier == null)
                 return 0;
 
             return _remoteActionApplier.CurrentRemoteAction == ActionType.Hit
@@ -440,7 +464,8 @@ namespace Character.Sync
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out IdleState.IdlePhase idlePhase,
-            out byte attackComboStep)
+            out byte attackComboStep,
+            out int stateEnterVersion)
         {
             stateId = CharacterStateId.Idle;
             velocityXZ = Vector2.zero;
@@ -451,6 +476,7 @@ namespace Character.Sync
             guardPhase = GuardState.GuardPhase.Start;
             idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
+            stateEnterVersion = 0;
 
             if (TryResolveFromLocalPlayer(
                     out stateId,
@@ -461,7 +487,8 @@ namespace Character.Sync
                     out sprintPhase,
                     out guardPhase,
                     out idlePhase,
-                    out attackComboStep))
+                    out attackComboStep,
+                    out stateEnterVersion))
                 return;
 
             if (TryResolveFromServerNpc(
@@ -473,7 +500,8 @@ namespace Character.Sync
                     out sprintPhase,
                     out guardPhase,
                     out idlePhase,
-                    out attackComboStep))
+                    out attackComboStep,
+                    out stateEnterVersion))
                 return;
 
             if (TryResolveFromRemoteSnapshot(
@@ -485,7 +513,8 @@ namespace Character.Sync
                     out sprintPhase,
                     out guardPhase,
                     out idlePhase,
-                    out attackComboStep))
+                    out attackComboStep,
+                    out stateEnterVersion))
                 return;
         }
 
@@ -498,7 +527,8 @@ namespace Character.Sync
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out IdleState.IdlePhase idlePhase,
-            out byte attackComboStep)
+            out byte attackComboStep,
+            out int stateEnterVersion)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
@@ -509,6 +539,7 @@ namespace Character.Sync
             guardPhase = GuardState.GuardPhase.Start;
             idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
+            stateEnterVersion = 0;
 
             if (_playerController == null)
                 return false;
@@ -517,6 +548,7 @@ namespace Character.Sync
                 return false;
 
             stateId = _playerController.CurrentStateId;
+            stateEnterVersion = _playerController.StateEnterVersion;
             var velocity = _playerController.Velocity;
             velocityXZ = new Vector2(velocity.x, velocity.z);
             moveInput = _playerController.LastMoveInput;
@@ -581,7 +613,8 @@ namespace Character.Sync
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out IdleState.IdlePhase idlePhase,
-            out byte attackComboStep)
+            out byte attackComboStep,
+            out int stateEnterVersion)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
@@ -592,6 +625,7 @@ namespace Character.Sync
             guardPhase = GuardState.GuardPhase.Start;
             idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
+            stateEnterVersion = 0;
 
             if (_npcDriver == null || _playerController != null)
                 return false;
@@ -600,6 +634,7 @@ namespace Character.Sync
                 return false;
 
             stateId = _npcDriver.CurrentStateId;
+            stateEnterVersion = _npcDriver.StateEnterVersion;
 
             var agent = _npcMotor != null ? _npcMotor.Agent : null;
             if (agent != null)
@@ -648,7 +683,8 @@ namespace Character.Sync
             out SprintState.SprintPhase sprintPhase,
             out GuardState.GuardPhase guardPhase,
             out IdleState.IdlePhase idlePhase,
-            out byte attackComboStep)
+            out byte attackComboStep,
+            out int stateEnterVersion)
         {
             stateId = CharacterStateId.None;
             velocityXZ = Vector2.zero;
@@ -659,6 +695,7 @@ namespace Character.Sync
             guardPhase = GuardState.GuardPhase.Start;
             idlePhase = IdleState.IdlePhase.Normal;
             attackComboStep = 1;
+            stateEnterVersion = 0;
 
             if (_remoteInterpolator == null)
                 return false;
@@ -676,7 +713,16 @@ namespace Character.Sync
             guardPhase = snapshot.GetGuardPhaseOrDefault();
             idlePhase = snapshot.GetIdlePhaseOrDefault();
             attackComboStep = snapshot.GetAttackComboStepOrDefault();
+            stateEnterVersion = ResolveRemoteStateEnterVersion(stateId);
             return true;
+        }
+
+        private int ResolveRemoteStateEnterVersion(CharacterStateId stateId)
+        {
+            if (stateId == CharacterStateId.Hit && _remoteActionApplier != null)
+                return _remoteActionApplier.LastHitSeqId;
+
+            return 0;
         }
 
         private bool IsDrivenByPlayerControllerLateUpdate()
@@ -700,7 +746,9 @@ namespace Character.Sync
         {
             public PresentationFrame(
                 CharacterStateId previousStateId,
+                int previousStateEnterVersion,
                 CharacterStateId stateId,
+                int stateEnterVersion,
                 Vector2 velocityXZ,
                 Vector2 moveInput,
                 bool isLockOn,
@@ -711,7 +759,9 @@ namespace Character.Sync
                 byte attackComboStep)
             {
                 PreviousStateId = previousStateId;
+                PreviousStateEnterVersion = previousStateEnterVersion;
                 StateId = stateId;
+                StateEnterVersion = stateEnterVersion;
                 VelocityXZ = velocityXZ;
                 MoveInput = moveInput;
                 IsLockOn = isLockOn;
@@ -723,7 +773,9 @@ namespace Character.Sync
             }
 
             public CharacterStateId PreviousStateId { get; }
+            public int PreviousStateEnterVersion { get; }
             public CharacterStateId StateId { get; }
+            public int StateEnterVersion { get; }
             public Vector2 VelocityXZ { get; }
             public Vector2 MoveInput { get; }
             public bool IsLockOn { get; }
@@ -735,6 +787,9 @@ namespace Character.Sync
 
             public bool LeftSprint =>
                 PreviousStateId == CharacterStateId.Sprint && StateId != CharacterStateId.Sprint;
+
+            public bool EnteredState =>
+                StateId != PreviousStateId || StateEnterVersion != PreviousStateEnterVersion;
 
             public bool LeftCombat =>
                 IsCombatState(PreviousStateId) && !IsCombatState(StateId);

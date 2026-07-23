@@ -26,7 +26,6 @@ GameObject:
   - component: {fileID: -7918275830378384027}
   - component: {fileID: 8076450636329337052}
   - component: {fileID: 552117939308328530}
-  - component: {fileID: 6429374102917368421}
   m_Layer: 0
   m_Name: NPC
   m_TagString: Untagged
@@ -514,25 +513,6 @@ MonoBehaviour:
   _networkIdentity: {fileID: 4630831168275000313}
   _canReceiveHit: 1
   _currentHp: 100
---- !u!114 &6429374102917368421
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3638829530761909756}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 41d3a57e7b6f4334ab3c03fe70cb7229, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  _actor: {fileID: 552117939308328530}
-  _worldOffset: {x: 0, y: 2.2, z: 0}
-  _barSize: {x: 1.25, y: 0.12}
-  _barColor: {r: 0.9, g: 0.05, b: 0.04, a: 1}
-  _backgroundColor: {r: 0, g: 0, b: 0, a: 0.65}
-  _damageTextRise: 0.45
-  _damageTextLifetime: 0.75
 --- !u!1 &4896968938517736490
 GameObject:
   m_ObjectHideFlags: 0

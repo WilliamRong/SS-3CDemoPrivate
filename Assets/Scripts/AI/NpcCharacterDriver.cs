@@ -33,6 +33,7 @@ namespace AI
         private CharacterPresentationConfig presentationConfig => GameDataManager.Instance.Npc.presentation;
 
         public CharacterStateId CurrentStateId => _fsm?.CurrentState?.Id ?? CharacterStateId.None;
+        public int StateEnterVersion => _fsm?.StateEnterVersion ?? 0;
 
         public byte LastPreparedDodgeMode { get; private set; }
 

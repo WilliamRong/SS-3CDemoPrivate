@@ -18,6 +18,7 @@ namespace Character.Sync
         /// <summary>Last dodge mode from <see cref="ActionEvent.Param"/> on <see cref="ActionType.DodgeStart"/>.</summary>
         public byte LastDodgeMode { get; private set; }
         public int LastHitParam { get; private set; }
+        public int LastHitSeqId { get; private set; }
         public GuardReactionType LastGuardReaction { get; private set; } = GuardReactionType.None;
         public int LastGuardReactionSeqId { get; private set; }
 
@@ -75,6 +76,7 @@ namespace Character.Sync
                 case ActionType.Hit:
                     CurrentRemoteAction = ActionType.Hit;
                     LastHitParam = evt.Param;
+                    LastHitSeqId = evt.SeqId;
                     break;
                 case ActionType.Dead:
                     CurrentRemoteAction = ActionType.Dead;
@@ -104,6 +106,8 @@ namespace Character.Sync
             LastAppliedTick = evt.Tick;
             CurrentRemoteAction = evt.Type;
             LastHitParam = evt.Param;
+            if (evt.Type == ActionType.Hit)
+                LastHitSeqId = evt.SeqId;
 
             if (_networkIdentity != null && _networkIdentity.isLocalPlayer && _playerController != null)
             {
@@ -156,6 +160,7 @@ namespace Character.Sync
             CurrentRemoteAction = ActionType.None;
             LastDodgeMode = 0;
             LastHitParam = 0;
+            LastHitSeqId = 0;
             LastGuardReaction = GuardReactionType.None;
             LastGuardReactionSeqId = 0;
             _consumedGuardReactionSeqId = 0;

@@ -20,7 +20,13 @@ namespace Character.Diagnostics
         [Header("Layout")]
         [Tooltip("x：距屏幕右边缘；y：距屏幕上边缘")]
         [SerializeField] private Vector2 _screenOffset = new Vector2(12f, 12f);
+        [SerializeField] private Vector2 _referenceResolution = new Vector2(1920f, 1080f);
+        [SerializeField] private float _minScale = 0.6f;
+        [SerializeField] private float _maxScale = 2f;
         [SerializeField] private int _fontSize = 20;
+        [SerializeField] private Vector2 _buttonSize = new Vector2(92f, 28f);
+        [SerializeField] private float _buttonToPanelGap = 8f;
+        [SerializeField] private bool _isOpen;
         [SerializeField] private bool _showNumericId = true;
 
         private CharacterStateId _lastSeen;
@@ -58,8 +64,6 @@ namespace Character.Diagnostics
             if (netId != null && NetworkClient.active && !netId.isLocalPlayer)
                 return;
 
-            CharacterStateId current = _player.CurrentStateId;
-
             var box = new GUIStyle(GUI.skin.box)
             {
                 fontSize = _fontSize,
@@ -67,13 +71,37 @@ namespace Character.Diagnostics
                 richText = true
             };
 
+            var button = new GUIStyle(GUI.skin.button)
+            {
+                fontSize = Mathf.Max(10, _fontSize - 4),
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            Matrix4x4 oldMatrix = GUI.matrix;
+            float scale = ResolveGuiScale();
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(scale, scale, 1f));
+
+            float scaledScreenWidth = Screen.width / scale;
+            float buttonX = scaledScreenWidth - _buttonSize.x - _screenOffset.x;
+            var buttonRect = new Rect(buttonX, _screenOffset.y, _buttonSize.x, _buttonSize.y);
+            if (GUI.Button(buttonRect, _isOpen ? "State ^" : "State v", button))
+                _isOpen = !_isOpen;
+
+            if (!_isOpen)
+            {
+                GUI.matrix = oldMatrix;
+                return;
+            }
+
+            CharacterStateId current = _player.CurrentStateId;
             string curText = FormatState(current);
             string prevText = FormatState(_previous);
 
             float w = 420f;
             float h = 128f;
-            float x = Screen.width - w - _screenOffset.x;
-            var rect = new Rect(x, _screenOffset.y, w, h);
+            float x = scaledScreenWidth - w - _screenOffset.x;
+            float y = _screenOffset.y + _buttonSize.y + _buttonToPanelGap;
+            var rect = new Rect(x, y, w, h);
 
             GUILayout.BeginArea(rect);
             GUILayout.Label($"<b>Current</b>:  {curText}", box);
@@ -81,6 +109,16 @@ namespace Character.Diagnostics
             GUILayout.Label($"<b>Sprint Phase</b>: {FormatSprintPhase()}", box);
             GUILayout.Label($"<b>Guard Phase</b>:  {FormatGuardPhase()}", box);
             GUILayout.EndArea();
+
+            GUI.matrix = oldMatrix;
+        }
+
+        private float ResolveGuiScale()
+        {
+            float referenceWidth = Mathf.Max(1f, _referenceResolution.x);
+            float referenceHeight = Mathf.Max(1f, _referenceResolution.y);
+            float scale = Mathf.Min(Screen.width / referenceWidth, Screen.height / referenceHeight);
+            return Mathf.Clamp(scale, Mathf.Max(0.01f, _minScale), Mathf.Max(_minScale, _maxScale));
         }
 
         private string FormatSprintPhase()

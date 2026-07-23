@@ -56,7 +56,6 @@ namespace AI
         public void Exit()
         {
             _timer = 0f;
-            _isHeavyHit = false;
         }
     }
 }

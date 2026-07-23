@@ -31,7 +31,8 @@ namespace Character.Presentation
             in DodgePresentationContext dodgeCtx = default,
             GuardState.GuardPhase guardPhase = GuardState.GuardPhase.Start,
             bool guardHasMove = false,
-            byte attackComboStep = 1)
+            byte attackComboStep = 1,
+            bool forceRestart = false)
         {
             if (animator == null) return false;
 
@@ -39,12 +40,12 @@ namespace Character.Presentation
             {
                 case CharacterStateId.Hit:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.StateHit, _config.GetHitCrossFadeDuration(actionParams != 0));
+                    PlayReaction(animator, AnimatorParams.StateHit, _config.GetHitCrossFadeDuration(actionParams != 0), forceRestart);
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dead:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.StateDeath, _config.GetDeathCrossFadeDuration());
+                    PlayReaction(animator, AnimatorParams.StateDeath, _config.GetDeathCrossFadeDuration(), forceRestart);
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dodge:
@@ -255,10 +256,10 @@ namespace Character.Presentation
             animator.CrossFade(targetHash, _config.dodgeCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
         }
 
-        private void PlayReaction(Animator animator, int stateHash, float crossFadeDuration)
+        private void PlayReaction(Animator animator, int stateHash, float crossFadeDuration, bool forceRestart)
         {
             animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 1f);
-            if (stateHash == _lastHash && _lastCombatState != CharacterStateId.None)
+            if (!forceRestart && stateHash == _lastHash && _lastCombatState != CharacterStateId.None)
                 return;
             _lastHash = stateHash;
             animator.CrossFade(stateHash, crossFadeDuration, AnimatorParams.ReactionLayerIndex, 0f);

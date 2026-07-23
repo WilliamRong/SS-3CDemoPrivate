@@ -50,6 +50,9 @@ namespace Character.LockOn
             }
         }
 
+        public ILockOnTarget CurrentLockOnTarget =>
+            IsLockOnActive ? _currentTarget : null;
+
         private void Awake()
         {
             _input = GetComponent<InputHandler>();

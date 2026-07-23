@@ -38,6 +38,7 @@ namespace Character.Sync
         private bool _hasSentAnySnapshot;
 
         private CharacterStateId _lastStateId = CharacterStateId.None;
+        private int _lastStateEnterVersion;
         private CharacterStateId _lastSentStateId = CharacterStateId.None;
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
@@ -176,6 +177,13 @@ namespace Character.Sync
 
         private int ResolveActionEventParam(CharacterStateId stateId, ActionType actionType)
         {
+            if (actionType == ActionType.Hit
+                && _playerController != null
+                && _playerController.TryGetActiveHitState(out var hitState))
+            {
+                return hitState.IsHeavyHit ? 1 : 0;
+            }
+
             if (actionType != ActionType.DodgeStart)
                 return 0;
 
@@ -230,7 +238,12 @@ namespace Character.Sync
         private void TryProduceActionEventOnStateChange(int tick)
         {
             CharacterStateId current = _playerController.CurrentStateId;
-            if (current == _lastStateId) return;
+            int currentEnterVersion = _playerController.StateEnterVersion;
+            if (current == _lastStateId
+                && !ShouldPublishReenteredAction(current, currentEnterVersion))
+            {
+                return;
+            }
 
             ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
             if (actionType != ActionType.None)
@@ -241,6 +254,13 @@ namespace Character.Sync
             }
 
             _lastStateId = current;
+            _lastStateEnterVersion = currentEnterVersion;
+        }
+
+        private bool ShouldPublishReenteredAction(CharacterStateId stateId, int stateEnterVersion)
+        {
+            return stateId == CharacterStateId.Hit
+                && stateEnterVersion != _lastStateEnterVersion;
         }
 
         private int ResolveActorId()
