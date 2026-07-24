@@ -192,10 +192,10 @@ namespace AI
             if (!isServer) return false;
             return ForceEnterGuard(loopHoldDuration);
         }
-        public bool ServerTryEnterHit(bool isHeavy = false)
+        public bool ServerTryEnterHit(bool isHeavy = false, byte hitVariant = 1)
         {
             if (!isServer || _hit == null) return false;
-            _hit.Prepare(isHeavy);
+            _hit.Prepare(isHeavy, hitVariant);
             return _fsm.TryTransition(
                 CharacterStateId.Hit,
                 _registry,

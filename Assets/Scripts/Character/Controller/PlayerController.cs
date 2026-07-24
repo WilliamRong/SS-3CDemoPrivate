@@ -230,7 +230,7 @@ namespace Character.Controller
             _lateUpdatePipeline?.TickLateUpdate();
         }
 
-        public void ApplyHit(float damage, bool isHeavyHit)
+        public void ApplyHit(float damage, bool isHeavyHit, byte hitVariant = 1)
         {
             if (_context.IsDead || _context.IsInvincible) return;
 
@@ -245,7 +245,7 @@ namespace Character.Controller
                 return;
             }
 
-            _hitState.ConfigureDuration(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit);
+            _hitState.Configure(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit, hitVariant);
             _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
 
@@ -261,6 +261,18 @@ namespace Character.Controller
             {
                 _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
             }
+        }
+
+        /// <summary>
+        /// 仅扣除血量并触发 HealthChanged 事件，不触发状态机切换。
+        /// 供 RemoteActionApplier 给客户端上的非本地玩家使用（状态由 StateSnapshot 驱动）。
+        /// </summary>
+        public void ApplyHealthDelta(float damage)
+        {
+            if (_context == null || _context.IsDead || _context.IsInvincible) return;
+
+            _context.ApplyDamage(damage);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
         }
 
         public void Revive(float hp)

@@ -1,4 +1,4 @@
-using Character.Config;
+﻿using Character.Config;
 using Character.Intent;
 using Character.Motor;
 
@@ -14,9 +14,11 @@ namespace Character.StateMachine.States
         private float _timer;
         private float _duration;
         private bool _isHeavyHit;
+        private byte _hitVariant = 1;
 
         public CharacterStateId Id { get; } = CharacterStateId.Hit;
         public bool IsHeavyHit => _isHeavyHit;
+        public byte HitVariant => _hitVariant;
 
         public HitState(
             CharacterStateMachine fsm,
@@ -31,9 +33,10 @@ namespace Character.StateMachine.States
             _duration = _combat.lightHitDuration;
         }
 
-        public void ConfigureDuration(float duration, bool isHeavyHit = false)
+        public void Configure(float duration, bool isHeavyHit = false, byte hitVariant = 1)
         {
             _isHeavyHit = isHeavyHit;
+            _hitVariant = (hitVariant >= 1 && hitVariant <= 5) ? hitVariant : (byte)1;
             _duration = duration > 0f ? duration : _combat.lightHitDuration;
         }
 

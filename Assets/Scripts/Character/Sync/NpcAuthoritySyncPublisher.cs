@@ -248,7 +248,7 @@ namespace Character.Sync
 
             if (actionType == ActionType.Hit && _npcDriver != null && _npcDriver.TryGetActiveHitState(out var hitState))
             {
-                return hitState.IsHeavyHit ? 1 : 0;
+                return Combat.CombatResolver.PackHitParam(0f, hitState.IsHeavyHit, hitState.HitVariant);
             }
 
             return 0;

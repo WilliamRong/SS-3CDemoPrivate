@@ -108,13 +108,26 @@ namespace Character.Sync
             LastHitParam = evt.Param;
             if (evt.Type == ActionType.Hit)
                 LastHitSeqId = evt.SeqId;
+            // Host/Server 端 CombatResolver 已直接应用伤害，跳过以防二次扣血
+            if (NetworkServer.active)
+                return;
 
-            if (_networkIdentity != null && _networkIdentity.isLocalPlayer && _playerController != null)
+            // 解码伤害：低1位=isHeavyHit，高位=damage*10
+            Combat.CombatResolver.UnpackHitParam(evt.Param, out float damage, out bool isHeavyHit, out byte hitVariant);
+
+            if (_playerController != null)
             {
                 if (evt.Type == ActionType.Hit)
-                    _playerController.ApplyHit(0f, evt.Param != 0);
+                {
+                    if (_networkIdentity != null && _networkIdentity.isLocalPlayer)
+                        _playerController.ApplyHit(damage, isHeavyHit, hitVariant);
+                    else
+                        _playerController.ApplyHealthDelta(damage);
+                }
                 else if (evt.Type == ActionType.Dead)
+                {
                     _playerController.ApplyHit(float.MaxValue, true);
+                }
             }
 
             if (_logApply)

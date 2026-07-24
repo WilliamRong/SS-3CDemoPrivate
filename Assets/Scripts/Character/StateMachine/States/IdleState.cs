@@ -151,7 +151,12 @@ namespace Character.StateMachine.States
         private void BeginTurn(bool turnLeft, float angleDelta)
         {
             _currentPhase = turnLeft ? IdlePhase.TurnLeft : IdlePhase.TurnRight;
-            CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(_motor.Root, turnLeft, angleDelta, _presentationConfig);
+
+            // 计算精确面向目标的方向
+            TryGetFacingAngleToTarget(out _, out _, out Quaternion exactTargetRotation);
+
+            CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(
+                _motor.Root, turnLeft, angleDelta, _presentationConfig, exactTargetRotation);
             _targetTurnAngle = plan.StepAngle;
             _turnTargetRotation = plan.TargetRotation;
             _phaseTimer = 0f;

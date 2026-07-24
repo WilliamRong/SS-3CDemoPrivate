@@ -176,7 +176,7 @@ namespace Character.Combat
 
             if (_playerController != null)
             {
-                _playerController.ApplyHit(hit.damage, hit.isHeavyHit);
+                _playerController.ApplyHit(hit.damage, hit.isHeavyHit, hit.hitVariant);
                 return true;
             }
             if (_npcDriver != null)
@@ -188,7 +188,7 @@ namespace Character.Combat
                     _npcDriver.ServerTryEnterDead();
                     return true;
                 }
-                _npcDriver.ServerTryEnterHit(hit.isHeavyHit);
+                _npcDriver.ServerTryEnterHit(hit.isHeavyHit, hit.hitVariant);
                 return true;
             }
 

@@ -40,7 +40,7 @@ namespace Character.Presentation
             {
                 case CharacterStateId.Hit:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.StateHit, _config.GetHitCrossFadeDuration(actionParams != 0), forceRestart);
+                    PlayReaction(animator, HitVariantToHash(actionParams), _config.lightHitCrossFadeDuration, forceRestart);
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dead:
@@ -302,6 +302,18 @@ namespace Character.Presentation
                 AttackMoveId.Heavy1 => AnimatorParams.AttackHeavy1,
                 AttackMoveId.Heavy2 => AnimatorParams.AttackHeavy2,
                 _ => AnimatorParams.AttackCombo1,
+            };
+        }
+
+        private static int HitVariantToHash(int variant)
+        {
+            return variant switch
+            {
+                2 => AnimatorParams.StateHit2,
+                3 => AnimatorParams.StateHit3,
+                4 => AnimatorParams.StateHit4,
+                5 => AnimatorParams.StateHit5,
+                _ => AnimatorParams.StateHit1,
             };
         }
 

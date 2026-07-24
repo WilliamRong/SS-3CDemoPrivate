@@ -14,8 +14,10 @@ namespace AI
         private float _timer;
         private float _duration;
         private bool _isHeavyHit;
+        private byte _hitVariant = 1;
         
         public bool IsHeavyHit => _isHeavyHit;
+        public byte HitVariant => _hitVariant;
         
         public CharacterStateId Id { get; } = CharacterStateId.Hit;
 
@@ -33,9 +35,10 @@ namespace AI
 
         }
 
-        public void Prepare(bool isHeavy)
+        public void Prepare(bool isHeavy, byte hitVariant = 1)
         {
             _isHeavyHit = isHeavy;
+            _hitVariant = (hitVariant >= 1 && hitVariant <= 5) ? hitVariant : (byte)1;
             _duration = isHeavy ? _combatConfig.heavyHitDuration : _combatConfig.lightHitDuration;
         }
         

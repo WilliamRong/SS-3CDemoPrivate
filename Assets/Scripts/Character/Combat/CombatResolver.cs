@@ -119,6 +119,9 @@ namespace Character.Combat
             if (direction.sqrMagnitude > 0.0001f) direction.Normalize();
             else direction = attacker.transform.forward;
 
+byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
+
+
             float damage = attack.definition.damage * window.DamageMultiplierOrDefault * hurtBox.DamageMultiplier;
 
             var hit = new HitInfo
@@ -132,6 +135,7 @@ namespace Character.Combat
                 slot = window.slot,
                 damage = damage,
                 isHeavyHit = attack.definition.isHeavyHit,
+                hitVariant = hitVariant,
                 hitPoint = hurtBox.transform.position,
                 hitDirection = direction
             };
@@ -191,7 +195,7 @@ namespace Character.Combat
                 return;
 
             ActionType type = target.IsDead ? ActionType.Dead : ActionType.Hit;
-            int param = hit.isHeavyHit ? 1 : 0;
+            int param = PackHitParam(hit.damage, hit.isHeavyHit, hit.hitVariant);
             var evt = new ActionEvent(
                 _nextServerCombatSeqId++,
                 Time.frameCount,
@@ -244,7 +248,63 @@ namespace Character.Combat
                 }
             }
         }
+
+        // 伤害编码：bit0=isHeavyHit, bit1-3=hitVariant(0-7), bit4+=damage*10
+        public static int PackHitParam(float damage, bool isHeavyHit, byte hitVariant = 1)
+        {
+            int damageInt = (int)(Mathf.Clamp(damage, 0f, 9999f) * 10f);
+            return (damageInt << 4) | ((hitVariant & 0x7) << 1) | (isHeavyHit ? 1 : 0);
+        }
+
+        public static void UnpackHitParam(int param, out float damage, out bool isHeavyHit, out byte hitVariant)
+        {
+            isHeavyHit = (param & 1) == 1;
+            hitVariant = (byte)((param >> 1) & 0x7);
+            if (hitVariant == 0) hitVariant = 1; // 兜底：默认 Hit1
+            damage = (param >> 4) / 10f;
+        }
+        /// <summary>
+        /// 根据攻击方向（相对受击者的朝向）选择受击动画变体
+        /// 正面→Hit3,  左侧→Hit1,  右侧→Hit2,  背面上方→Hit4,  背面中间→Hit5
+        /// </summary>
+        private static byte CalculateHitVariant(CombatActor target, Vector3 attackerPos)
+        {
+            Vector3 targetForward = target.transform.forward;
+            targetForward.y = 0f;
+            if (targetForward.sqrMagnitude < 0.0001f) targetForward = Vector3.forward;
+            targetForward.Normalize();
+
+            Vector3 targetRight = target.transform.right;
+            targetRight.y = 0f;
+            targetRight.Normalize();
+
+            // 从受击者指向攻击者
+            Vector3 toAttacker = attackerPos - target.transform.position;
+            Vector3 toAttackerFlat = toAttacker;
+            toAttackerFlat.y = 0f;
+            toAttackerFlat.Normalize();
+            toAttacker.Normalize();
+
+            float forwardDot = Vector3.Dot(targetForward, toAttackerFlat);
+            float rightDot = Vector3.Dot(targetRight, toAttackerFlat);
+
+            // 正面攻击
+            if (forwardDot >= 0.3f)
+                return 3; // Hit3
+
+            // 背面攻击
+            if (forwardDot <= -0.3f)
+            {
+                if (toAttacker.y > 0.5f)
+                    return 4; // Hit4 - 背面上方
+                return 5; // Hit5 - 背面中间
+            }
+
+            // 侧面攻击
+            if (rightDot >= 0f)
+                return 2; // Hit2 - 攻击来自右侧
+            else
+                return 1; // Hit1 - 攻击来自左侧
+        }
     }
-
-
 }

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Character.Combat
 {
@@ -19,6 +19,7 @@ namespace Character.Combat
         public HitBoxSlot slot;
         public float damage;
         public bool isHeavyHit;
+        public byte hitVariant;
         public Vector3 hitPoint;
         public Vector3 hitDirection;
     }

@@ -212,7 +212,7 @@ namespace Character.Sync
                 && HasLocalPresentationAuthority()
                 && _playerController.TryGetActiveHitState(out var playerHitState))
             {
-                return playerHitState.IsHeavyHit ? 1 : 0;
+                return playerHitState.HitVariant;
             }
 
             if (_npcDriver != null
@@ -220,15 +220,18 @@ namespace Character.Sync
                 && _networkIdentity.isServer
                 && _npcDriver.TryGetActiveHitState(out var npcHitState))
             {
-                return npcHitState.IsHeavyHit ? 1 : 0;
+                return npcHitState.HitVariant;
             }
 
             if (_remoteActionApplier == null)
                 return 0;
 
-            return _remoteActionApplier.CurrentRemoteAction == ActionType.Hit
-                ? _remoteActionApplier.LastHitParam
-                : 0;
+            if (_remoteActionApplier.CurrentRemoteAction != ActionType.Hit)
+                return 0;
+
+            Combat.CombatResolver.UnpackHitParam(
+                _remoteActionApplier.LastHitParam, out _, out _, out byte hitVariant);
+            return hitVariant;
         }
 
         private bool TryPresentGuard(PresentationFrame frame)

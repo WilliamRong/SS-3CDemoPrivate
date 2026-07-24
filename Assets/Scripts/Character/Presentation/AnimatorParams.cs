@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace Character.Presentation
 {
@@ -33,6 +33,11 @@ namespace Character.Presentation
 
         //reaction
         public static readonly int StateHit = Animator.StringToHash("Hit");
+        public static readonly int StateHit1 = Animator.StringToHash("Hit1");
+        public static readonly int StateHit2 = Animator.StringToHash("Hit2");
+        public static readonly int StateHit3 = Animator.StringToHash("Hit3");
+        public static readonly int StateHit4 = Animator.StringToHash("Hit4");
+        public static readonly int StateHit5 = Animator.StringToHash("Hit5");
         public static readonly int StateDeath = Animator.StringToHash("Death");
 
         //dodge

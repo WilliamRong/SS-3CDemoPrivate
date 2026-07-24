@@ -181,7 +181,7 @@ namespace Character.Sync
                 && _playerController != null
                 && _playerController.TryGetActiveHitState(out var hitState))
             {
-                return hitState.IsHeavyHit ? 1 : 0;
+                return Combat.CombatResolver.PackHitParam(0f, hitState.IsHeavyHit, hitState.HitVariant);
             }
 
             if (actionType != ActionType.DodgeStart)

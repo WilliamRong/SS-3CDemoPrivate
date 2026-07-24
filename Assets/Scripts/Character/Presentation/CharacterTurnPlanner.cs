@@ -58,10 +58,23 @@ namespace Character.Presentation
             Transform root,
             bool turnLeft,
             float angleDelta,
-            CharacterPresentationConfig config)
+            CharacterPresentationConfig config,
+            Quaternion exactTargetRotation = default)
         {
             float stepAngle = Mathf.Min(angleDelta, GetStepAngle(config));
-            Quaternion targetRotation = CalculateStepTargetRotation(root, turnLeft, stepAngle);
+            Quaternion targetRotation;
+
+            // 最后一步（剩余角度不超过单步上限）：直接用精确面向目标的旋转，消除累积误差
+            if (angleDelta <= GetStepAngle(config) && exactTargetRotation != default)
+            {
+                stepAngle = angleDelta;
+                targetRotation = exactTargetRotation;
+            }
+            else
+            {
+                targetRotation = CalculateStepTargetRotation(root, turnLeft, stepAngle);
+            }
+
             float duration = CalculateDuration(stepAngle, config);
             float yawSpeed = duration > 0.0001f ? stepAngle / duration : 0f;
 
@@ -73,15 +86,10 @@ namespace Character.Presentation
             return Quaternion.Angle(currentRotation, targetRotation) <= GetAngleTolerance(config);
         }
 
+        /// <summary>统一的动画播放倍率，不随角度变化。</summary>
         public static float CalculateSpeed(float angleDelta, CharacterPresentationConfig config)
         {
-            if (config == null || config.turnAnimationAngle <= 0.001f)
-                return 1f;
-
-            float normalizedAngle = Mathf.Clamp01(angleDelta / GetAnimationAngle(config));
-            return Mathf.Max(
-                0.01f,
-                Mathf.Lerp(GetSpeedMultiplierMax(config), GetSpeedMultiplierMin(config), normalizedAngle));
+            return GetSpeedMultiplier(config);
         }
 
         public static float GetCooldown(CharacterPresentationConfig config) => config != null
@@ -104,7 +112,11 @@ namespace Character.Presentation
 
         private static float CalculateDuration(float angleDelta, CharacterPresentationConfig config)
         {
-            return Mathf.Max(0.01f, GetDuration(config)) / CalculateSpeed(angleDelta, config);
+            float baseDuration = GetDuration(config);
+            float animAngle = GetAnimationAngle(config);
+            float speed = GetSpeedMultiplier(config);
+            if (animAngle <= 0.001f) return baseDuration / speed;
+            return Mathf.Max(0.01f, (angleDelta / animAngle) * baseDuration / speed);
         }
 
         private static float GetTriggerAngle(CharacterPresentationConfig config) => config != null
@@ -123,13 +135,9 @@ namespace Character.Presentation
             ? Mathf.Max(1f, config.turnAnimationAngle)
             : 90f;
 
-        private static float GetSpeedMultiplierMax(CharacterPresentationConfig config) => config != null
-            ? Mathf.Max(0.01f, config.turnSpeedMultiplierMax)
-            : 1.3f;
-
-        private static float GetSpeedMultiplierMin(CharacterPresentationConfig config) => config != null
-            ? Mathf.Max(0.01f, config.turnSpeedMultiplierMin)
-            : 1f;
+        private static float GetSpeedMultiplier(CharacterPresentationConfig config) => config != null
+            ? Mathf.Max(0.5f, config.turnSpeedMultiplierMax)
+            : 1.5f;
 
         private static float GetDuration(CharacterPresentationConfig config) => config != null
             ? config.idleTurnDuration
