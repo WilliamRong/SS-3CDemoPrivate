@@ -22,6 +22,10 @@ namespace Character.Sync
         public uint LockTargetNetId;
         public float MoveInputX;
         public float MoveInputY;
+        public byte HasAuthoritativeHealth;
+        public float CurrentHp;
+        public float MaxHp;
+        public uint HealthRevision;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -31,6 +35,12 @@ namespace Character.Sync
         public int ActorId;
         public int Type;
         public int Param;
+
+        public byte HasHealthResult;
+        public float AppliedDamage;
+        public float CurrentHp;
+        public float MaxHp;
+        public uint HealthRevision;
     }
 
     public sealed class MirrorSyncTransport : MonoBehaviour, ISyncTransport
@@ -204,6 +214,10 @@ namespace Character.Sync
                 LockTargetNetId = s.LockTargetNetId,
                 MoveInputX = s.MoveInputX,
                 MoveInputY = s.MoveInputY,
+                HasAuthoritativeHealth = s.HasAuthoritativeHealth,
+                CurrentHp = s.CurrentHp,
+                MaxHp = s.MaxHp,
+                HealthRevision = s.HealthRevision,
             };
         }
 
@@ -224,7 +238,11 @@ namespace Character.Sync
                 m.LockOnActive,
                 m.LockTargetNetId,
                 m.MoveInputX,
-                m.MoveInputY
+                m.MoveInputY,
+                m.HasAuthoritativeHealth,
+                m.CurrentHp,
+                m.MaxHp,
+                m.HealthRevision
             );
         }
 
@@ -236,7 +254,12 @@ namespace Character.Sync
                 Tick = e.Tick,
                 ActorId = e.ActorId,
                 Type = (int)e.Type,
-                Param = e.Param
+                Param = e.Param,
+                HasHealthResult = e.HasHealthResult,
+                AppliedDamage = e.AppliedDamage,
+                CurrentHp = e.CurrentHp,
+                MaxHp = e.MaxHp,
+                HealthRevision = e.HealthRevision,
             };
         }
 
@@ -247,7 +270,12 @@ namespace Character.Sync
                 m.Tick,
                 m.ActorId,
                 (ActionType)m.Type,
-                m.Param
+                m.Param,
+                m.HasHealthResult,
+                m.AppliedDamage,
+                m.CurrentHp,
+                m.MaxHp,
+                m.HealthRevision
             );
         }
     }

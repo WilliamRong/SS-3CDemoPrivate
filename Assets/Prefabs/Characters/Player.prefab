@@ -92,6 +92,7 @@ GameObject:
   - component: {fileID: 8042024788777332986}
   - component: {fileID: 946464254992824523}
   - component: {fileID: 6429374102917368422}
+  - component: {fileID: 7160000000000000001}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -372,9 +373,9 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 4294967295
   _requireCameraForward: 1
-  _cameraForwardDotMin: -0.1
+  _cameraForwardDotMin: 0
   _autoSwitchOnTargetDeath: 1
-  _autoSwitchRequiresCameraForward: 0
+  _autoSwitchRequiresCameraForward: 1
   _screenCenterWeight: 2
   _distanceWeight: 0.2
   _priorityWeight: 1
@@ -490,15 +491,27 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   _lockOn: {fileID: -6764813204625197364}
-  _hudPrefab: {fileID: 1000000000000000000, guid: 93b76baf38e44a4b802c79e0834a0d82,
-    type: 3}
-  _damageTextPrefab: {fileID: 1000000000000000000, guid: 0c1d707540854c218791f3bc495f6a2f,
-    type: 3}
-  _screenOffset: {x: 0, y: 42}
+--- !u!114 &7160000000000000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 41d3a57e7b6f4334ab3c03fe70cb7229, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _actor: {fileID: 946464254992824523}
+  _healthBarPrefab: {fileID: 1000000000000000000, guid: 47cb294d0e6e4e8ab1683ce9d6f0a4aa, type: 3}
+  _damageTextPrefab: {fileID: 1000000000000000000, guid: 0c1d707540854c218791f3bc495f6a2f, type: 3}
+  _worldOffset: {x: 0, y: 2.2, z: 0}
   _damageTextRise: 0.45
   _damageTextLifetime: 0.75
-  _barRootPath: HealthBar
-  _fillPath: HealthBar/Background/Fill
+  _visibleAfterHitDuration: 3
+  _fillPath: Background/Fill
+  _hideForLocalPlayer: 1
 --- !u!1 &7067791028141538116
 GameObject:
   m_ObjectHideFlags: 0

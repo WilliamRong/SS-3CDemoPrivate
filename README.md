@@ -1,8 +1,17 @@
 # SS&3CDemo
 
-基于 Unity 的 **3C（Character / Camera / Control）动作战斗 Demo**，面向类魂系体验：锁定目标、连招、冲刺、闪避、格挡，并支持本地调试与 Mirror 联机同步。
+基于 Unity 的 **3C（Character / Camera / Control）动作战斗 Demo**，面向类魂系体验：锁定目标、连招、冲刺、闪避、格挡、方向受击与血量反馈，并支持本地调试与 Mirror 联机同步。
 
-> 本仓库为**私有项目**，仅包含自研代码与资源。第三方商业插件需自行安装，不包含在版本库中。
+> 本仓库为**私有项目**。项目包含自研内容、可再分发的开源依赖和已授权资产；Behavior Designer Pro 等第三方商业插件需自行安装，不包含在版本库中。
+
+## 项目文档
+
+- [项目总览](docs/PROJECT_OVERVIEW.md)：定位、技术栈、目录职责与运行时数据流
+- [能力需求](docs/REQUIREMENTS.md)：按角色、战斗、网络、AI、表现等能力域维护需求
+- [路线与进度](docs/ROADMAP_AND_PROGRESS.md)：Phase A-H、当前基线、证据与已知缺口
+- [验证矩阵](docs/VERIFICATION_MATRIX.md)：Offline、Host、Client、Player 与 NPC 验收项
+
+`AIContext/` 保存历史对话和旧状态记录，不作为当前进度事实源。当前状态以代码/资产、Git 历史、带环境的验证记录和上述维护文档为准。
 
 ---
 
@@ -12,18 +21,22 @@
 
 - **状态机驱动**：Idle / Move / Sprint / Attack / Dodge / Guard / Hit / Dead
 - **战斗动作**：连招（Combo）、冲刺攻击、闪避攻击、重击、格挡（全身 / 上半身叠加）
-- **锁定系统**：目标注册、切换、锁定下的移动与动画表现
+- **战斗判定**：数据化攻击窗口、HitBox/HurtBox、Server 权威结算、格挡/破防实际伤害同步
+- **锁定系统**：按相机朝向筛选目标，支持切换、锁定移动与动画表现
 - **相机**：Cinemachine 驱动的第三人称相机，支持锁定相机修正
+- **表现与 UI**：Player/NPC 七类动作、Idle/Guard Turn90、方向受击、玩家 HUD、Player/NPC 唯一世界血条和伤害数字
 
 ### 网络同步
 
 - **快照 + 事件** 双通道同步架构
-  - `StateSnapshot`：位置、朝向、状态、冲刺阶段、格挡阶段、连招步数、锁定信息等
-  - `ActionEvent`：状态切换等离散事件
+  - `StateSnapshot`：位置、朝向、状态和锁定信息；NPC 快照同时携带权威 HP 与 `HealthRevision`
+  - `ActionEvent`：状态切换和战斗结果等离散事件；命中、格挡与破防携带实际伤害及权威 HP
 - **双传输模式**
   - `FakeNetworkPipe`：单机 / 离线场景本地回环调试
   - `MirrorSyncTransport`：联机场景 Mirror 消息传输
 - **表现层分离**：逻辑在 `Update` / 网络 Tick 中推进，动画与视觉在 `CharacterLateUpdatePipeline` 中统一调度
+
+> Player/NPC 即时权威 HP 结果、格挡/破防实际伤害，以及 NPC 的 revision 快照纠正链路已实现；Player 周期 HP 纠正和完整 Offline/Host/Client 验收仍待完成，详见[路线与进度](docs/ROADMAP_AND_PROGRESS.md)。
 
 ### AI
 
@@ -99,20 +112,26 @@ powershell -ExecutionPolicy Bypass -File Tools/Git/install-hooks.ps1
 Assets/
 ├── Scripts/
 │   ├── Character/
-│   │   ├── Controller/       # 玩家 / NPC 控制器
+│   │   ├── Combat/           # 攻击定义、HitBox/HurtBox、伤害与格挡
+│   │   ├── Controller/       # 玩家控制器与 Root Motion 转发
 │   │   ├── StateMachine/     # 状态机与各状态实现
 │   │   ├── Sync/             # 网络同步（快照、插值、传输层）
 │   │   ├── Presentation/     # 动画表现层（Locomotion / Combat / Sprint）
 │   │   ├── LockOn/           # 锁定目标系统
 │   │   ├── Motor/            # 移动与物理
 │   │   └── Config/           # ScriptableObject 配置
-│   ├── AI/                   # NPC 行为树桥接与状态
+│   ├── AI/                   # NPC 行为树桥接、Driver、FSM 与 Motor
 │   ├── Input/                # 输入处理
 │   └── Core/                 # 全局数据、相机、游戏管理
+├── Data/                     # 角色、相机、同步、表现与攻击数据
+├── Prefabs/                  # Character / System / Terrain / UI
 ├── Scenes/                   # 场景
 └── Mirror/                   # Mirror 网络框架（内嵌）
 
 Tools/Git/                    # Git 工具脚本（hook、历史清理、lock 清理）
+docs/                         # 当前项目总览、需求、进度与验证文档
+AIContext/                    # 历史上下文（非当前事实源）
+openspec/                     # 规格与变更记录
 ```
 
 ---
@@ -127,9 +146,10 @@ Input / AI Intent
 PlayerController / NpcCharacterDriver
        ↓
 CharacterStateMachine（逻辑状态）
-       ↓
-LocalSyncPublisher → Transport → RemoteInterpolator
-       ↓
+       ├──→ CharacterMotor / NpcMotor
+       ├──→ CombatActor → CombatResolver
+       └──→ Publisher → Transport → RemoteInterpolator / RemoteActionApplier
+                                      ↓
 CharacterLateUpdatePipeline（LateUpdate 表现调度）
        ↓
 Animator（Locomotion / Combat / Sprint Presenter）
@@ -139,8 +159,8 @@ Animator（Locomotion / Combat / Sprint Presenter）
 
 ### 同步数据
 
-- **StateSnapshot**：连续状态（位置、速度、当前 StateId、锁定、连招步等）
-- **ActionEvent**：离散动作（如进入 Attack / Dodge 时的序号事件）
+- **StateSnapshot**：连续状态（位置、速度、StateId、锁定、连招；NPC 还包含权威 HP 与 revision）
+- **ActionEvent**：离散动作与即时战斗结果（实际伤害、绝对 HP 与 revision）
 - **NetTickClock**：统一网络 Tick，支持每帧多 Tick 推进
 
 ---
@@ -150,6 +170,7 @@ Animator（Locomotion / Combat / Sprint Presenter）
 - 角色配置通过 `CharacterDefinition`、`CharacterCombatConfig` 等 ScriptableObject 管理
 - 离线模式可在不启动 Mirror Server 的情况下验证同步与表现链路
 - 联机场景需确保 `MirrorSyncTransport` 与 `SyncBootstrap` 正确接线
+- 改变需求、进度、架构或验收结果时，应同步更新对应 `docs/` 文档；不要用新增 `AIContext` 记录替代当前文档
 
 ---
 

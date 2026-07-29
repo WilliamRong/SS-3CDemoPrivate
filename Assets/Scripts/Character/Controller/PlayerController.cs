@@ -275,6 +275,37 @@ namespace Character.Controller
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
         }
 
+        public void ApplyAuthoritativeHealth(float currentHp, float maxHp)
+        {
+            if(_context == null) return;
+
+            _context.SetHealth(currentHp, maxHp);
+            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+
+        }
+
+        //只播放反应不扣血
+        public void ApplyRemoteHitReaction(bool isHeavyHit, byte hitVariant, bool isDead)
+        {
+            if(_context == null || _fsm == null || _stateRegistry == null) return;
+
+            if (isDead)
+            {
+                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
+                return;
+            }
+
+            if(_context.IsDead) return;
+
+            var combat = GameDataManager.Instance.Player.combat;
+            _hitState.Configure(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit, hitVariant);
+
+            _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
+
+        }
+
+
+
         public void Revive(float hp)
         {
             _context.Revive(hp);

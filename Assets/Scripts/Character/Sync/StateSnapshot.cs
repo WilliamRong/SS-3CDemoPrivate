@@ -28,7 +28,7 @@ namespace Character.Sync
         public byte IdlePhase;
         /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. Encodes <see cref="AttackMoveId"/> as a byte.</summary>
         public byte AttackComboStep;
-        
+
         /// <summary>1 = locked on a target; otherwise 0.</summary>
         public byte LockOnActive;
         /// <summary>Mirror NetworkIdentity.netId of lock target; 0 when not locked.</summary>
@@ -37,7 +37,12 @@ namespace Character.Sync
         public float MoveInputX;
         /// <summary>Locomotion blend input Z while locked (VelocityZ).</summary>
         public float MoveInputY;
-        
+
+        public byte HasAuthoritativeHealth;
+        public float CurrentHp;
+        public float MaxHp;
+        public uint HealthRevision;
+
         public StateSnapshot(
             int tick,
             int actorId,
@@ -53,7 +58,11 @@ namespace Character.Sync
             byte lockOnActive = 0,
             uint lockTargetNetId = 0,
             float moveInputX = 0f,
-            float moveInputY = 0f)
+            float moveInputY = 0f,
+            byte hasAuthoritativeHealth = 0,
+            float currentHp = 0f,
+            float maxHp = 0f,
+            uint healthRevision = 0)
         {
             Tick = tick;
             ActorId = actorId;
@@ -71,8 +80,12 @@ namespace Character.Sync
             MoveInputX = moveInputX;
             MoveInputY = moveInputY;
             ArrivalTimeSec = 0f;
+            HasAuthoritativeHealth = hasAuthoritativeHealth;
+            CurrentHp = currentHp;
+            MaxHp = maxHp;
+            HealthRevision = healthRevision;
         }
-        
+
         public bool IsLockOnActive => LockOnActive != 0;
 
         public Vector2 GetMoveInputOrDefault() => new Vector2(MoveInputX, MoveInputY);

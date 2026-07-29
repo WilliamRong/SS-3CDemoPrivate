@@ -16,6 +16,7 @@ namespace Character.Combat
         [SerializeField] private Vector3 _worldOffset = new(0f, 2.2f, 0f);
         [SerializeField] private float _damageTextRise = 0.45f;
         [SerializeField] private float _damageTextLifetime = 0.75f;
+        [SerializeField, Min(0.1f)] private float _visibleAfterHitDuration = 3f;
         [SerializeField] private string _fillPath = "Background/Fill";
         [SerializeField] private bool _hideForLocalPlayer = true;
 
@@ -27,6 +28,8 @@ namespace Character.Combat
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
         private float _lastObservedPlayerHp = -1f;
+        private float _visibleUntil = float.NegativeInfinity;
+        private bool _isLockOnVisible;
 
         private void Awake()
         {
@@ -41,11 +44,11 @@ namespace Character.Combat
 
         private void OnEnable()
         {
+            _visibleUntil = float.NegativeInfinity;
+            SetCanvasVisible(false);
+
             if (ShouldHideForLocalPlayer())
-            {
-                SetCanvasVisible(false);
                 return;
-            }
 
             _lastObservedPlayerHp = -1f;
 
@@ -66,6 +69,9 @@ namespace Character.Combat
 
         private void OnDisable()
         {
+            _visibleUntil = float.NegativeInfinity;
+            SetCanvasVisible(false);
+
             if (_playerController != null)
                 _playerController.HealthChanged -= OnPlayerHealthChanged;
 
@@ -83,6 +89,11 @@ namespace Character.Combat
                 SetCanvasVisible(false);
                 return;
             }
+
+            bool shouldShow = _isLockOnVisible || Time.unscaledTime < _visibleUntil;
+            SetCanvasVisible(shouldShow);
+            if (!shouldShow)
+                return;
 
             if (_camera == null)
                 _camera = Camera.main;
@@ -104,8 +115,6 @@ namespace Character.Combat
 
             float ratio = maxHp > 0f ? Mathf.Clamp01(currentHp / maxHp) : 0f;
             _fillRect.anchorMax = new Vector2(ratio, 1f);
-
-            SetCanvasVisible(currentHp < maxHp);
         }
 
         private void OnDamageTaken(float damage)
@@ -113,8 +122,29 @@ namespace Character.Combat
             if (_canvasRect == null || damage <= 0f) return;
             if (ShouldHideForLocalPlayer()) return;
 
-            SetCanvasVisible(true);
+            ShowForHit();
             StartCoroutine(PlayDamageNumber(damage));
+        }
+
+        public void ShowForHit()
+        {
+            if (_canvasRect == null || ShouldHideForLocalPlayer())
+                return;
+
+            _visibleUntil = Time.unscaledTime + Mathf.Max(0.1f, _visibleAfterHitDuration);
+            SetCanvasVisible(true);
+        }
+
+        public void SetLockOnVisible(bool visible)
+        {
+            if (_isLockOnVisible == visible)
+                return;
+
+            _isLockOnVisible = visible;
+            bool shouldShow =
+                !ShouldHideForLocalPlayer() &&
+                (visible || Time.unscaledTime < _visibleUntil);
+            SetCanvasVisible(shouldShow);
         }
 
         private void OnPlayerHealthChanged(float currentHp, float maxHp)

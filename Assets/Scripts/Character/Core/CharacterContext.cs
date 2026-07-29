@@ -28,6 +28,13 @@ namespace Character.Core
             CurrentHp = MaxHp;
         }
 
+        public void SetHealth(float currentHp, float maxHp)
+        {
+            MaxHp = Mathf.Max(1f, maxHp);
+            CurrentHp = Mathf.Clamp(currentHp, 0f, MaxHp);
+        }
+
+
         public void ApplyDamage(float damage)
         {
             if (IsDead || IsInvincible) return;

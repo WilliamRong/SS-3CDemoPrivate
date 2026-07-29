@@ -1,6 +1,7 @@
 using Character.Config;
 using Core;
 using Mirror;
+using Character.Combat;
 using UnityEngine;
 
 namespace Character.Sync
@@ -13,6 +14,8 @@ namespace Character.Sync
         [Header("Debug")]
         [SerializeField] private bool _logState;
 
+        private CombatActor _combatActor;
+
         private NetworkSyncConfig Sync => GameDataManager.Instance.NetworkSync;
 
         private NetworkIdentity _networkIdentity;
@@ -24,6 +27,7 @@ namespace Character.Sync
         {
             if (_buffer == null) _buffer = GetComponent<RemoteSnapshotBuffer>();
             _networkIdentity = GetComponent<NetworkIdentity>();
+            _combatActor = GetComponent<CombatActor>();
         }
 
         public void TickInterpolation()
@@ -69,6 +73,12 @@ namespace Character.Sync
             transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             LastAppliedSnapshot = to;
+
+            // Dedicated Server 和 Host 都已经持有权威 HP，不能重复覆盖。
+            if (!NetworkServer.active && _combatActor != null && to.HasAuthoritativeHealth != 0)
+            {
+                _combatActor.ApplyAuthoritativeHealth(to.CurrentHp, to.MaxHp, to.HealthRevision);
+            }
 
             if (_logState)
             {

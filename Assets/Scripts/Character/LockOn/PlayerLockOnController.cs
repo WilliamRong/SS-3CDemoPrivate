@@ -13,9 +13,9 @@ namespace Character.LockOn
         [SerializeField] private float _lockRadius = 12f;
         [SerializeField] private LayerMask _targetMask = ~0;
         [SerializeField] private bool _requireCameraForward = true;
-        [SerializeField] private float _cameraForwardDotMin = -0.1f;
+        [SerializeField, Range(0f, 1f)] private float _cameraForwardDotMin = 0f;
         [SerializeField] private bool _autoSwitchOnTargetDeath = true;
-        [SerializeField] private bool _autoSwitchRequiresCameraForward;
+        [SerializeField] private bool _autoSwitchRequiresCameraForward = true;
 
         [Header("Score")]
         [SerializeField] private float _screenCenterWeight = 2f;
@@ -62,6 +62,8 @@ namespace Character.LockOn
 
         private void Update()
         {
+            ResolveCamera();
+
             if (IsOwnerDead())
             {
                 ClearLockOn();
@@ -240,12 +242,23 @@ namespace Character.LockOn
             if (toTarget.sqrMagnitude > _lockRadius * _lockRadius)
                 return false;
 
-            if (requireCameraForward && _camera != null)
+            if (requireCameraForward)
             {
-                // Only used when acquiring a new target; locked targets stay valid when behind the player.
-                var dir = toTarget.normalized;
-                float dot = Vector3.Dot(_camera.transform.forward, dir);
+                Camera viewCamera = ResolveCamera();
+                if (viewCamera == null)
+                    return false;
+
+                Vector3 cameraToTarget = lockPoint.position - viewCamera.transform.position;
+                if (cameraToTarget.sqrMagnitude <= 0.0001f)
+                    return false;
+
+                float dot = Vector3.Dot(
+                    viewCamera.transform.forward,
+                    cameraToTarget.normalized);
                 if (dot < _cameraForwardDotMin)
+                    return false;
+
+                if (viewCamera.WorldToViewportPoint(lockPoint.position).z <= 0f)
                     return false;
             }
 
@@ -294,15 +307,24 @@ namespace Character.LockOn
             float distance = Vector3.Distance(transform.position, lockPoint.position);
             float screenCenterDistance = 0f;
 
-            if (_camera != null)
+            Camera viewCamera = ResolveCamera();
+            if (viewCamera != null)
             {
-                Vector3 viewport = _camera.WorldToViewportPoint(lockPoint.position);
+                Vector3 viewport = viewCamera.WorldToViewportPoint(lockPoint.position);
                 var viewportDelta = new Vector2(viewport.x - 0.5f, viewport.y - 0.5f);
                 screenCenterDistance = viewportDelta.magnitude;
             }
 
             return screenCenterDistance * _screenCenterWeight + distance * _distanceWeight -
                    target.LockPriority * _priorityWeight;
+        }
+
+        private Camera ResolveCamera()
+        {
+            if (_camera == null || !_camera.isActiveAndEnabled)
+                _camera = Camera.main;
+
+            return _camera;
         }
 
         private static bool IsTargetReferenceAlive(ILockOnTarget target)

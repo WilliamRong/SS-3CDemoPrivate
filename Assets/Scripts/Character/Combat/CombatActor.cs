@@ -50,10 +50,16 @@ namespace Character.Combat
         private float _maxHp = 100f;
         private bool _healthInitialized;
 
+        private bool _hasAppliedHealthRevision;
+
+        public uint HealthRevision { get; private set; }
+
+        public float CurrentHp => _playerController != null ? _playerController.CurrentHp : _currentHp;
+
         public int TeamId => _teamId;
-        public float CurrentHp => _currentHp;
-        public float MaxHp => _maxHp;
-        public float HealthRatio => _maxHp > 0f ? Mathf.Clamp01(_currentHp / _maxHp) : 0f;
+
+        public float MaxHp => _playerController != null ? _playerController.MaxHp : _maxHp;
+        public float HealthRatio => MaxHp > 0f ? Mathf.Clamp01(CurrentHp / MaxHp) : 0f;
 
         public GuardReactionType LastGuardReactionType { get; private set; }
 
@@ -152,16 +158,60 @@ namespace Character.Combat
             return attack.IsValid;
         }
 
+
+        private void CommitHealthChange(float previousHp)
+        {
+            if (Mathf.Approximately(previousHp, CurrentHp)) return;
+
+            unchecked
+            {
+                HealthRevision++;
+                if (HealthRevision == 0) HealthRevision = 1;
+            }
+        }
+
+        public bool ApplyAuthoritativeHealth(float currentHp, float maxHp, uint revision)
+        {
+            if (_hasAppliedHealthRevision && revision <= HealthRevision) return false;
+
+            float previousHp = CurrentHp;
+
+            if (_playerController != null)
+            {
+                _playerController.ApplyAuthoritativeHealth(currentHp, maxHp);
+            }
+            else
+            {
+                _maxHp = Mathf.Max(1f, maxHp);
+                _currentHp = Mathf.Clamp(currentHp, 0f, _maxHp);
+                _healthInitialized = true;
+            }
+
+            HealthRevision = revision;
+            _hasAppliedHealthRevision = true;
+
+            float appliedDamage = Mathf.Max(0f, previousHp - CurrentHp);
+            if (appliedDamage > 0f)
+                DamageTaken?.Invoke(appliedDamage);
+
+            HealthChanged?.Invoke(CurrentHp, MaxHp);
+            return true;
+        }
+
+
+
         public bool ApplyHit(in HitInfo hit)
         {
             if (!CanReceiveHit) return false;
 
+            float previousHp = CurrentHp;
             LastGuardReactionType = GuardReactionType.None;
 
             if (TryResolveGuardBreak(hit, out float guardBreakDamageMultiplier))
             {
                 ApplyGuardBreak(hit, guardBreakDamageMultiplier);
                 LastGuardReactionType = GuardReactionType.Break;
+                CommitHealthChange(previousHp);
                 return true;
             }
 
@@ -170,6 +220,7 @@ namespace Character.Combat
                 ApplyBlockedHit(hit, guardDamageMultiplier);
                 HitBlocked?.Invoke(hit);
                 LastGuardReactionType = SelectGuardReaction(hit.attackId, hit.isHeavyHit);
+                CommitHealthChange(previousHp);
                 return true;
             }
 
@@ -177,6 +228,7 @@ namespace Character.Combat
             if (_playerController != null)
             {
                 _playerController.ApplyHit(hit.damage, hit.isHeavyHit, hit.hitVariant);
+                CommitHealthChange(previousHp);
                 return true;
             }
             if (_npcDriver != null)
@@ -186,13 +238,21 @@ namespace Character.Combat
                 if (_currentHp <= 0f)
                 {
                     _npcDriver.ServerTryEnterDead();
-                    return true;
                 }
-                _npcDriver.ServerTryEnterHit(hit.isHeavyHit, hit.hitVariant);
+                else
+                {
+                    _npcDriver.ServerTryEnterHit(hit.isHeavyHit, hit.hitVariant);
+                }
+
+                CommitHealthChange(previousHp);
                 return true;
             }
 
-            return ApplyHealthDamage(hit.damage);
+            bool applied = ApplyHealthDamage(hit.damage);
+            if (applied)
+                CommitHealthChange(previousHp);
+
+            return applied;
         }
 
         private void TickAttackRuntime(float deltaTime)

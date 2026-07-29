@@ -119,7 +119,7 @@ namespace Character.Combat
             if (direction.sqrMagnitude > 0.0001f) direction.Normalize();
             else direction = attacker.transform.forward;
 
-byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
+            byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
 
 
             float damage = attack.definition.damage * window.DamageMultiplierOrDefault * hurtBox.DamageMultiplier;
@@ -147,25 +147,29 @@ byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
 
             if (_applyDamage)
             {
+                float hpBefore = target.CurrentHp;
+
                 bool applied = target.ApplyHit(hit);
                 if (!applied)
                     return;
 
+                // 必须使用 HP 差值，不能直接使用 hit.damage。
+                float appliedDamage = Mathf.Max(0f, hpBefore - target.CurrentHp);
+
                 if (target.LastGuardReactionType != GuardReactionType.None)
                 {
-                    BroadcastGuardReaction(target);
+                    BroadcastGuardReaction(target, appliedDamage);
                     return;
                 }
 
-                BroadcastHitReaction(target, hit);
+                BroadcastHitReaction(target, hit, appliedDamage);
             }
 
 
         }
 
 
-
-        private void BroadcastGuardReaction(CombatActor target)
+        private void BroadcastGuardReaction(CombatActor target, float appliedDamage)
         {
             if (!NetworkServer.active)
                 return;
@@ -181,11 +185,17 @@ byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
                 Time.frameCount,
                 target.ActorId,
                 type,
-                (int)target.LastGuardReactionType);
+                (int)target.LastGuardReactionType,
+                hasHealthResult: 1,
+                appliedDamage: appliedDamage,
+                currentHp: target.CurrentHp,
+                maxHp: target.MaxHp,
+                healthRevision: target.HealthRevision);
+
             _transport.BroadcastActionFromServer(evt);
         }
 
-        private void BroadcastHitReaction(CombatActor target, in HitInfo hit)
+        private void BroadcastHitReaction(CombatActor target, in HitInfo hit, float appliedDamage)
         {
             if (!NetworkServer.active)
                 return;
@@ -195,13 +205,18 @@ byte hitVariant = CalculateHitVariant(target, attacker.transform.position);
                 return;
 
             ActionType type = target.IsDead ? ActionType.Dead : ActionType.Hit;
-            int param = PackHitParam(hit.damage, hit.isHeavyHit, hit.hitVariant);
+            int param = PackHitParam(appliedDamage, hit.isHeavyHit, hit.hitVariant);
             var evt = new ActionEvent(
                 _nextServerCombatSeqId++,
                 Time.frameCount,
                 target.ActorId,
                 type,
-                param);
+                param,
+                hasHealthResult: 1,
+                appliedDamage: appliedDamage,
+                currentHp: target.CurrentHp,
+                maxHp: target.MaxHp,
+                healthRevision: target.HealthRevision);
             _transport.BroadcastActionFromServer(evt);
         }
 

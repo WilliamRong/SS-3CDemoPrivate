@@ -7,14 +7,18 @@ namespace Character.Sync
 {
     public class RemoteActionApplier : MonoBehaviour
     {
+
+        private CombatActor _combatActor;
+        private NpcHealthBarView _healthBarView;
+
         private const int ServerCombatSeqBase = 100000;
 
         [Header("Debug")]
         [SerializeField] private bool _logApply = true;
 
-        public int LastAppliedSeqId {get; private set;} = 0;
-        public int LastAppliedTick {get; private set;} = 0;
-        public ActionType CurrentRemoteAction {get; private set;} = ActionType.None;
+        public int LastAppliedSeqId { get; private set; } = 0;
+        public int LastAppliedTick { get; private set; } = 0;
+        public ActionType CurrentRemoteAction { get; private set; } = ActionType.None;
         /// <summary>Last dodge mode from <see cref="ActionEvent.Param"/> on <see cref="ActionType.DodgeStart"/>.</summary>
         public byte LastDodgeMode { get; private set; }
         public int LastHitParam { get; private set; }
@@ -32,6 +36,8 @@ namespace Character.Sync
         {
             _networkIdentity = GetComponent<NetworkIdentity>();
             _playerController = GetComponent<PlayerController>();
+            _combatActor = GetComponent<CombatActor>();
+            _healthBarView = GetComponent<NpcHealthBarView>();
         }
 
         public void Apply(ActionEvent evt)
@@ -42,20 +48,31 @@ namespace Character.Sync
                 return;
             }
 
+
+            bool isServerCombatResult =
+                evt.SeqId >= ServerCombatSeqBase &&
+                (evt.Type == ActionType.Hit ||
+                 evt.Type == ActionType.Dead ||
+                 evt.Type == ActionType.GuardHit ||
+                 evt.Type == ActionType.GuardBreak);
+
+            if (isServerCombatResult)
+            {
+                ApplyServerCombatResult(evt);
+                return;
+            }
+
+
             if (evt.Type is ActionType.GuardHit or ActionType.GuardBreak)
             {
                 ApplyGuardReaction(evt);
                 return;
             }
 
-            if (evt.SeqId >= ServerCombatSeqBase && evt.Type is ActionType.Hit or ActionType.Dead)
-            {
-                ApplyServerCombatReaction(evt);
-                return;
-            }
 
-            if(evt.SeqId <= LastAppliedSeqId){
-                if(_logApply) Debug.Log($"RemoteActionApplier: Ignore duplicate seqId {evt.SeqId}");
+            if (evt.SeqId <= LastAppliedSeqId)
+            {
+                if (_logApply) Debug.Log($"RemoteActionApplier: Ignore duplicate seqId {evt.SeqId}");
                 return;
             }
 
@@ -94,7 +111,7 @@ namespace Character.Sync
 
         }
 
-        private void ApplyServerCombatReaction(ActionEvent evt)
+        private void ApplyServerCombatResult(ActionEvent evt)
         {
             if (evt.SeqId <= _lastServerCombatSeqId)
             {
@@ -105,33 +122,65 @@ namespace Character.Sync
             _lastServerCombatSeqId = evt.SeqId;
             LastAppliedTick = evt.Tick;
             CurrentRemoteAction = evt.Type;
-            LastHitParam = evt.Param;
-            if (evt.Type == ActionType.Hit)
+
+            bool isGuard =
+                evt.Type == ActionType.GuardHit ||
+                evt.Type == ActionType.GuardBreak;
+
+            if (isGuard)
+            {
+                LastGuardReaction = evt.Type == ActionType.GuardBreak
+                    ? GuardReactionType.Break
+                    : ToGuardReaction(evt.Param);
+                LastGuardReactionSeqId = evt.SeqId;
+            }
+            else
+            {
+                LastHitParam = evt.Param;
                 LastHitSeqId = evt.SeqId;
+            }
+
+            // Every observer shows the victim's world health bar, even for a zero-damage block.
+            _healthBarView?.ShowForHit();
+
             // Host/Server 端 CombatResolver 已直接应用伤害，跳过以防二次扣血
             if (NetworkServer.active)
                 return;
 
-            // 解码伤害：低1位=isHeavyHit，高位=damage*10
-            Combat.CombatResolver.UnpackHitParam(evt.Param, out float damage, out bool isHeavyHit, out byte hitVariant);
-
-            if (_playerController != null)
+            // Apply the server's absolute HP result; revision rejects stale delivery.
+            if (_combatActor != null && evt.HasHealthResult != 0)
             {
-                if (evt.Type == ActionType.Hit)
-                {
-                    if (_networkIdentity != null && _networkIdentity.isLocalPlayer)
-                        _playerController.ApplyHit(damage, isHeavyHit, hitVariant);
-                    else
-                        _playerController.ApplyHealthDelta(damage);
-                }
-                else if (evt.Type == ActionType.Dead)
-                {
-                    _playerController.ApplyHit(float.MaxValue, true);
-                }
+                _combatActor.ApplyAuthoritativeHealth(
+                    evt.CurrentHp,
+                    evt.MaxHp,
+                    evt.HealthRevision);
+            }
+
+            if (!isGuard &&
+                _playerController != null &&
+                _networkIdentity != null &&
+                _networkIdentity.isLocalPlayer)
+            {
+                CombatResolver.UnpackHitParam(
+                    evt.Param,
+                    out _,
+                    out bool isHeavyHit,
+                    out byte hitVariant);
+
+                _playerController.ApplyRemoteHitReaction(
+                    isHeavyHit,
+                    hitVariant,
+                    evt.Type == ActionType.Dead);
             }
 
             if (_logApply)
-                Debug.Log($"[RemoteActionApplier] applied {evt}");
+            {
+                Debug.Log(
+                    $"[RemoteActionApplier] combat result type={evt.Type}, " +
+                    $"damage={evt.AppliedDamage:F1}, " +
+                    $"hp={evt.CurrentHp:F1}/{evt.MaxHp:F1}, " +
+                    $"revision={evt.HealthRevision}");
+            }
         }
 
         private void ApplyGuardReaction(ActionEvent evt)
@@ -166,7 +215,8 @@ namespace Character.Sync
             return true;
         }
 
-        public void ResetState(){
+        public void ResetState()
+        {
 
             LastAppliedSeqId = 0;
             LastAppliedTick = 0;
