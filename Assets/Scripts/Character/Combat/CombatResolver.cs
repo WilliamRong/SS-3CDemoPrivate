@@ -147,29 +147,36 @@ namespace Character.Combat
 
             if (_applyDamage)
             {
-                float hpBefore = target.CurrentHp;
-
                 bool applied = target.ApplyHit(hit);
                 if (!applied)
                     return;
 
-                // 必须使用 HP 差值，不能直接使用 hit.damage。
-                float appliedDamage = Mathf.Max(0f, hpBefore - target.CurrentHp);
-
-                if (target.LastGuardReactionType != GuardReactionType.None)
+                CombatHitResult result = target.LastHitResult;
+                switch (result.FinalReaction)
                 {
-                    BroadcastGuardReaction(target, appliedDamage);
-                    return;
+                    case CombatReactionType.None:
+                        BroadcastHealthResult(target, result);
+                        break;
+                    case CombatReactionType.GuardHit:
+                    case CombatReactionType.GuardBreak:
+                        BroadcastGuardReaction(target, result);
+                        break;
+                    case CombatReactionType.PostureBreak:
+                        BroadcastPostureBreak(target, result);
+                        break;
+                    case CombatReactionType.Hit:
+                    case CombatReactionType.Dead:
+                        BroadcastHitReaction(target, hit, result);
+                        break;
                 }
-
-                BroadcastHitReaction(target, hit, appliedDamage);
             }
 
 
         }
 
-
-        private void BroadcastGuardReaction(CombatActor target, float appliedDamage)
+        private void BroadcastHealthResult(
+            CombatActor target,
+            in CombatHitResult result)
         {
             if (!NetworkServer.active)
                 return;
@@ -177,17 +184,15 @@ namespace Character.Combat
                 _transport = FindFirstObjectByType<MirrorSyncTransport>();
             if (_transport == null)
                 return;
-            ActionType type = target.LastGuardReactionType == GuardReactionType.Break
-                ? ActionType.GuardBreak
-                : ActionType.GuardHit;
+
             var evt = new ActionEvent(
                 _nextServerCombatSeqId++,
                 Time.frameCount,
                 target.ActorId,
-                type,
-                (int)target.LastGuardReactionType,
+                ActionType.HealthResult,
+                param: 0,
                 hasHealthResult: 1,
-                appliedDamage: appliedDamage,
+                appliedDamage: result.AppliedHealthDamage,
                 currentHp: target.CurrentHp,
                 maxHp: target.MaxHp,
                 healthRevision: target.HealthRevision);
@@ -195,7 +200,64 @@ namespace Character.Combat
             _transport.BroadcastActionFromServer(evt);
         }
 
-        private void BroadcastHitReaction(CombatActor target, in HitInfo hit, float appliedDamage)
+        private void BroadcastPostureBreak(CombatActor target,
+            in CombatHitResult result)
+        {
+            if (!NetworkServer.active) return;
+
+            if (_transport == null) _transport = FindFirstObjectByType<MirrorSyncTransport>();
+
+            if (_transport == null) return;
+
+            var evt = new ActionEvent(
+                _nextServerCombatSeqId++,
+                Time.frameCount,
+                target.ActorId,
+                ActionType.PostureBreak,
+                param: 0,
+                hasHealthResult: 1,
+                appliedDamage: result.AppliedHealthDamage,
+                currentHp: target.CurrentHp,
+                maxHp: target.MaxHp,
+                healthRevision: target.HealthRevision
+            );
+
+            _transport.BroadcastActionFromServer(evt);
+        }
+
+
+        private void BroadcastGuardReaction(
+            CombatActor target,
+            in CombatHitResult result)
+        {
+            if (!NetworkServer.active)
+                return;
+            if (_transport == null)
+                _transport = FindFirstObjectByType<MirrorSyncTransport>();
+            if (_transport == null)
+                return;
+            ActionType type = result.FinalReaction == CombatReactionType.GuardBreak
+                ? ActionType.GuardBreak
+                : ActionType.GuardHit;
+            var evt = new ActionEvent(
+                _nextServerCombatSeqId++,
+                Time.frameCount,
+                target.ActorId,
+                type,
+                (int)result.GuardReaction,
+                hasHealthResult: 1,
+                appliedDamage: result.AppliedHealthDamage,
+                currentHp: target.CurrentHp,
+                maxHp: target.MaxHp,
+                healthRevision: target.HealthRevision);
+
+            _transport.BroadcastActionFromServer(evt);
+        }
+
+        private void BroadcastHitReaction(
+            CombatActor target,
+            in HitInfo hit,
+            in CombatHitResult result)
         {
             if (!NetworkServer.active)
                 return;
@@ -204,8 +266,13 @@ namespace Character.Combat
             if (_transport == null)
                 return;
 
-            ActionType type = target.IsDead ? ActionType.Dead : ActionType.Hit;
-            int param = PackHitParam(appliedDamage, hit.isHeavyHit, hit.hitVariant);
+            ActionType type = result.FinalReaction == CombatReactionType.Dead
+                ? ActionType.Dead
+                : ActionType.Hit;
+            int param = PackHitParam(
+                result.AppliedHealthDamage,
+                hit.isHeavyHit,
+                hit.hitVariant);
             var evt = new ActionEvent(
                 _nextServerCombatSeqId++,
                 Time.frameCount,
@@ -213,7 +280,7 @@ namespace Character.Combat
                 type,
                 param,
                 hasHealthResult: 1,
-                appliedDamage: appliedDamage,
+                appliedDamage: result.AppliedHealthDamage,
                 currentHp: target.CurrentHp,
                 maxHp: target.MaxHp,
                 healthRevision: target.HealthRevision);

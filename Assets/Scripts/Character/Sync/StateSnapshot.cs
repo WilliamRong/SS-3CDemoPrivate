@@ -43,6 +43,10 @@ namespace Character.Sync
         public float MaxHp;
         public uint HealthRevision;
 
+        public byte HasAuthoritativePosture;
+        public float CurrentPosture;
+        public float MaxPosture;
+
         public StateSnapshot(
             int tick,
             int actorId,
@@ -62,7 +66,10 @@ namespace Character.Sync
             byte hasAuthoritativeHealth = 0,
             float currentHp = 0f,
             float maxHp = 0f,
-            uint healthRevision = 0)
+            uint healthRevision = 0,
+            byte hasAuthoritativePosture = 0,
+            float currentPosture = 0f,
+            float maxPosture = 0f)
         {
             Tick = tick;
             ActorId = actorId;
@@ -84,6 +91,9 @@ namespace Character.Sync
             CurrentHp = currentHp;
             MaxHp = maxHp;
             HealthRevision = healthRevision;
+            HasAuthoritativePosture = hasAuthoritativePosture;
+            CurrentPosture = currentPosture;
+            MaxPosture = maxPosture;
         }
 
         public bool IsLockOnActive => LockOnActive != 0;
@@ -194,7 +204,8 @@ namespace Character.Sync
             return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, " +
                    $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, idlePhase={IdlePhase}, attackCombo={AttackComboStep}, " +
                    $"lockOn={LockOnActive}, lockTarget={LockTargetNetId}, moveInput=({MoveInputX:F2},{MoveInputY:F2}), " +
-                   $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2})";
+                   $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2}), " +
+                   $"posture=({CurrentPosture:F1}/{MaxPosture:F1}, authoritative={HasAuthoritativePosture})";
         }
     }
 }

@@ -4,6 +4,7 @@ using Character.Controller;
 using Character.Presentation;
 using Character.StateMachine;
 using Character.LockOn;
+using Character.Combat;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -16,6 +17,7 @@ namespace Character.Sync
         [SerializeField] private NetTickClock _clock;
         [SerializeField] private PlayerController _playerController;
         [SerializeField] private PlayerAuthorityGate _authorityGate;
+        [SerializeField] private CombatActor _combatActor;
         [SerializeField] private int _actorId = 1;
         [SerializeField] private NetworkIdentity _networkIdentity;
 
@@ -25,7 +27,12 @@ namespace Character.Sync
         private uint _lastSentLockTargetNetId;
         private Vector2 _lastSentMoveInput;
         private const float MoveInputSendThresholdSqr = 0.01f;
-        
+
+        private const float VelocitySendThresholdSqr = 0.01f;
+
+        [SerializeField, Min(1)]
+        private int _postureCorrectionIntervalTicks = 10;
+
         public event Action<StateSnapshot> OnSnapshotProduced;
         public event Action<ActionEvent> OnActionEventProduced;
 
@@ -46,6 +53,9 @@ namespace Character.Sync
         private byte _lastSentIdlePhase;
         private byte _lastSentAttackComboStep;
 
+        private Vector2 _lastSentVelocityXZ;
+        private int _lastSentSnapshotTick;
+
         private void Awake()
         {
             if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
@@ -53,6 +63,7 @@ namespace Character.Sync
             if (_authorityGate == null) _authorityGate = GetComponent<PlayerAuthorityGate>();
             if (_networkIdentity == null) _networkIdentity = GetComponent<NetworkIdentity>();
             if (_lockOnController == null) _lockOnController = GetComponent<PlayerLockOnController>();
+            if (_combatActor == null) _combatActor = GetComponent<CombatActor>();
         }
 
         private void Update()
@@ -83,7 +94,8 @@ namespace Character.Sync
             Vector2 velocityXZ = Vector2.zero;
             if (_hasSentAnySnapshot)
             {
-                float dt = Mathf.Max(_clock.TickInterval, 0.0001f);
+                int elapsedTicks = Mathf.Max(1, tick - _lastSentSnapshotTick);
+                float dt = Mathf.Max(_clock.TickInterval * elapsedTicks, 0.0001f);
                 Vector3 dp = pos - _lastSentPos;
                 velocityXZ = new Vector2(dp.x / dt, dp.z / dt);
             }
@@ -97,14 +109,18 @@ namespace Character.Sync
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
             ResolveLockOnSync(out byte lockOnActive, out uint lockTargetNetId, out Vector2 moveInput);
-            
-            bool shouldSend = !_hasSentAnySnapshot;
+
+            bool postureCorrectionDue = _hasSentAnySnapshot && tick - _lastSentSnapshotTick >= Mathf.Max(1, _postureCorrectionIntervalTicks);
+
+            bool shouldSend = !_hasSentAnySnapshot || postureCorrectionDue;
             if (!shouldSend)
             {
                 float posDelta = (pos - _lastSentPos).sqrMagnitude;
                 float yawDelta = Mathf.Abs(Mathf.DeltaAngle(yaw, _lastSentYaw));
+
                 shouldSend = posDelta >= Sync.minPosDeltaToSend
                     || yawDelta >= Sync.minYawDeltaToSend
+                    || (velocityXZ - _lastSentVelocityXZ).sqrMagnitude >= VelocitySendThresholdSqr
                     || stateId != _lastSentStateId
                     || sprintPhase != _lastSentSprintPhase
                     || dodgeMode != _lastSentDodgeMode
@@ -118,6 +134,9 @@ namespace Character.Sync
 
             if (!shouldSend)
                 return;
+
+
+            bool hasAuthoritativePosture = _combatActor != null && (NetworkServer.active || !NetworkClient.active);
 
             var snapshot = new StateSnapshot(
                 tick,
@@ -134,7 +153,11 @@ namespace Character.Sync
                 lockOnActive,
                 lockTargetNetId,
                 moveInput.x,
-                moveInput.y
+                moveInput.y,
+                hasAuthoritativePosture:
+                hasAuthoritativePosture ? (byte)1 : (byte)0,
+                currentPosture: _combatActor != null ? _combatActor.CurrentPosture : 0f,
+                maxPosture: _combatActor != null ? _combatActor.MaxPosture : 0f
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -151,6 +174,8 @@ namespace Character.Sync
             _lastSentLockOnActive = lockOnActive;
             _lastSentLockTargetNetId = lockTargetNetId;
             _lastSentMoveInput = moveInput;
+            _lastSentVelocityXZ = velocityXZ;
+            _lastSentSnapshotTick = tick;
         }
 
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
@@ -270,7 +295,7 @@ namespace Character.Sync
 
             return _actorId;
         }
-        
+
         private void ResolveLockOnSync(out byte lockOnActive, out uint lockTargetNetId, out Vector2 moveInput)
         {
             lockOnActive = 0;

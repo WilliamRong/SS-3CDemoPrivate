@@ -44,6 +44,11 @@ MonoBehaviour:
   guardBreakDamageMultiplier: 1
   guardHitReactionDuration: 0.28
   guardBreakReactionDuration: 0.65
+  maxPosture: 100
+  postureRecoveryDelay: 2
+  postureRecoveryPerSecondAtLowHealth: 5
+  postureRecoveryPerSecondAtFullHealth: 15
+  postureBreakDuration: 1.067
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

@@ -11,6 +11,7 @@ using UnityEngine;
 namespace AI
 {
     [RequireComponent(typeof(NetworkIdentity))]
+    [RequireComponent(typeof(CombatActor))]
     public class NpcCharacterDriver : NetworkBehaviour, IAnimatorRootMotionReceiver
     {
         [SerializeField] private NpcAiIntentSource _intentSource;
@@ -19,6 +20,7 @@ namespace AI
 
         private CharacterStateMachine _fsm;
         private CharacterStateRegistry _registry;
+        private CombatActor _combatActor;
 
         private NpcIdleState _idle;
         private NpcMoveState _move;
@@ -26,6 +28,7 @@ namespace AI
         private NpcAttackState _attack;
         private NpcDodgeState _dodge;
         private NpcGuardState _guard;
+        private NpcPostureBrokenState _postureBroken;
         private NpcHitState _hit;
         private NpcDeadState _dead;
 
@@ -43,6 +46,7 @@ namespace AI
             if (_intentSource == null) _intentSource = GetComponent<NpcAiIntentSource>();
             if (_motor == null) _motor = GetComponent<NpcMotor>();
             if (_animator == null) _animator = GetComponentInChildren<Animator>();
+            if (_combatActor == null) _combatActor = GetComponent<CombatActor>();
 
             if (_animator != null)
             {
@@ -65,6 +69,7 @@ namespace AI
             _attack = new NpcAttackState(_fsm, _registry, _motor, combatConfig);
             _dodge = new NpcDodgeState(_fsm, _registry, _motor, combatConfig);
             _guard = new NpcGuardState(_fsm, _registry, _motor, combatConfig, presentationConfig, _intentSource);
+            _postureBroken = new NpcPostureBrokenState(_fsm, _registry, _motor, combatConfig);
             _hit = new NpcHitState(_fsm, _registry, _motor, combatConfig);
             _dead = new NpcDeadState(_fsm, _registry, _motor);
 
@@ -74,6 +79,7 @@ namespace AI
             _registry.Register(_attack);
             _registry.Register(_dodge);
             _registry.Register(_guard);
+            _registry.Register(_postureBroken);
             _registry.Register(_hit);
             _registry.Register(_dead);
 
@@ -152,6 +158,19 @@ namespace AI
             hitState = null;
             return false;
         }
+
+        public bool TryGetActivePostureBrokenState(out NpcPostureBrokenState postureBrokenState)
+        {
+            if (_fsm?.CurrentState is NpcPostureBrokenState active)
+            {
+                postureBrokenState = active;
+                return true;
+            }
+
+            postureBrokenState = null;
+            return false;
+        }
+
         public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
         {
 
@@ -201,6 +220,19 @@ namespace AI
                 _registry,
                 isHeavy ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
+
+        public bool ServerTryEnterPostureBroken()
+        {
+            if (!isServer || _fsm == null || _registry == null ||
+                CurrentStateId is CharacterStateId.Dead or CharacterStateId.PostureBroken)
+                return false;
+
+            return _fsm.TryTransition(
+                CharacterStateId.PostureBroken,
+                _registry,
+                TransitionReason.PostureBreak);
+        }
+
         public bool ServerTryEnterDead()
         {
             if (!isServer) return false;
@@ -215,8 +247,23 @@ namespace AI
 
         public bool ServerTryRevive()
         {
-            if (!isServer) return false;
-            return _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.Revive);
+            if (!isServer ||
+                _fsm == null ||
+                _registry == null ||
+                _combatActor == null)
+            {
+                return false;
+            }
+
+            if (!_fsm.TryTransition(
+                    CharacterStateId.Idle,
+                    _registry,
+                    TransitionReason.Revive))
+            {
+                return false;
+            }
+
+            return _combatActor.RestoreFullHealthForRevive();
         }
 
         public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)

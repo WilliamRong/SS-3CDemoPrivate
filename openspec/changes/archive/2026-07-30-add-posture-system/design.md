@@ -20,8 +20,8 @@ NPC HP 已经使用绝对值和 revision 进行快照纠正，但 Player 尚未�
 - 存活角色达到最大架势时强制进入明确的破势逻辑状态，并且只重置一次。
 - 在线架势增长、恢复、重置和状态转换全部由 Server 权威处理。
 - 同步绝对架势，使远端 Player/NPC UI 可以纠正漂移和延迟绑定。
-- 在本地 Player HUD 和唯一世界血条的健康条下显示独立黄色架势条。
-- 适当复用现有 GuardBreak 动画，同时保持动画与逻辑状态分离。
+- 在屏幕下方居中显示本地 Player 黄色架势条，并在非本地 Player/NPC 的唯一世界 UI 显示紧凑架势条和统一满值红框反馈。
+- 在 Reaction Layer 使用现有 `rig_Collide` 动画，同时保持动画与逻辑状态分离。
 
 **非目标：**
 
@@ -29,7 +29,7 @@ NPC HP 已经使用绝对值和 revision 进行快照纠正，但 Player 尚未�
 - 除架势优先级集成所需内容外，重平衡 HP 伤害、格挡扇区、闪避无敌或现有重击破防规则。
 - 在本 change 中补齐 Player 的通用周期 HP 快照纠正。
 - 根据 Guard、Idle、Attack 或移动状态增加额外恢复奖励；本版本唯一恢复倍率来自 HP 比例。
-- 增加动画/VFX/SFX 资产；初版破势视觉复用现有 GuardBreak 表现。
+- 增加新的动画/VFX/SFX 资产；初版破势视觉使用项目已有的 `rig_Collide`。
 
 ## 设计决策
 
@@ -96,7 +96,7 @@ currentPosture = max(0, currentPosture - recoveryRate * deltaTime)
 Dead > PostureBroken > Hit / GuardBreak / GuardHit
 ```
 
-初版复用 Animator GuardBreak 状态/hash 作为全身表现，但逻辑不依赖动画结束。
+初版在 Animator Reaction Layer 增加独立 `PostureBroken` 状态并绑定 `rig_Collide`，逻辑不依赖动画结束。进入时清除 UpperBody/Combat 权重并由 Reaction 层覆盖全身；退出时恢复正常表现。破势不消费 `rig_Collide` 的玩法根位移，角色权威位置在状态期间保持不动。
 
 备选方案：把 `HitState` 配置成重击受击。拒绝原因：破势需要独立持续时间、优先级、同步身份、调试状态和未来扩展点。
 
@@ -130,10 +130,14 @@ Host 遵循现有战斗规则：Server 只应用一次事务，Host client 侧�
 
 扩展两类维护中的健康表面：
 
-- `InGameHud`：在本地 Player 健康条下方增加架势条。
-- `NpcHealthBar`：在非本地 Player/NPC 世界健康条下方增加架势条。
+- `InGameHud`：本地 Player 架势条独立锚定在屏幕水平中央、从顶部向下约四分之三处；最终宽度为上一版 440 的三分之一（约 146.67），高度由 5 增加到 10。
+- `NpcHealthBar`：非本地 Player/NPC 世界架势条保持在健康条下方；最终宽度为上一版 250 的三分之一（约 83.33），高度由 4 增加到 8；健康条尺寸不变。
 
-锁定目标继续复用同一个 `NpcHealthBar` 世界 UI，`LockOnTargetHudView` 只控制其持续可见，不创建独立架势条。架势条使用不同的黄色填充、稳定尺寸，并绑定目标 `CombatActor.PostureChanged(current, max)`。填充比例钳制到 `[0, 1]`；父健康 UI 可见时，即使架势为零也保留轨道，避免战斗中布局出现/消失。
+锁定目标继续复用同一个 `NpcHealthBar` 世界 UI，`LockOnTargetHudView` 只控制其持续可见，不创建独立架势条。架势条使用不同的黄色填充、稳定尺寸，并绑定目标 `CombatActor.PostureChanged(current, max)`。填充比例钳制到 `[0, 1]`。本地和世界架势条都保留单个填充图，把它作为普通 `Image` 渲染，并将填充 `RectTransform` 的左右锚点设置为 `0.5 - ratio / 2` 与 `0.5 + ratio / 2`，使填充从中心向两侧对称扩展；不拆分左右填充图，避免中心接缝与双份状态更新。
+
+本地架势条在零值时隐藏。为保留破势瞬间的反馈，`PlayerHealthHudView` 读取本地 `PlayerController` 已经进入 `PostureBroken` 的表现边沿，把架势槽暂时保持满填充并相对正常尺寸放大一秒；同时启用红色 `Outline`，一秒结束后关闭描边、恢复原始缩放并按零值规则隐藏。计时使用 unscaled time。
+
+世界架势条使用相同的禁用态红色 `Outline`。Offline/Host 可在 `PostureChanged` 达到满比例时启用一秒；纯 Client 的周期快照可能只看到破势后的零值，因此 `NpcHealthBarView` 还必须观察现有 `RemoteActionApplier.LastPostureBreakSeqId`，按新的权威序列边沿补触发同一反馈。边沿去重不得延长同一次破势的反馈，也不得创建额外 UI。所有检测只驱动 UI，不得进入 `PostureBroken`、重置架势或反向写入 `CombatActor`。普通恢复到零不播放红框。
 
 UI 只读取架势状态，绝不修改。预制体引用优先序列化，并沿用当前健康 view 的路径 fallback 约定。
 
@@ -153,7 +157,7 @@ UI 只读取架势状态，绝不修改。预制体引用优先序列化，并�
 - [风险] Host 重复应用架势。-> 缓解：复用 Server 权威检查，`NetworkServer.active` 时显式跳过 client 侧修改。
 - [风险] 新 `CharacterStateId` 破坏序列化或网络值。-> 缓解：只追加枚举，不重排，并完整更新映射与调试 switch。
 - [风险] 恢复调参让压力无意义或永久存在。-> 缓解：所有速率数据化、强制单调边界，并对低/中/满 HP 增加确定性恢复测试。
-- [风险] GuardBreak 动画不适合未格挡角色。-> 缓解：把它当作初始表现映射，未来可替换专用资产而不改变逻辑。
+- [风险] `rig_Collide` 携带根位移曲线，可能让表现与权威位置分离。-> 缓解：`PostureBroken` 不加入 Player/NPC 根位移消费白名单，并保持动画与逻辑状态时长分离。
 - [风险] 现有重击破防与架势破势概念混淆。-> 缓解：保留不同结算原因，只有架势阈值溢出才进入 `PostureBroken` 并重置。
 
 ## 迁移计划
@@ -163,7 +167,7 @@ UI 只读取架势状态，绝不修改。预制体引用优先序列化，并�
 3. 追加状态 ID、Player/NPC 破势状态、转换规则和表现映射。
 4. 把原子架势增长/破势选择集成到命中与格挡结算。
 5. 扩展快照、publisher、远端应用、动作映射和调试 overlay。
-6. 在两类健康 UI 增加黄色架势条，并绑定 `CombatActor`；锁定复用世界 UI。
+6. 在本地 HUD 和世界 UI 增加从中心向两侧对称填充的黄色架势条并绑定 `CombatActor`，实现最终紧凑尺寸、本地零值隐藏及全角色一秒红框崩防强调；锁定复用世界 UI。
 7. 先执行 Offline，再执行 Host/Client，验证无二次应用和 Player/NPC 绝对值一致。
 8. 更新项目文档和验证证据。
 

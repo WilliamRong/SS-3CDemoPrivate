@@ -18,6 +18,8 @@ MonoBehaviour:
       displayName: Attack_Combo1
       duration: 0.8166667
       damage: 10
+      postureDamage: 15
+      guardedPostureDamage: 22
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -30,6 +32,8 @@ MonoBehaviour:
       displayName: Attack_Combo2
       duration: 0.9666667
       damage: 10
+      postureDamage: 16
+      guardedPostureDamage: 22
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -42,6 +46,8 @@ MonoBehaviour:
       displayName: Attack_Combo3
       duration: 0.8666667
       damage: 10
+      postureDamage: 18
+      guardedPostureDamage: 25
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -54,6 +60,8 @@ MonoBehaviour:
       displayName: Attack_Combo4
       duration: 1.1500001
       damage: 12
+      postureDamage: 22
+      guardedPostureDamage: 30
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -66,6 +74,8 @@ MonoBehaviour:
       displayName: Attack_Sprint
       duration: 0.9833334
       damage: 12
+      postureDamage: 20
+      guardedPostureDamage: 28
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -78,6 +88,8 @@ MonoBehaviour:
       displayName: Attack_Dodge
       duration: 0.95000005
       damage: 10
+      postureDamage: 16
+      guardedPostureDamage: 22
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows:
@@ -90,6 +102,8 @@ MonoBehaviour:
       displayName: Attack_Heavy1_Start
       duration: 0.8166667
       damage: 0
+      postureDamage: 0
+      guardedPostureDamage: 0
       isHeavyHit: 0
       hitSameTargetOnce: 1
       hitWindows: []
@@ -98,6 +112,8 @@ MonoBehaviour:
       displayName: Attack_Heavy1
       duration: 0.73333335
       damage: 18
+      postureDamage: 32
+      guardedPostureDamage: 45
       isHeavyHit: 1
       hitSameTargetOnce: 1
       hitWindows:
@@ -110,6 +126,8 @@ MonoBehaviour:
       displayName: Attack_Heavy2
       duration: 1.1333334
       damage: 22
+      postureDamage: 40
+      guardedPostureDamage: 55
       isHeavyHit: 1
       hitSameTargetOnce: 1
       hitWindows:

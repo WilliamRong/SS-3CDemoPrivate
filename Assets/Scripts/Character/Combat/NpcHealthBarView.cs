@@ -1,5 +1,6 @@
 using System.Collections;
 using Character.Controller;
+using Character.Sync;
 using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,17 +19,24 @@ namespace Character.Combat
         [SerializeField] private float _damageTextLifetime = 0.75f;
         [SerializeField, Min(0.1f)] private float _visibleAfterHitDuration = 3f;
         [SerializeField] private string _fillPath = "Background/Fill";
+        [SerializeField] private string _postureFillPath = "PostureBackground/Fill";
+        [SerializeField, Min(0f)] private float _postureBreakOutlineDuration = 1f;
         [SerializeField] private bool _hideForLocalPlayer = true;
 
         private Canvas _canvas;
         private RectTransform _canvasRect;
         private RectTransform _fillRect;
+        private RectTransform _postureFillRect;
+        private Outline _postureBreakOutline;
         private Font _font;
         private Camera _camera;
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
+        private RemoteActionApplier _remoteActionApplier;
         private float _lastObservedPlayerHp = -1f;
+        private float _postureBreakOutlineUntil = float.NegativeInfinity;
         private float _visibleUntil = float.NegativeInfinity;
+        private int _lastObservedPostureBreakSeqId;
         private bool _isLockOnVisible;
 
         private void Awake()
@@ -37,6 +45,7 @@ namespace Character.Combat
                 _actor = GetComponent<CombatActor>();
             _networkIdentity = GetComponent<NetworkIdentity>();
             _playerController = GetComponent<PlayerController>();
+            _remoteActionApplier = GetComponent<RemoteActionApplier>();
 
             _camera = Camera.main;
             EnsureUi();
@@ -45,12 +54,23 @@ namespace Character.Combat
         private void OnEnable()
         {
             _visibleUntil = float.NegativeInfinity;
+            _lastObservedPostureBreakSeqId =
+                _remoteActionApplier != null
+                    ? _remoteActionApplier.LastPostureBreakSeqId
+                    : 0;
+            ResetPostureBreakOutline();
             SetCanvasVisible(false);
 
             if (ShouldHideForLocalPlayer())
                 return;
 
             _lastObservedPlayerHp = -1f;
+
+            if (_actor != null)
+            {
+                _actor.PostureChanged += OnPostureChanged;
+                OnPostureChanged(_actor.CurrentPosture, _actor.MaxPosture);
+            }
 
             if (_playerController != null)
             {
@@ -70,6 +90,7 @@ namespace Character.Combat
         private void OnDisable()
         {
             _visibleUntil = float.NegativeInfinity;
+            ResetPostureBreakOutline();
             SetCanvasVisible(false);
 
             if (_playerController != null)
@@ -77,6 +98,7 @@ namespace Character.Combat
 
             if (_actor == null) return;
 
+            _actor.PostureChanged -= OnPostureChanged;
             _actor.HealthChanged -= OnHealthChanged;
             _actor.DamageTaken -= OnDamageTaken;
         }
@@ -89,6 +111,8 @@ namespace Character.Combat
                 SetCanvasVisible(false);
                 return;
             }
+
+            UpdatePostureBreakOutline();
 
             bool shouldShow = _isLockOnVisible || Time.unscaledTime < _visibleUntil;
             SetCanvasVisible(shouldShow);
@@ -115,6 +139,19 @@ namespace Character.Combat
 
             float ratio = maxHp > 0f ? Mathf.Clamp01(currentHp / maxHp) : 0f;
             _fillRect.anchorMax = new Vector2(ratio, 1f);
+        }
+
+        private void OnPostureChanged(float currentPosture, float maxPosture)
+        {
+            if (_postureFillRect == null) return;
+
+            float ratio = maxPosture > 0f
+                ? Mathf.Clamp01(currentPosture / maxPosture)
+                : 0f;
+            SetPostureFill(ratio);
+
+            if (ratio >= 1f)
+                BeginPostureBreakOutline();
         }
 
         private void OnDamageTaken(float damage)
@@ -197,8 +234,75 @@ namespace Character.Combat
             if (fill != null)
                 _fillRect = fill as RectTransform;
 
+            Transform postureFill = _canvasRect.Find(_postureFillPath);
+            if (postureFill != null)
+                _postureFillRect = postureFill as RectTransform;
+            if (_postureFillRect != null)
+                _postureBreakOutline = _postureFillRect.parent.GetComponent<Outline>();
+
+            ResetPostureBreakOutline();
+
             if (_fillRect == null)
                 Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} cannot find fill rect at '{_fillPath}'.", this);
+            if (_postureFillRect == null)
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} cannot find posture fill rect at '{_postureFillPath}'.", this);
+            if (_postureBreakOutline == null)
+                Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} has no posture break outline.", this);
+        }
+
+        private void UpdatePostureBreakOutline()
+        {
+            if (_remoteActionApplier != null)
+            {
+                int postureBreakSeqId =
+                    _remoteActionApplier.LastPostureBreakSeqId;
+                if (postureBreakSeqId > 0 &&
+                    postureBreakSeqId != _lastObservedPostureBreakSeqId)
+                {
+                    _lastObservedPostureBreakSeqId = postureBreakSeqId;
+                    BeginPostureBreakOutline();
+                }
+            }
+
+            if (_postureBreakOutline != null &&
+                _postureBreakOutline.enabled &&
+                Time.unscaledTime >= _postureBreakOutlineUntil)
+            {
+                ResetPostureBreakOutline();
+            }
+        }
+
+        private void BeginPostureBreakOutline()
+        {
+            if (_postureBreakOutline == null ||
+                _postureBreakOutline.enabled)
+            {
+                return;
+            }
+
+            _postureBreakOutline.enabled = true;
+            _postureBreakOutlineUntil =
+                Time.unscaledTime + Mathf.Max(0f, _postureBreakOutlineDuration);
+            ShowForHit();
+        }
+
+        private void ResetPostureBreakOutline()
+        {
+            _postureBreakOutlineUntil = float.NegativeInfinity;
+            if (_postureBreakOutline != null)
+                _postureBreakOutline.enabled = false;
+        }
+
+        private void SetPostureFill(float ratio)
+        {
+            if (_postureFillRect == null)
+                return;
+
+            float halfWidth = Mathf.Clamp01(ratio) * 0.5f;
+            _postureFillRect.anchorMin = new Vector2(0.5f - halfWidth, 0f);
+            _postureFillRect.anchorMax = new Vector2(0.5f + halfWidth, 1f);
+            _postureFillRect.offsetMin = Vector2.zero;
+            _postureFillRect.offsetMax = Vector2.zero;
         }
 
         private IEnumerator PlayDamageNumber(float damage)

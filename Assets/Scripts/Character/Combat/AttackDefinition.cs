@@ -70,7 +70,7 @@ namespace Character.Combat
     }
 
     [Serializable]
-    public sealed class AttackDefinition 
+    public sealed class AttackDefinition
     {
         public string displayName;
 
@@ -78,6 +78,10 @@ namespace Character.Combat
         public float duration = 0.8f;
         [Min(0f)]
         public float damage = 10f;
+        [Min(0f)]
+        public float postureDamage = 15f;
+        [Min(0f)]
+        public float guardedPostureDamage = 22f;
         public bool isHeavyHit;
 
         public bool hitSameTargetOnce = true;
@@ -95,21 +99,26 @@ namespace Character.Combat
 
         public bool IsWindowActive(int windowIndex, float elapsedTime)
         {
-           if(hitWindows == null || windowIndex < 0 || windowIndex >= hitWindows.Length) return false;
+            if (hitWindows == null || windowIndex < 0 || windowIndex >= hitWindows.Length) return false;
 
-           return hitWindows[windowIndex].Contains(NormalizedTime(elapsedTime));
+            return hitWindows[windowIndex].Contains(NormalizedTime(elapsedTime));
         }
-        
+
 
         public static AttackDefinition CreateFallback(AttackMoveId attackId, float duration)
         {
             attackId = attackId.ClampOrDefault();
+            bool heavyHit = attackId is AttackMoveId.Heavy1Start
+              or AttackMoveId.Heavy1
+              or AttackMoveId.Heavy2;
             return new AttackDefinition
             {
                 displayName = $"Fallback_Attack_{attackId}",
                 duration = Mathf.Max(0.01f, duration),
                 damage = 10f,
-                isHeavyHit = attackId is AttackMoveId.Heavy1Start or AttackMoveId.Heavy1 or AttackMoveId.Heavy2,
+                postureDamage = heavyHit ? 30f : 15f,
+                guardedPostureDamage = heavyHit ? 45f : 22f,
+                isHeavyHit = heavyHit,
                 hitSameTargetOnce = true,
                 hitWindows = new AttackHitWindow[]
                 {

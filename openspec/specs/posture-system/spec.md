@@ -1,4 +1,10 @@
-## ADDED Requirements
+# 架势系统规格
+
+## Purpose
+
+定义 Player 与 NPC 的共享架势资源、战斗增长与恢复、破势状态、网络权威同步、UI 表现以及诊断验证要求。
+
+## Requirements
 
 ### Requirement: 共享架势资源
 每个 Player 和 NPC 战斗 actor 必须（SHALL）公开具有可配置最大值、当前值、比例和变化通知的架势资源，且该资源必须（SHALL）初始化为零。
@@ -137,23 +143,39 @@ Mirror 会话活跃时，只有 Server 可以（SHALL）修改玩法架势、运
 - **THEN** 它立即渲染最近一次快照应用后的 current/max
 
 ### Requirement: 架势表现
-本地 Player HUD 以及非本地 Player/NPC 的世界健康 UI 必须（SHALL）在健康条正下方显示稳定的黄色架势条；锁定目标必须（SHALL）复用同一个世界 UI。
+本地 Player HUD 必须（SHALL）在屏幕水平居中、从顶部向下约四分之三处显示独立黄色架势条；非本地 Player/NPC 的世界健康 UI 必须（SHALL）显示黄色架势条，且锁定目标必须（SHALL）复用同一个世界 UI。所有架势条的黄色填充必须（SHALL）以轨道中心为原点，根据 current/max 比例同时向左、右两侧对称扩展。
 
 #### Scenario: 本地 Player 架势变化
 - **WHEN** 本地 Player 增加或恢复架势
-- **THEN** 黄色 Player 架势填充更新为 current/max，且不会改变周围 HUD 布局尺寸
+- **THEN** 黄色 Player 架势填充更新为 current/max，最终尺寸约为 146.67×10，且不会改变周围 HUD 布局尺寸
 
 #### Scenario: 世界目标架势变化
 - **WHEN** 可见的非本地 Player 或 NPC 增加或恢复架势
-- **THEN** 其世界健康条下方的黄色架势条显示更新比例
+- **THEN** 其世界健康条下方的黄色架势条以约 83.33×8 的最终尺寸显示更新比例
+
+#### Scenario: 架势从中心向两侧填充
+- **WHEN** 任一本地或世界架势条渲染介于零和最大值之间的架势比例
+- **THEN** 黄色填充的左、右边缘以轨道中心为基准等距向两侧扩展，且填充总宽度等于钳制后的 current/max 比例
 
 #### Scenario: 锁定目标变化
 - **WHEN** Player 锁定另一个有效 Player 或 NPC 目标
 - **THEN** 不创建独立锁定 HUD，同一个世界 UI 持续可见并显示该目标最新架势比例
 
-#### Scenario: 架势为零
-- **WHEN** 父健康 UI 可见且当前架势为零
-- **THEN** 架势轨道仍存在，黄色填充为空
+#### Scenario: 本地架势为零
+- **WHEN** 本地 Player 当前架势为零且没有正在播放崩防强调
+- **THEN** 本地架势轨道和填充均不显示
+
+#### Scenario: 世界目标架势为零
+- **WHEN** 非本地 Player 或 NPC 的父世界 UI 可见且当前架势为零
+- **THEN** 世界架势轨道仍存在，黄色填充为空
+
+#### Scenario: 本地 Player 崩防
+- **WHEN** 本地 Player 架势已经达到最大值，随后权威架势因进入 `PostureBroken` 归零
+- **THEN** 本地架势槽以满填充放大并显示红色边框一秒，然后按零架势规则隐藏
+
+#### Scenario: 世界目标崩防
+- **WHEN** 非本地 Player 或 NPC 的架势达到最大值并收到权威 `PostureBreak` 边沿
+- **THEN** 其唯一世界架势槽显示红色边框一秒，且不会创建额外世界 UI
 
 #### Scenario: UI 不能修改架势
 - **WHEN** 架势条更新或重新绑定

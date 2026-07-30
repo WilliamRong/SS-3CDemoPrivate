@@ -534,6 +534,8 @@ MonoBehaviour:
   _damageTextLifetime: 0.75
   _visibleAfterHitDuration: 3
   _fillPath: Background/Fill
+  _postureFillPath: PostureBackground/Fill
+  _postureBreakOutlineDuration: 1
   _hideForLocalPlayer: 1
 --- !u!1 &4896968938517736490
 GameObject:

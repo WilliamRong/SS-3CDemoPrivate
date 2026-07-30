@@ -43,6 +43,9 @@ namespace Character.Sync
         private uint _lastSentHealthRevision;
         private int _lastSentSnapshotTick;
 
+        private float _lastSentCurrentPosture;
+        private float _lastSentMaxPosture;
+
         private int _nextSeqId = 1;
 
         private void Awake()
@@ -105,6 +108,13 @@ namespace Character.Sync
             float moveInputX = 0f;
             float moveInputY = 0f;
 
+
+            float currentPosture = _combatActor != null ? _combatActor.CurrentPosture : 0f;
+            float maxPosture = _combatActor != null ? _combatActor.MaxPosture : 0f;
+            bool postureChanged =
+                !Mathf.Approximately(currentPosture, _lastSentCurrentPosture) ||
+                !Mathf.Approximately(maxPosture, _lastSentMaxPosture);
+
             uint healthRevision = _combatActor != null ? _combatActor.HealthRevision : 0;
 
             bool healthCorrectionDue = _hasSentAnySnapshot && tick - _lastSentSnapshotTick >= _healthCorrectionIntervalTicks;
@@ -124,7 +134,8 @@ namespace Character.Sync
                              || guardPhase != _lastSentGuardPhase
                              || idlePhase != _lastSentIdlePhase
                              || attackComboStep != _lastSentAttackComboStep
-                             || healthRevision != _lastSentHealthRevision;
+                             || healthRevision != _lastSentHealthRevision
+                             || postureChanged;
             }
 
             if (!shouldSend) return;
@@ -148,7 +159,10 @@ namespace Character.Sync
                 _combatActor != null ? (byte)1 : (byte)0,
                 _combatActor != null ? _combatActor.CurrentHp : 0f,
                 _combatActor != null ? _combatActor.MaxHp : 0f,
-                healthRevision
+                healthRevision,
+                _combatActor != null ? (byte)1 : (byte)0,
+                currentPosture,
+                maxPosture
             );
 
             _transport.BroadcastSnapshotFromServer(snapshot);
@@ -164,6 +178,8 @@ namespace Character.Sync
             _lastSentAttackComboStep = attackComboStep;
             _lastSentHealthRevision = healthRevision;
             _lastSentSnapshotTick = tick;
+            _lastSentCurrentPosture = currentPosture;
+            _lastSentMaxPosture = maxPosture;
         }
 
 

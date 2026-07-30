@@ -67,13 +67,24 @@ namespace Character.Config
 
         public bool guardCanBlockHeavy = true;
 
-
         [Header("Guard Break")]
         public bool guardBreakOnHeavyHit = false;
         [Range(0f, 1f)]
         public float guardBreakDamageMultiplier = 1f;
         public float guardHitReactionDuration = 0.28f;
         public float guardBreakReactionDuration = 0.65f;
+
+        [Header("Posture")]
+        [Min(0.01f)]
+        public float maxPosture = 100f;
+        [Min(0f)]
+        public float postureRecoveryDelay = 2f;
+        [Min(0f)]
+        public float postureRecoveryPerSecondAtLowHealth = 5f;
+        [Min(0f)]
+        public float postureRecoveryPerSecondAtFullHealth = 15f;
+        [Min(0.01f)]
+        public float postureBreakDuration = 1.067f;
 
         [Header("Hit Interrupt Windows")]
         public float hitPreHitEnd = 0.1f;
@@ -139,5 +150,18 @@ namespace Character.Config
             }
         }
 
+
+        private void OnValidate()
+        {
+            maxHp = Mathf.Max(1f, maxHp);
+            maxPosture = Mathf.Max(0.01f, maxPosture);
+            postureRecoveryDelay = Mathf.Max(0f, postureRecoveryDelay);
+            postureRecoveryPerSecondAtLowHealth =
+                Mathf.Max(0f, postureRecoveryPerSecondAtLowHealth);
+            postureRecoveryPerSecondAtFullHealth = Mathf.Max(
+                postureRecoveryPerSecondAtLowHealth,
+                postureRecoveryPerSecondAtFullHealth);
+            postureBreakDuration = Mathf.Max(0.01f, postureBreakDuration);
+        }
     }
 }

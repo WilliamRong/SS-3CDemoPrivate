@@ -2,6 +2,7 @@ using Mirror;
 using UnityEngine;
 using Character.Combat;
 using Character.Controller;
+using Character.StateMachine;
 
 namespace Character.Sync
 {
@@ -23,11 +24,14 @@ namespace Character.Sync
         public byte LastDodgeMode { get; private set; }
         public int LastHitParam { get; private set; }
         public int LastHitSeqId { get; private set; }
+        public int LastPostureBreakSeqId { get; private set; }
         public GuardReactionType LastGuardReaction { get; private set; } = GuardReactionType.None;
         public int LastGuardReactionSeqId { get; private set; }
 
         private int _consumedGuardReactionSeqId;
         private int _lastServerCombatSeqId;
+        private bool _postureBreakAwaitingSnapshot;
+        private bool _postureBreakSnapshotObserved;
 
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
@@ -51,10 +55,7 @@ namespace Character.Sync
 
             bool isServerCombatResult =
                 evt.SeqId >= ServerCombatSeqBase &&
-                (evt.Type == ActionType.Hit ||
-                 evt.Type == ActionType.Dead ||
-                 evt.Type == ActionType.GuardHit ||
-                 evt.Type == ActionType.GuardBreak);
+                evt.HasHealthResult != 0;
 
             if (isServerCombatResult)
             {
@@ -95,11 +96,17 @@ namespace Character.Sync
                     LastHitParam = evt.Param;
                     LastHitSeqId = evt.SeqId;
                     break;
+                case ActionType.PostureBreak:
+                    CurrentRemoteAction = ActionType.PostureBreak;
+                    RegisterPostureBreakEdge(evt.SeqId);
+                    break;
                 case ActionType.Dead:
                     CurrentRemoteAction = ActionType.Dead;
+                    ClearPostureBreakTracking();
                     break;
                 case ActionType.Revive:
                     CurrentRemoteAction = ActionType.Revive;
+                    ClearPostureBreakTracking();
                     break;
                 default:
                     CurrentRemoteAction = ActionType.None;
@@ -123,22 +130,31 @@ namespace Character.Sync
             LastAppliedTick = evt.Tick;
             CurrentRemoteAction = evt.Type;
 
+            bool isHealthOnly = evt.Type == ActionType.HealthResult;
+            bool isPostureBreak = evt.Type == ActionType.PostureBreak;
             bool isGuard =
                 evt.Type == ActionType.GuardHit ||
                 evt.Type == ActionType.GuardBreak;
 
-            if (isGuard)
+            if (isPostureBreak)
+            {
+                RegisterPostureBreakEdge(evt.SeqId);
+            }
+            else if (isGuard)
             {
                 LastGuardReaction = evt.Type == ActionType.GuardBreak
                     ? GuardReactionType.Break
                     : ToGuardReaction(evt.Param);
                 LastGuardReactionSeqId = evt.SeqId;
             }
-            else
+            else if (!isHealthOnly)
             {
                 LastHitParam = evt.Param;
                 LastHitSeqId = evt.SeqId;
             }
+
+            if (evt.Type == ActionType.Dead)
+                ClearPostureBreakTracking();
 
             // Every observer shows the victim's world health bar, even for a zero-damage block.
             _healthBarView?.ShowForHit();
@@ -156,7 +172,14 @@ namespace Character.Sync
                     evt.HealthRevision);
             }
 
-            if (!isGuard &&
+            if (isPostureBreak &&
+                _playerController != null &&
+                _networkIdentity != null &&
+                _networkIdentity.isLocalPlayer)
+            {
+                _playerController.TryEnterPostureBroken();
+            }
+            else if (!isGuard && !isHealthOnly &&
                 _playerController != null &&
                 _networkIdentity != null &&
                 _networkIdentity.isLocalPlayer)
@@ -181,6 +204,30 @@ namespace Character.Sync
                     $"hp={evt.CurrentHp:F1}/{evt.MaxHp:F1}, " +
                     $"revision={evt.HealthRevision}");
             }
+        }
+
+        public CharacterStateId ResolveSnapshotState(CharacterStateId snapshotState)
+        {
+            if (snapshotState == CharacterStateId.Dead)
+            {
+                ClearPostureBreakTracking();
+                return CharacterStateId.Dead;
+            }
+
+            if (snapshotState == CharacterStateId.PostureBroken)
+            {
+                _postureBreakAwaitingSnapshot = false;
+                _postureBreakSnapshotObserved = true;
+                return CharacterStateId.PostureBroken;
+            }
+
+            if (_postureBreakAwaitingSnapshot && !_postureBreakSnapshotObserved)
+                return CharacterStateId.PostureBroken;
+
+            if (_postureBreakSnapshotObserved)
+                ClearPostureBreakTracking();
+
+            return snapshotState;
         }
 
         private void ApplyGuardReaction(ActionEvent evt)
@@ -224,10 +271,30 @@ namespace Character.Sync
             LastDodgeMode = 0;
             LastHitParam = 0;
             LastHitSeqId = 0;
+            LastPostureBreakSeqId = 0;
             LastGuardReaction = GuardReactionType.None;
             LastGuardReactionSeqId = 0;
             _consumedGuardReactionSeqId = 0;
             _lastServerCombatSeqId = 0;
+            _postureBreakAwaitingSnapshot = false;
+            _postureBreakSnapshotObserved = false;
+        }
+
+        private void RegisterPostureBreakEdge(int seqId)
+        {
+            // CombatResolver 与 NPC publisher 可能描述同一次进入，只锁存第一个边沿。
+            if (_postureBreakAwaitingSnapshot || _postureBreakSnapshotObserved)
+                return;
+
+            LastPostureBreakSeqId = seqId;
+            _postureBreakAwaitingSnapshot = true;
+            _postureBreakSnapshotObserved = false;
+        }
+
+        private void ClearPostureBreakTracking()
+        {
+            _postureBreakAwaitingSnapshot = false;
+            _postureBreakSnapshotObserved = false;
         }
 
         private static GuardReactionType ToGuardReaction(int param)

@@ -15,6 +15,7 @@ namespace Character.Sync
                 CharacterStateId.Dodge => ActionType.DodgeStart,
                 CharacterStateId.Hit => ActionType.Hit,
                 CharacterStateId.Dead => ActionType.Dead,
+                CharacterStateId.PostureBroken => ActionType.PostureBreak,
                 _ => ActionType.None
             };
         }

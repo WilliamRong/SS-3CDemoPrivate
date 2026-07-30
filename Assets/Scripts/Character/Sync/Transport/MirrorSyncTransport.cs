@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using Mirror;
+using Character.Combat;
+using Character.Controller;
+using Character.StateMachine;
 using UnityEngine;
 
 namespace Character.Sync
@@ -26,6 +29,9 @@ namespace Character.Sync
         public float CurrentHp;
         public float MaxHp;
         public uint HealthRevision;
+        public byte HasAuthoritativePosture;
+        public float CurrentPosture;
+        public float MaxPosture;
     }
 
     public struct ActionMsg : NetworkMessage
@@ -132,8 +138,58 @@ namespace Character.Sync
 
         private static void OnServerSnapshot(NetworkConnectionToClient conn, SnapshotMsg msg)
         {
+            if (conn?.identity == null || msg.ActorId <= 0)
+                return;
+
+            uint actorNetId = unchecked((uint)msg.ActorId);
+
+            // Client 只能发布自己所属 Player 的快照。
+            if (conn.identity.netId != actorNetId ||
+                !NetworkServer.spawned.TryGetValue(
+                    actorNetId,
+                    out NetworkIdentity identity) ||
+                identity != conn.identity)
+            {
+                Debug.LogWarning(
+                    $"[MirrorTransport] Rejected snapshot actor={msg.ActorId} " +
+                    $"from conn={conn.connectionId}.");
+                return;
+            }
+
+            // Player 架势由 Server 上的 CombatActor 覆盖，不能信任 Client。
+            CombatActor actor = identity.GetComponent<CombatActor>();
+            msg.HasAuthoritativePosture =
+                actor != null ? (byte)1 : (byte)0;
+            msg.CurrentPosture =
+                actor != null ? actor.CurrentPosture : 0f;
+            msg.MaxPosture =
+                actor != null ? actor.MaxPosture : 0f;
+
+            // 破势由 Server FSM 决定。Client 只能上报普通表现状态，不能提前退出或伪造破势。
+            PlayerController playerController = identity.GetComponent<PlayerController>();
+            if (playerController != null)
+            {
+                CharacterStateId clientState = (CharacterStateId)msg.StateId;
+                CharacterStateId serverState = playerController.CurrentStateId;
+
+                if (serverState == CharacterStateId.PostureBroken ||
+                    clientState == CharacterStateId.PostureBroken)
+                {
+                    msg.StateId = (int)serverState;
+
+                    if (serverState == CharacterStateId.PostureBroken)
+                    {
+                        msg.Vx = 0f;
+                        msg.Vz = 0f;
+                        msg.MoveInputX = 0f;
+                        msg.MoveInputY = 0f;
+                    }
+                }
+            }
+
             if (_activeInstance != null && _activeInstance._logRelay)
                 Debug.Log($"[MirrorTransport] RelaySnapshot tick={msg.Tick} from conn={conn.connectionId}");
+
 
 
             // Server 本机也要吃一份客户端快照，否则 Server 无法用远端快照判断 Guard/LockOn/Attack 等表现状态。
@@ -145,17 +201,24 @@ namespace Character.Sync
             }
 
 
-
+            // 必须回发给原发送者，使所属 Client 收到 Server 架势纠正。
+            // Host 已在上方以 Server 身份消费，不再走本地 Client 一次。
             foreach (KeyValuePair<int, NetworkConnectionToClient> kv in NetworkServer.connections)
             {
                 NetworkConnectionToClient target = kv.Value;
-                if (target == null || target == conn) continue; // 不回发给发送者
+                if (target == null || !target.isReady || target == NetworkServer.localConnection) continue;
                 target.Send(msg);
             }
         }
 
         private static void OnServerAction(NetworkConnectionToClient conn, ActionMsg msg)
         {
+            // 权威 HP 结果和破势边沿只能由 Server 战斗结算发布。
+            if (msg.HasHealthResult != 0 ||
+                msg.Type == (int)ActionType.PostureBreak ||
+                msg.Type == (int)ActionType.HealthResult)
+                return;
+
             if (_activeInstance != null && _activeInstance._logRelay)
                 Debug.Log($"[MirrorTransport] RelayAction seq={msg.SeqId} from conn={conn.connectionId}");
 
@@ -218,6 +281,9 @@ namespace Character.Sync
                 CurrentHp = s.CurrentHp,
                 MaxHp = s.MaxHp,
                 HealthRevision = s.HealthRevision,
+                HasAuthoritativePosture = s.HasAuthoritativePosture,
+                CurrentPosture = s.CurrentPosture,
+                MaxPosture = s.MaxPosture,
             };
         }
 
@@ -242,7 +308,10 @@ namespace Character.Sync
                 m.HasAuthoritativeHealth,
                 m.CurrentHp,
                 m.MaxHp,
-                m.HealthRevision
+                m.HealthRevision,
+                m.HasAuthoritativePosture,
+                m.CurrentPosture,
+                m.MaxPosture
             );
         }
 

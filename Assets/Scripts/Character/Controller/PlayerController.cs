@@ -8,6 +8,7 @@ using Character.StateMachine.States;
 using Character.Sync;
 using Core;
 using Input;
+using Mirror;
 using UnityEngine;
 
 namespace Character.Controller
@@ -28,6 +29,7 @@ namespace Character.Controller
         private AttackState _attackState;
         private DodgeState _dodgeState;
         private GuardState _guardState;
+        private PostureBrokenState _postureBrokenState;
         private HitState _hitState;
         private DeadState _deadState;
 
@@ -40,6 +42,8 @@ namespace Character.Controller
 
         public float CurrentHp => _context?.CurrentHp ?? 0f;
         public float MaxHp => _context?.MaxHp ?? 1f;
+
+        public bool IsInvincible => _context?.IsInvincible ?? false;
 
         public event Action<float, float> HealthChanged;
 
@@ -108,6 +112,7 @@ namespace Character.Controller
             _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
             _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
             _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat, def.presentation, _lockOnQuery);
+            _postureBrokenState = new PostureBrokenState(_fsm, _stateRegistry, _motor, def.combat);
             _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
 
@@ -117,6 +122,7 @@ namespace Character.Controller
             _stateRegistry.Register(_attackState);
             _stateRegistry.Register(_dodgeState);
             _stateRegistry.Register(_guardState);
+            _stateRegistry.Register(_postureBrokenState);
             _stateRegistry.Register(_hitState);
             _stateRegistry.Register(_deadState);
 
@@ -157,10 +163,28 @@ namespace Character.Controller
             return false;
         }
 
+        public bool TryGetActivePostureBrokenState(out PostureBrokenState postureBrokenState)
+        {
+            if (_fsm?.CurrentState is PostureBrokenState active)
+            {
+                postureBrokenState = active;
+                return true;
+            }
+
+            postureBrokenState = null;
+            return false;
+        }
+
         void Update()
         {
             bool canProcessLocalInput = CanProcessLocalInput();
-            if (!canProcessLocalInput && _forcedGuardTimer <= 0f) return;
+
+            // Host 上的远端 Player 没有本地输入，但 Server 权威强制状态必须继续计时。
+            bool shouldTickServerPostureBreak =
+                NetworkServer.active &&
+                CurrentStateId == CharacterStateId.PostureBroken;
+
+            if (!canProcessLocalInput && _forcedGuardTimer <= 0f && !shouldTickServerPostureBreak) return;
 
             TickForcedGuardTimer();
 
@@ -230,37 +254,99 @@ namespace Character.Controller
             _lateUpdatePipeline?.TickLateUpdate();
         }
 
-        public void ApplyHit(float damage, bool isHeavyHit, byte hitVariant = 1)
+        public bool TryEnterPostureBroken()
         {
-            if (_context.IsDead || _context.IsInvincible) return;
+            if (_context == null || _context.IsDead ||
+                _fsm == null || _stateRegistry == null ||
+                CurrentStateId == CharacterStateId.PostureBroken)
+                return false;
+
+            _forcedGuardTimer = 0f;
+            return _fsm.TryTransition(CharacterStateId.PostureBroken, _stateRegistry, TransitionReason.PostureBreak);
+        }
+
+        public bool TryEnterHitReaction(bool isHeavyHit, byte hitVariant = 1)
+        {
+            if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null || _hitState == null) return false;
 
             var combat = GameDataManager.Instance.Player.combat;
+            float duration = isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration;
 
-            _context.ApplyDamage(damage);
-            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+            _hitState.Configure(duration, isHeavyHit, hitVariant);
 
-            if (_context.IsDead)
+            return _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
+        }
+
+        public bool TryEnterDead()
+        {
+            if (_context == null || !_context.IsDead || _fsm == null || _stateRegistry == null)
             {
-                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
+                return false;
+            }
+
+            if (CurrentStateId == CharacterStateId.Dead)
+                return true;
+
+            return _fsm.TryTransition(
+                CharacterStateId.Dead,
+                _stateRegistry,
+                TransitionReason.Death);
+        }
+
+        public float ApplyHealthDamageOnly(float damage)
+        {
+            if (_context == null ||
+                _context.IsDead ||
+                _context.IsInvincible)
+            {
+                return 0f;
+            }
+
+            float previousHp = _context.CurrentHp;
+            _context.ApplyDamage(damage);
+            float appliedDamage = Mathf.Max(0f, previousHp - _context.CurrentHp);
+
+            if (appliedDamage > 0f)
+            {
+                HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+            }
+
+            return appliedDamage;
+        }
+
+        public void ApplyHit(float damage, bool isHeavyHit, byte hitVariant = 1)
+        {
+            if (_context == null ||
+               _context.IsDead ||
+               _context.IsInvincible)
+            {
                 return;
             }
 
-            _hitState.Configure(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit, hitVariant);
-            _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
-        }
-
-
-        public void ApplyGuardDamage(float damage)
-        {
-            if (_context.IsDead || _context.IsInvincible) return;
-
-            _context.ApplyDamage(damage);
-            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+            ApplyHealthDamageOnly(damage);
 
             if (_context.IsDead)
             {
-                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
+                TryEnterDead();
+                return;
             }
+
+            TryEnterHitReaction(isHeavyHit, hitVariant);
+        }
+
+        public void ApplyGuardDamage(float damage)
+        {
+            if (_context == null ||
+              _context.IsDead ||
+              _context.IsInvincible)
+            {
+                return;
+            }
+
+            ApplyHealthDamageOnly(damage);
+
+            if (_context.IsDead)
+                TryEnterDead();
         }
 
         /// <summary>
@@ -269,15 +355,12 @@ namespace Character.Controller
         /// </summary>
         public void ApplyHealthDelta(float damage)
         {
-            if (_context == null || _context.IsDead || _context.IsInvincible) return;
-
-            _context.ApplyDamage(damage);
-            HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+            ApplyHealthDamageOnly(damage);
         }
 
         public void ApplyAuthoritativeHealth(float currentHp, float maxHp)
         {
-            if(_context == null) return;
+            if (_context == null) return;
 
             _context.SetHealth(currentHp, maxHp);
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
@@ -287,21 +370,17 @@ namespace Character.Controller
         //只播放反应不扣血
         public void ApplyRemoteHitReaction(bool isHeavyHit, byte hitVariant, bool isDead)
         {
-            if(_context == null || _fsm == null || _stateRegistry == null) return;
+            if (_context == null || _fsm == null || _stateRegistry == null) return;
 
             if (isDead)
             {
-                _fsm.TryTransition(CharacterStateId.Dead, _stateRegistry, TransitionReason.Death);
+                TryEnterDead();
                 return;
             }
 
-            if(_context.IsDead) return;
+            if (_context.IsDead) return;
 
-            var combat = GameDataManager.Instance.Player.combat;
-            _hitState.Configure(isHeavyHit ? combat.heavyHitDuration : combat.lightHitDuration, isHeavyHit, hitVariant);
-
-            _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
-
+            TryEnterHitReaction(isHeavyHit, hitVariant);
         }
 
 
@@ -354,12 +433,13 @@ namespace Character.Controller
             return CurrentStateId is not (
                 CharacterStateId.Dodge
                 or CharacterStateId.Hit
+                or CharacterStateId.PostureBroken
                 or CharacterStateId.Dead);
         }
 
         private bool IsInLockedCombatState()
         {
-            return CurrentStateId is CharacterStateId.Dodge
+            return CurrentStateId is CharacterStateId.Dodge or CharacterStateId.PostureBroken
                 or CharacterStateId.Hit
                 or CharacterStateId.Dead;
         }
@@ -378,7 +458,7 @@ namespace Character.Controller
 
         public bool TryGetActiveIdleState(out IdleState idleState)
         {
-            if(_fsm?.CurrentState is IdleState active)
+            if (_fsm?.CurrentState is IdleState active)
             {
                 idleState = active;
                 return true;

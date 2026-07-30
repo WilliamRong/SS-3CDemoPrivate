@@ -32,52 +32,68 @@ namespace Character.Sync
 
         public void TickInterpolation()
         {
-            if (_buffer == null) return;
-
-            if (_networkIdentity != null
-                && NetworkServer.activeHost
-                && _networkIdentity.isLocalPlayer)
-                return;
-
-            if (_buffer.Count == 0) return;
+            if (_buffer == null || _buffer.Count == 0) return;
 
             float targetTime = Time.unscaledTime - Sync.bufferDelaySec;
 
             if (!_buffer.TrySampleByArrivalTime(targetTime, out var from, out var to, out float t))
                 return;
 
-            Vector3 targetPos;
-            float targetYaw;
+            bool isLocalPlayer = _networkIdentity != null && _networkIdentity.isLocalPlayer;
 
-            if (from.Tick == to.Tick)
+            // 所属 Client 只接收自己的数值纠正，绝不能插值自身位置。
+            if (!isLocalPlayer)
             {
-                targetPos = from.Position;
-                targetYaw = from.Yaw;
+                Vector3 targetPos;
+                float targetYaw;
+
+                if (from.Tick == to.Tick)
+                {
+                    targetPos = from.Position;
+                    targetYaw = from.Yaw;
+                }
+                else
+                {
+                    targetPos = Vector3.Lerp(from.Position, to.Position, t);
+                    targetYaw = Mathf.LerpAngle(from.Yaw, to.Yaw, t);
+                }
+
+                LastPosError = Vector3.Distance(transform.position, targetPos);
+
+                float lerpSpeed = LastPosError > Sync.largeErrorThreshold
+                    ? Sync.snapLerpSpeed
+                    : Sync.normalLerpSpeed;
+                float k = Mathf.Clamp01(lerpSpeed * Time.deltaTime);
+                transform.position = Vector3.Lerp(transform.position, targetPos, k);
+
+                var curEuler = transform.rotation.eulerAngles;
+                float yaw = Mathf.LerpAngle(curEuler.y, targetYaw, k);
+                transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             }
             else
             {
-                targetPos = Vector3.Lerp(from.Position, to.Position, t);
-                targetYaw = Mathf.LerpAngle(from.Yaw, to.Yaw, t);
+                LastPosError = 0f;
             }
-
-            LastPosError = Vector3.Distance(transform.position, targetPos);
-
-            float lerpSpeed = LastPosError > Sync.largeErrorThreshold
-                ? Sync.snapLerpSpeed
-                : Sync.normalLerpSpeed;
-            float k = Mathf.Clamp01(lerpSpeed * Time.deltaTime);
-            transform.position = Vector3.Lerp(transform.position, targetPos, k);
-
-            var curEuler = transform.rotation.eulerAngles;
-            float yaw = Mathf.LerpAngle(curEuler.y, targetYaw, k);
-            transform.rotation = Quaternion.Euler(0f, yaw, 0f);
 
             LastAppliedSnapshot = to;
 
             // Dedicated Server 和 Host 都已经持有权威 HP，不能重复覆盖。
-            if (!NetworkServer.active && _combatActor != null && to.HasAuthoritativeHealth != 0)
+            if (!NetworkServer.active && _combatActor != null)
             {
-                _combatActor.ApplyAuthoritativeHealth(to.CurrentHp, to.MaxHp, to.HealthRevision);
+                if (to.HasAuthoritativeHealth != 0)
+                {
+                    _combatActor.ApplyAuthoritativeHealth(
+                        to.CurrentHp,
+                        to.MaxHp,
+                        to.HealthRevision);
+                }
+
+                if (to.HasAuthoritativePosture != 0)
+                {
+                    _combatActor.ApplyAuthoritativePosture(
+                        to.CurrentPosture,
+                        to.MaxPosture);
+                }
             }
 
             if (_logState)

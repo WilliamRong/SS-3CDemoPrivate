@@ -23,4 +23,28 @@ namespace Character.Combat
         public Vector3 hitPoint;
         public Vector3 hitDirection;
     }
+
+    public enum CombatReactionType: byte
+    {
+        None = 0,
+        Hit = 1,
+        GuardHit = 2,
+        GuardBreak = 3,
+        PostureBreak = 4,
+        Dead = 5,
+    }
+
+    public struct CombatHitResult
+    {
+        public bool Applied;
+        public float AppliedHealthDamage;
+        public float AppliedPostureDamage;
+        public bool WasGuarded;
+        public bool WasGuardBreak;
+        public bool WasPostureBroken;
+        public bool CausedPostureBreak;
+        public bool IsDead;
+        public GuardReactionType GuardReaction;
+        public CombatReactionType FinalReaction;
+    }
 }

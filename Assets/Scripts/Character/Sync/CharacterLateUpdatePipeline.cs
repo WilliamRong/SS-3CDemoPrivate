@@ -72,7 +72,7 @@ namespace Character.Sync
 
             var frame = BuildPresentationFrame();
 
-            if (TryPresentGuardReaction())
+            if (TryPresentGuardReaction(frame))
             {
                 CommitPresentationFrame(frame);
                 return;
@@ -295,10 +295,18 @@ namespace Character.Sync
             return presentation != null ? presentation.turnStepAngle : 180f;
         }
 
-        private bool TryPresentGuardReaction()
+        private bool TryPresentGuardReaction(PresentationFrame frame)
         {
             if (_combatPresenter == null || _animator == null)
                 return false;
+
+            // Forced full-body reactions must supersede any timed guard reaction.
+            if (frame.StateId is CharacterStateId.Hit
+                or CharacterStateId.Dead
+                or CharacterStateId.PostureBroken)
+            {
+                return false;
+            }
 
             if (_remoteActionApplier != null
                 && _remoteActionApplier.TryConsumeGuardReaction(out var reaction))
@@ -438,6 +446,7 @@ namespace Character.Sync
         {
             return id is CharacterStateId.Hit
                 or CharacterStateId.Dead
+                or CharacterStateId.PostureBroken
                 or CharacterStateId.Attack
                 or CharacterStateId.Dodge;
         }
@@ -707,7 +716,9 @@ namespace Character.Sync
             if (snapshot.Tick <= 0)
                 return false;
 
-            stateId = snapshot.StateId;
+            stateId = _remoteActionApplier != null
+                ? _remoteActionApplier.ResolveSnapshotState(snapshot.StateId)
+                : snapshot.StateId;
             velocityXZ = snapshot.VelocityXZ;
             moveInput = snapshot.GetMoveInputOrDefault();
             isLockOn = snapshot.IsLockOnActive;
@@ -722,8 +733,14 @@ namespace Character.Sync
 
         private int ResolveRemoteStateEnterVersion(CharacterStateId stateId)
         {
-            if (stateId == CharacterStateId.Hit && _remoteActionApplier != null)
+            if (_remoteActionApplier == null)
+                return 0;
+
+            if (stateId == CharacterStateId.Hit)
                 return _remoteActionApplier.LastHitSeqId;
+
+            if (stateId == CharacterStateId.PostureBroken)
+                return _remoteActionApplier.LastPostureBreakSeqId;
 
             return 0;
         }
@@ -801,6 +818,7 @@ namespace Character.Sync
             {
                 return id is CharacterStateId.Hit
                     or CharacterStateId.Dead
+                    or CharacterStateId.PostureBroken
                     or CharacterStateId.Attack
                     or CharacterStateId.Dodge
                     or CharacterStateId.Guard;

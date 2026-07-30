@@ -21,6 +21,7 @@ namespace Character.StateMachine
         Revive = 8,
         Timeout = 9,
         InputGuard = 10,
+        PostureBreak = 11,
     }
 
 

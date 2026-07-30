@@ -11,5 +11,6 @@ namespace Character.StateMachine
         Hit = 6,
         Dead = 7,
         Guard = 8,
+        PostureBroken = 9,
     }
 }

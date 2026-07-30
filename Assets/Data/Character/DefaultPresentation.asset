@@ -36,3 +36,4 @@ MonoBehaviour:
   idleTurnDuration: 0.5
   logIdleTurnPresentation: 0
   attackCrossFadeDuration: 0.1
+  postureBrokenCrossFadeDuration: 0.08

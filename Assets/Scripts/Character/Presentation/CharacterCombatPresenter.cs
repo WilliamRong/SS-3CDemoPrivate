@@ -38,6 +38,15 @@ namespace Character.Presentation
 
             switch (stateId)
             {
+                case CharacterStateId.PostureBroken:
+                    ResetActiveCombatLayers(animator);
+                    PlayReaction(
+                        animator,
+                        AnimatorParams.StatePostureBroken,
+                        _config.postureBrokenCrossFadeDuration,
+                        forceRestart);
+                    _lastCombatState = stateId;
+                    return true;
                 case CharacterStateId.Hit:
                     ResetActiveCombatLayers(animator);
                     PlayReaction(animator, HitVariantToHash(actionParams), _config.lightHitCrossFadeDuration, forceRestart);
@@ -71,7 +80,7 @@ namespace Character.Presentation
         {
             if (animator == null) return;
             animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 0f);
-            if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead)
+            if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead or CharacterStateId.PostureBroken)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;
@@ -161,7 +170,7 @@ namespace Character.Presentation
         {
             int targetHash = AttackIdToHash(AttackMoveIdExtensions.FromByte(comboStep));
             if (targetHash == 0) return;
-            
+
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
             animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
 
@@ -170,9 +179,9 @@ namespace Character.Presentation
             _lastHash = targetHash;
             animator.CrossFade(targetHash, _config.attackCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
         }
-        
-        
-        
+
+
+
         /// <summary>
         /// Returns true when Guard is full-body and should block locomotion presentation.
         /// Moving Guard is a temporary split: upper-body guard over layer-0 walk.
@@ -183,9 +192,9 @@ namespace Character.Presentation
 
             if (TickGuardReaction(animator))
                 return true;
-            
-            ResetReactionLayers(animator); 
-            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f); 
+
+            ResetReactionLayers(animator);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
             _lastDodgeMode = DodgeMode.None;
 
             // Any guard phase can use upper-body overlay while moving, so layer-0 walk stays visible.
@@ -238,17 +247,17 @@ namespace Character.Presentation
                 DodgeMode.LockOn8Way => AnimatorParams.StateDodgeDirectional,
                 _ => 0,
             };
-            
-            if(targetHash == 0) return;
+
+            if (targetHash == 0) return;
 
             if (ctx.Mode == DodgeMode.LockOn8Way)
             {
                 animator.SetFloat(AnimatorParams.DodgeInputX, ctx.BlendLocal.x);
                 animator.SetFloat(AnimatorParams.DodgeInputZ, ctx.BlendLocal.y);
             }
-            
+
             animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
-            
+
             if (targetHash == _lastHash && _lastDodgeMode == ctx.Mode)
                 return;
             _lastHash = targetHash;

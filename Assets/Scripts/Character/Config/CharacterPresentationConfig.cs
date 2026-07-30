@@ -68,6 +68,9 @@ namespace Character.Config
         [Header("Attack Animator")]
         public float attackCrossFadeDuration = 0.1f;
 
+        [Header("PostureBroken")]
+        public float postureBrokenCrossFadeDuration = 0.08f;
+
         public float GetHitCrossFadeDuration(bool heavyHit)
         {
             return heavyHit ? heavyHitCrossFadeDuration : lightHitCrossFadeDuration;

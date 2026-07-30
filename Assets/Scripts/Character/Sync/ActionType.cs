@@ -10,6 +10,8 @@ namespace Character.Sync
         Revive = 5,
         GuardHit = 6,
         GuardBreak = 7,
+        PostureBreak = 8,
+        HealthResult = 9,
     }
 
     public static class ActionTypeExtensions
@@ -26,6 +28,8 @@ namespace Character.Sync
                 ActionType.Revive => "Revive",
                 ActionType.GuardHit => "GuardHit",
                 ActionType.GuardBreak => "GuardBreak",
+                ActionType.PostureBreak => "PostureBreak",
+                ActionType.HealthResult => "HealthResult",
                 _ => $"Unknown({(byte)type})"
             };
         }
