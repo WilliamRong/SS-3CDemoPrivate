@@ -4,7 +4,7 @@ using Core;
 namespace Character.Sync
 {
     /// <summary>
-    /// 统一管理本地发布 -> 假网络 -> 远端接收的事件接线
+    /// 将发布器与所选 Transport 在运行时接线，使 Fake 和 Mirror 模式复用完全相同的消息消费路径。
     /// </summary>
     public sealed class SyncBootstrap : MonoBehaviour
     {
@@ -22,6 +22,8 @@ namespace Character.Sync
         
         private bool _isWired;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             ResolvePublisher();
@@ -35,7 +37,7 @@ namespace Character.Sync
 
         private void Update()
         {
-            // 支持运行时对象（如网络生成的本地玩家）出现后自动补接线
+            // 网络生成的本地玩家可能晚于 Bootstrap 出现，因此未接线期间持续低成本重试。
             if (_isWired) return;
             TryWireUp();
         }
@@ -44,7 +46,7 @@ namespace Character.Sync
         {
             if (!_isWired || _publisher == null || _transport == null) return;
 
-            // 反订阅，防止重复订阅/内存泄漏
+            // 成对反订阅，防止重启对象后同一消息被重复分发。
             _publisher.OnSnapshotProduced -= _transport.SendSnapshot;
             _publisher.OnActionEventProduced -= _transport.SendActionEvent;
 
@@ -55,12 +57,16 @@ namespace Character.Sync
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire down done.");
         }
 
+        // ============ 事件接线 ============
+
+        /// <summary>
+        /// 只有发布器和 Transport 都已解析时才一次性订阅，避免部分接线留下难以清理的中间状态。
+        /// </summary>
         private void TryWireUp()
         {
             if (_publisher == null) ResolvePublisher();
-            if(_transport == null) ResolveTransport();
-            
-            
+            if (_transport == null) ResolveTransport();
+
             if (!ValidateRefs()) return;
 
             // 本地发布 -> Transport
@@ -75,6 +81,11 @@ namespace Character.Sync
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire up done.");
         }
 
+        // ============ 依赖解析 ============
+
+        /// <summary>
+        /// Transport 仅在接线边界解析一次，发布器和消费者始终保持对具体网络实现无感知。
+        /// </summary>
         private void ResolveTransport()
         {
             switch (_transportMode)
@@ -93,6 +104,9 @@ namespace Character.Sync
             }
         }
 
+        /// <summary>
+        /// 优先选择有本地输入权威的发布器，场景预置对象只作为离线兼容回退。
+        /// </summary>
         private void ResolvePublisher()
         {
             if (_publisher != null) return;
@@ -120,9 +134,7 @@ namespace Character.Sync
             if (allTransports.Length > 0)
                 _mirrorTransport = allTransports[0];
         }
-        
-        
-        
+
         private bool ValidateRefs()
         {
             if (_publisher == null)
@@ -140,6 +152,11 @@ namespace Character.Sync
             return true;
         }
 
+        // ============ 消息分发 ============
+
+        /// <summary>
+        /// 每个 Buffer 自行校验 ActorId，Bootstrap 只做广播，从而支持运行时动态生成和销毁远端对象。
+        /// </summary>
         private void HandleSnapshotReceived(StateSnapshot snapshot)
         {
             var buffers = FindObjectsByType<RemoteSnapshotBuffer>(FindObjectsSortMode.None);

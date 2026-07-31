@@ -8,6 +8,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// Mirror 传输结构保持为扁平字段，便于 Weaver 生成稳定序列化代码并显式审查协议布局。
+    /// </summary>
     public struct SnapshotMsg : NetworkMessage
     {
         public int Tick;
@@ -34,6 +37,9 @@ namespace Character.Sync
         public float MaxPosture;
     }
 
+    /// <summary>
+    /// 动作消息与快照分离，离散战斗反应不必等待下一次连续状态采样。
+    /// </summary>
     public struct ActionMsg : NetworkMessage
     {
         public int SeqId;
@@ -49,6 +55,9 @@ namespace Character.Sync
         public uint HealthRevision;
     }
 
+    /// <summary>
+    /// 验证 Client 所属 Actor 后由 Server 中继消息，并在回发前覆盖服务器掌握的权威战斗字段。
+    /// </summary>
     public sealed class MirrorSyncTransport : MonoBehaviour, ISyncTransport
     {
         [Header("Debug")]
@@ -61,6 +70,8 @@ namespace Character.Sync
 
         private static MirrorSyncTransport _activeInstance;
         private static bool _handlersRegistered;
+
+        // ============ Unity 生命周期 ============
 
         private void OnEnable()
         {
@@ -84,6 +95,8 @@ namespace Character.Sync
             UnregisterHandlers();
         }
 
+        // ============ Client 发送 ============
+
         public void SendSnapshot(StateSnapshot snapshot)
         {
             if (!NetworkClient.active) return;
@@ -100,6 +113,8 @@ namespace Character.Sync
             NetworkClient.Send(ToMsg(actionEvent));
         }
 
+        // ============ Server 广播 ============
+
         public void BroadcastSnapshotFromServer(StateSnapshot snapshot)
         {
             if (!NetworkServer.active) return;
@@ -114,6 +129,11 @@ namespace Character.Sync
             NetworkServer.SendToAll(ToMsg(actionEvent));
         }
 
+        // ============ Mirror Handler 生命周期 ============
+
+        /// <summary>
+        /// Handler 是 Mirror 全局注册项，因此通过静态标志保证场景重载和重复实例不会多次注册。
+        /// </summary>
         private static void RegisterHandlers()
         {
             if (_handlersRegistered) return;
@@ -136,6 +156,11 @@ namespace Character.Sync
             _handlersRegistered = false;
         }
 
+        // ============ Server 校验与中继 ============
+
+        /// <summary>
+        /// 连接只能发布自己拥有的 Player；服务器再覆盖架势和崩防状态，阻断 Client 伪造权威字段。
+        /// </summary>
         private static void OnServerSnapshot(NetworkConnectionToClient conn, SnapshotMsg msg)
         {
             if (conn?.identity == null || msg.ActorId <= 0)
@@ -211,6 +236,9 @@ namespace Character.Sync
             }
         }
 
+        /// <summary>
+        /// 含权威生命结果或崩防边沿的动作只能由服务器产生，Client 上报此类消息会被直接丢弃。
+        /// </summary>
         private static void OnServerAction(NetworkConnectionToClient conn, ActionMsg msg)
         {
             // 权威 HP 结果和破势边沿只能由 Server 战斗结算发布。
@@ -236,6 +264,8 @@ namespace Character.Sync
             }
         }
 
+        // ============ Client 接收 ============
+
         private static void OnClientSnapshot(SnapshotMsg msg)
         {
             if (_activeInstance == null) return;
@@ -255,6 +285,11 @@ namespace Character.Sync
             _activeInstance.OnActionEventReceived?.Invoke(evt);
         }
 
+        // ============ 协议对象转换 ============
+
+        /// <summary>
+        /// 业务值对象与 Mirror 消息显式逐字段转换，协议新增字段时编译审查点保持集中可见。
+        /// </summary>
         private static SnapshotMsg ToMsg(StateSnapshot s)
         {
             return new SnapshotMsg

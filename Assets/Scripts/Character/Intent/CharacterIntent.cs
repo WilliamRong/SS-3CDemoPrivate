@@ -3,8 +3,7 @@ using UnityEngine;
 namespace Character.Intent
 {
     /// <summary>
-    /// Per-frame input intent consumed by the character FSM.
-    /// Triggered flags are edge-triggered (true only on the frame they fire).
+    /// 以逐帧值对象隔离输入来源与状态机，使 Player 输入和 NPC AI 可以复用相同状态接口。
     /// </summary>
     public struct CharacterIntent
     {

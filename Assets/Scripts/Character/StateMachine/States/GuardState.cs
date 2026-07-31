@@ -5,9 +5,14 @@ using Character.Presentation;
 using UnityEngine;
 namespace Character.StateMachine.States
 {
-
+    /// <summary>
+    /// 将防御起手、持续、退出和锁定转身收敛在同一状态，避免防御判定与表现相位脱节。
+    /// </summary>
     public sealed class GuardState : ICharacterState
     {
+        /// <summary>
+        /// 显式保留防御阶段，便于远端表现还原起手、循环、退出与转身，而不是依赖本地计时猜测。
+        /// </summary>
         public enum GuardPhase : byte
         {
             None = 0,
@@ -22,22 +27,20 @@ namespace Character.StateMachine.States
         private readonly CharacterMotor _motor;
         private readonly CharacterStateRegistry _registry;
         private readonly CharacterCombatConfig _combatConfig;
-
-        private float _phaseTimer;
-
-        public CharacterStateId Id { get; } = CharacterStateId.Guard;
-        public GuardPhase CurrentPhase { get; private set; } = GuardPhase.Start;
-
         private readonly CharacterPresentationConfig _presentationConfig;
         private readonly ILockOnLocomotionQuery _lockOnQuery;
 
+        private float _phaseTimer;
         private float _turnCooldown;
         private float _targetTurnAngle;
         private float _turnDuration;
         private float _turnYawSpeed;
         private Quaternion _turnTargetRotation = Quaternion.identity;
 
+        public CharacterStateId Id { get; } = CharacterStateId.Guard;
+        public GuardPhase CurrentPhase { get; private set; } = GuardPhase.Start;
         public float GetTargetTurnAngle() => _targetTurnAngle;
+
         public GuardState(CharacterStateMachine fsm, CharacterMotor motor, CharacterStateRegistry registry,
             CharacterCombatConfig combatConfig, CharacterPresentationConfig presentationConfig, ILockOnLocomotionQuery lockOnQuery)
         {
@@ -49,6 +52,8 @@ namespace Character.StateMachine.States
             _lockOnQuery = lockOnQuery;
         }
 
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             SetPhase(GuardPhase.Start);
@@ -57,6 +62,9 @@ namespace Character.StateMachine.States
             _motor.SetTurnRotationOverride(false);
         }
 
+        /// <summary>
+        /// 每个阶段独立推进但共享一个入口，输入释放、移动和锁定转身不会在同帧产生多个转换。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             intent.IsSprintHeld = false;
@@ -93,6 +101,8 @@ namespace Character.StateMachine.States
             SetPhase(GuardPhase.Start);
         }
 
+        // ============ 防御阶段推进 ============
+
         private void TickStart(CharacterIntent intent, float deltaTime)
         {
             intent.IsDodgePressed = false;
@@ -105,6 +115,9 @@ namespace Character.StateMachine.States
             }
         }
 
+        /// <summary>
+        /// Loop 内先处理释放与攻击，再决定移动或转身，保证主动输入优先于自动面向修正。
+        /// </summary>
         private void TickLoop(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);
@@ -169,6 +182,8 @@ namespace Character.StateMachine.States
             _phaseTimer = 0f;
         }
 
+        // ============ 锁定转身 ============
+
         private bool ShouldTurnToTarget(out bool turnLeft, out float angleDelta)
         {
             turnLeft = false;
@@ -197,6 +212,9 @@ namespace Character.StateMachine.States
             _motor.SetMovementBlocked(true);
         }
 
+        /// <summary>
+        /// 转身期间仍允许释放格挡和攻击打断，避免自动朝向把玩家锁死到完整动画结束。
+        /// </summary>
         private void TickTurnPhase(CharacterIntent intent, float deltaTime)
         {
             if (!intent.IsGuardHeld)
@@ -251,6 +269,9 @@ namespace Character.StateMachine.States
             return CharacterTurnPlanner.IsAligned(_motor.Root.rotation, _turnTargetRotation, _presentationConfig);
         }
 
+        /// <summary>
+        /// 从锁定点计算精确目标旋转，同时保留左右和角度供动画选择，避免表现层再次采样可能已经移动的目标。
+        /// </summary>
         private bool TryGetFacingAngleToTarget(out bool turnLeft, out float angleDelta, out Quaternion targetRotation)
         {
             turnLeft = false;

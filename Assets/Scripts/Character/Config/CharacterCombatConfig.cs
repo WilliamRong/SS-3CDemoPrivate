@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Character.Config
 {
+    /// <summary>
+    /// 把战斗逻辑时长和数值集中为权威数据，避免状态机、结算和表现各自维护默认值。
+    /// </summary>
     [CreateAssetMenu(fileName = "CharacterCombatConfig", menuName = "SS3C/Character/Combat Config")]
     public sealed class CharacterCombatConfig : ScriptableObject
     {
@@ -91,11 +94,27 @@ namespace Character.Config
         public float hitActiveEnd = 0.2f;
         public float hitRecoveryEnd = 0.8166667f;
 
+        // ============ 攻击数据查询 ============
+
         public bool TryGetAttackDefinition(AttackMoveId attackStep, out AttackDefinition definition)
         {
             definition = null;
             return attackSet != null && attackSet.TryGet(attackStep, out definition);
         }
+
+        public float GetAttackDuration(byte attackStep)
+        {
+            return GetAttackDuration(AttackMoveIdExtensions.FromByte(attackStep));
+        }
+
+        public float GetAttackDuration(AttackMoveId attackId)
+        {
+            return TryGetAttackDefinition(attackId, out AttackDefinition definition)
+                ? Mathf.Max(0.01f, definition.duration)
+                : FallbackAttackDuration;
+        }
+
+        // ============ 闪避时长查询 ============
 
         public float GetDodgeDuration(DodgeMode mode)
         {
@@ -111,17 +130,7 @@ namespace Character.Config
             return anim * ratio;
         }
 
-        public float GetAttackDuration(byte attackStep)
-        {
-            return GetAttackDuration(AttackMoveIdExtensions.FromByte(attackStep));
-        }
-
-        public float GetAttackDuration(AttackMoveId attackId)
-        {
-            return TryGetAttackDefinition(attackId, out AttackDefinition definition)
-                ? Mathf.Max(0.01f, definition.duration)
-                : FallbackAttackDuration;
-        }
+        // ============ 状态窗口查询 ============
 
         public void GetStateWindows(CharacterStateId stateId, out float preHitEnd, out float activeEnd, out float recoveryEnd)
         {
@@ -150,7 +159,11 @@ namespace Character.Config
             }
         }
 
+        // ============ 编辑器数据约束 ============
 
+        /// <summary>
+        /// 在资产写入时修正边界，使运行时和网络端都不必重复防御非法配置。
+        /// </summary>
         private void OnValidate()
         {
             maxHp = Mathf.Max(1f, maxHp);

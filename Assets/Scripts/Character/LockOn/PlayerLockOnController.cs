@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.LockOn
 {
+    /// <summary>
+    /// 以相机视野而非角色朝向筛选锁定目标，使观察方向与玩家意图保持一致，并向移动和同步层提供同一目标状态。
+    /// </summary>
     [DisallowMultipleComponent]
     public sealed class PlayerLockOnController : MonoBehaviour, ILockOnLocomotionQuery
     {
@@ -53,6 +56,8 @@ namespace Character.LockOn
         public ILockOnTarget CurrentLockOnTarget =>
             IsLockOnActive ? _currentTarget : null;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             _input = GetComponent<InputHandler>();
@@ -60,6 +65,9 @@ namespace Character.LockOn
             _ownerActor = GetComponent<CombatActor>();
         }
 
+        /// <summary>
+        /// 死亡和冲刺先解除锁定，再维护目标有效性，避免失效目标在同帧触发自动切换。
+        /// </summary>
         private void Update()
         {
             ResolveCamera();
@@ -82,6 +90,8 @@ namespace Character.LockOn
             if (_showLockOnDebug && _debugScanEveryFrame)
                 RefreshDebugScan();
         }
+
+        // ============ 调试可视化 ============
 
         private void OnDrawGizmos()
         {
@@ -115,6 +125,9 @@ namespace Character.LockOn
             }
         }
 
+        /// <summary>
+        /// 调试扫描复用正式候选规则但单独保存结果，避免 Gizmos 为了可视化改写当前锁定目标。
+        /// </summary>
         private void RefreshDebugScan()
         {
             _debugValidCandidates.Clear();
@@ -142,6 +155,8 @@ namespace Character.LockOn
             }
         }
 
+        // ============ 锁定控制 ============
+
         private void ToggleLockOn()
         {
             if (IsLockOnActive)
@@ -160,7 +175,7 @@ namespace Character.LockOn
         }
 
         /// <summary>
-        /// 供 LocalSyncPublisher 读取锁定同步状态。MoveInput 由 PlayerController.LastMoveInput 单独提供。
+        /// 只同步 NetworkIdentity，远端自行解析 LockPoint，避免把运行时骨骼 Transform 写进协议。
         /// </summary>
         public bool TryGetSyncState(out uint lockTargetNetId)
         {
@@ -181,11 +196,16 @@ namespace Character.LockOn
             return false;
         }
 
+        // ============ 目标搜索与评分 ============
+
         private bool TryFindBestTarget(out ILockOnTarget bestTarget)
         {
             return TryFindBestTarget(null, _requireCameraForward, out bestTarget);
         }
 
+        /// <summary>
+        /// 使用无分配物理查询并在同一批候选中完成过滤与评分，避免锁定按键产生 GC 或跨帧候选漂移。
+        /// </summary>
         private bool TryFindBestTarget(
             ILockOnTarget excludedTarget,
             bool requireCameraForward,
@@ -223,11 +243,18 @@ namespace Character.LockOn
             return bestTarget != null;
         }
 
+        /// <summary>
+        /// 初次锁定可要求目标位于相机前方，自动切换则可独立放宽条件，避免角色朝向影响相机选择。
+        /// </summary>
+
         private bool IsTargetCandidate(ILockOnTarget target)
         {
             return IsTargetCandidate(target, _requireCameraForward);
         }
 
+        /// <summary>
+        /// 相机前向限制只约束首次选择；距离、存活和可锁定性始终校验，保证自动切换不会选到失效实体。
+        /// </summary>
         private bool IsTargetCandidate(ILockOnTarget target, bool requireCameraForward)
         {
             if (!IsTargetReferenceAlive(target))
@@ -265,6 +292,8 @@ namespace Character.LockOn
             return true;
         }
 
+        // ============ 当前目标维护 ============
+
         private bool IsTargetStillValid(ILockOnTarget target)
         {
             if (!IsTargetReferenceAlive(target))
@@ -299,6 +328,11 @@ namespace Character.LockOn
             return _ownerActor != null && _ownerActor.IsDead;
         }
 
+        // ============ 目标评分 ============
+
+        /// <summary>
+        /// 屏幕中心优先于距离，并保留显式优先级修正，使相机所见目标成为主要选择依据。
+        /// </summary>
         private float ScoreTarget(ILockOnTarget target)
         {
             if (!TryGetLockPoint(target, out var lockPoint))
@@ -318,6 +352,8 @@ namespace Character.LockOn
             return screenCenterDistance * _screenCenterWeight + distance * _distanceWeight -
                    target.LockPriority * _priorityWeight;
         }
+
+        // ============ 引用安全 ============
 
         private Camera ResolveCamera()
         {

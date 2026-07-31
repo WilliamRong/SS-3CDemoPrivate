@@ -7,6 +7,9 @@ using UnityEngine.UI;
 
 namespace Character.Presentation
 {
+    /// <summary>
+    /// 只绑定当前本地玩家的生命与架势事件，使同一场景中的远端 Player 不会争用屏幕 HUD。
+    /// </summary>
     public sealed class PlayerHealthHudView : MonoBehaviour
     {
         private const float BindRetryInterval = 0.25f;
@@ -32,6 +35,8 @@ namespace Character.Presentation
         private CharacterStateId _lastObservedStateId = CharacterStateId.None;
         private bool _isPostureBreakEmphasisActive;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             CacheReferences();
@@ -49,6 +54,9 @@ namespace Character.Presentation
             Unbind();
         }
 
+        /// <summary>
+        /// 使用未缩放时间驱动绑定重试和 UI 插值，暂停战斗时间时 HUD 仍能完成网络绑定与崩防强调。
+        /// </summary>
         private void Update()
         {
             if (_player == null)
@@ -73,6 +81,11 @@ namespace Character.Presentation
             }
         }
 
+        // ============ 本地玩家绑定 ============
+
+        /// <summary>
+        /// Mirror 生成本地玩家存在时序差异，因此允许 HUD 低频重试绑定，而不是依赖场景初始化顺序。
+        /// </summary>
         private void TryBindPlayer()
         {
             PlayerController player = ResolveLocalPlayer();
@@ -116,6 +129,21 @@ namespace Character.Presentation
             return null;
         }
 
+        private void Unbind()
+        {
+            if (_player != null)
+                _player.HealthChanged -= OnHealthChanged;
+            if (_actor != null)
+                _actor.PostureChanged -= OnPostureChanged;
+
+            _player = null;
+            _actor = null;
+            _lastObservedStateId = CharacterStateId.None;
+            ResetPosturePresentation();
+        }
+
+        // ============ 数值事件 ============
+
         private void OnHealthChanged(float currentHp, float maxHp)
         {
             float safeMax = Mathf.Max(1f, maxHp);
@@ -146,18 +174,7 @@ namespace Character.Presentation
             SetPostureBarVisible(_postureRatio > 0f);
         }
 
-        private void Unbind()
-        {
-            if (_player != null)
-                _player.HealthChanged -= OnHealthChanged;
-            if (_actor != null)
-                _actor.PostureChanged -= OnPostureChanged;
-
-            _player = null;
-            _actor = null;
-            _lastObservedStateId = CharacterStateId.None;
-            ResetPosturePresentation();
-        }
+        // ============ UI 引用与可见性 ============
 
         private void SetVisible(bool visible)
         {
@@ -165,6 +182,9 @@ namespace Character.Presentation
                 _canvas.enabled = visible;
         }
 
+        /// <summary>
+        /// 支持 Inspector 显式绑定和既有预制体路径回退，避免仅为整理 UI 强制迁移所有场景序列化数据。
+        /// </summary>
         private void CacheReferences()
         {
             if (_canvas == null)
@@ -205,6 +225,11 @@ namespace Character.Presentation
                 _healthText.font = LoadBuiltinFont();
         }
 
+        // ============ 崩防强调 ============
+
+        /// <summary>
+        /// 监听状态进入边沿而不是架势归零值，确保满槽被权威重置后仍能完整显示一秒崩防反馈。
+        /// </summary>
         private void UpdatePostureBreakPresentation()
         {
             if (_player != null)
@@ -228,6 +253,9 @@ namespace Character.Presentation
             EndPostureBreakEmphasis();
         }
 
+        /// <summary>
+        /// 崩防期间冻结为满槽放大表现，不让随后到达的架势归零事件提前隐藏反馈。
+        /// </summary>
         private void BeginPostureBreakEmphasis()
         {
             if (_postureBar == null || _postureFillImage == null)
@@ -258,6 +286,8 @@ namespace Character.Presentation
 
             SetPostureBarVisible(_player != null && _postureRatio > 0f);
         }
+
+        // ============ 架势条绘制 ============
 
         private void ResetPosturePresentation()
         {
@@ -292,6 +322,8 @@ namespace Character.Presentation
             fillRect.offsetMin = Vector2.zero;
             fillRect.offsetMax = Vector2.zero;
         }
+
+        // ============ 字体回退 ============
 
         private static Font LoadBuiltinFont()
         {

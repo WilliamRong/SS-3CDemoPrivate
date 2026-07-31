@@ -7,6 +7,9 @@ using UnityEngine.UI;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// Player 与 NPC 共用唯一的世界血条实例，锁定和受击只改变其可见性，避免不同系统重复创建 UI。
+    /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(CombatActor))]
     public sealed class NpcHealthBarView : MonoBehaviour
@@ -39,6 +42,8 @@ namespace Character.Combat
         private int _lastObservedPostureBreakSeqId;
         private bool _isLockOnVisible;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_actor == null)
@@ -51,6 +56,9 @@ namespace Character.Combat
             EnsureUi();
         }
 
+        /// <summary>
+        /// 启用时先隐藏再订阅当前数值，避免对象池复用时继承上一角色的可见计时与崩防边框。
+        /// </summary>
         private void OnEnable()
         {
             _visibleUntil = float.NegativeInfinity;
@@ -103,6 +111,9 @@ namespace Character.Combat
             _actor.DamageTaken -= OnDamageTaken;
         }
 
+        /// <summary>
+        /// 在角色位姿更新后放置并朝向世界 UI，减少跟随插值实体时产生的一帧延迟。
+        /// </summary>
         private void LateUpdate()
         {
             if (_canvasRect == null) return;
@@ -132,6 +143,8 @@ namespace Character.Combat
                     canvasTransform.rotation = Quaternion.LookRotation(toCamera.normalized, Vector3.up);
             }
         }
+
+        // ============ 数值事件 ============
 
         private void OnHealthChanged(float currentHp, float maxHp)
         {
@@ -163,6 +176,20 @@ namespace Character.Combat
             StartCoroutine(PlayDamageNumber(damage));
         }
 
+        /// <summary>
+        /// Player 的本地生命组件没有独立 DamageTaken 事件，因此用已观察值计算差值并复用同一受击展示链路。
+        /// </summary>
+        private void OnPlayerHealthChanged(float currentHp, float maxHp)
+        {
+            if (_lastObservedPlayerHp >= 0f && currentHp < _lastObservedPlayerHp)
+                OnDamageTaken(_lastObservedPlayerHp - currentHp);
+
+            _lastObservedPlayerHp = currentHp;
+            OnHealthChanged(currentHp, maxHp);
+        }
+
+        // ============ 可见性控制 ============
+
         public void ShowForHit()
         {
             if (_canvasRect == null || ShouldHideForLocalPlayer())
@@ -184,15 +211,6 @@ namespace Character.Combat
             SetCanvasVisible(shouldShow);
         }
 
-        private void OnPlayerHealthChanged(float currentHp, float maxHp)
-        {
-            if (_lastObservedPlayerHp >= 0f && currentHp < _lastObservedPlayerHp)
-                OnDamageTaken(_lastObservedPlayerHp - currentHp);
-
-            _lastObservedPlayerHp = currentHp;
-            OnHealthChanged(currentHp, maxHp);
-        }
-
         private void SetCanvasVisible(bool visible)
         {
             if (_canvas != null)
@@ -210,6 +228,11 @@ namespace Character.Combat
             return _networkIdentity == null || _networkIdentity.isLocalPlayer;
         }
 
+        // ============ UI 绑定 ============
+
+        /// <summary>
+        /// 优先复用预制体已有层级，只在缺失时报告配置问题，避免运行时生成第二套世界血条。
+        /// </summary>
         private void EnsureUi()
         {
             if (_canvas != null) return;
@@ -250,6 +273,11 @@ namespace Character.Combat
                 Debug.LogWarning($"{nameof(NpcHealthBarView)} on {name} has no posture break outline.", this);
         }
 
+        // ============ 崩防表现 ============
+
+        /// <summary>
+        /// 本地数值事件与远端动作序号都可能触发边框，通过序号和启用状态去重后只保留一次一秒反馈。
+        /// </summary>
         private void UpdatePostureBreakOutline()
         {
             if (_remoteActionApplier != null)
@@ -305,6 +333,11 @@ namespace Character.Combat
             _postureFillRect.offsetMax = Vector2.zero;
         }
 
+        // ============ 伤害数字 ============
+
+        /// <summary>
+        /// 使用协程绑定到该视图的生命周期，角色销毁或禁用时动画会随宿主自然停止。
+        /// </summary>
         private IEnumerator PlayDamageNumber(float damage)
         {
             if (_damageTextPrefab == null)

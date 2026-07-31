@@ -3,6 +3,9 @@ using Character.Motor;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 死亡态持续阻断移动并允许死亡动画根位移，退出权只保留给显式复活转换。
+    /// </summary>
     public sealed class DeadState : ICharacterState
     {
         private readonly CharacterMotor _motor;

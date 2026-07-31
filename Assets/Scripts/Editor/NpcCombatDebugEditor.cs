@@ -5,9 +5,15 @@ using UnityEngine;
 
 namespace SS3C.Editor
 {
+    /// <summary>
+    /// 把服务器限定和快捷键约束直接展示在 Inspector，避免调试按钮被误认为客户端指令。
+    /// </summary>
     [CustomEditor(typeof(NpcCombatDebug))]
     public sealed class NpcCombatDebugEditor : UnityEditor.Editor
     {
+        /// <summary>
+        /// 按服务器调试入口的分组顺序排列按钮，使 Inspector 操作与运行时小键盘触发保持一致。
+        /// </summary>
         public override void OnInspectorGUI()
         {
             DrawDefaultInspector();

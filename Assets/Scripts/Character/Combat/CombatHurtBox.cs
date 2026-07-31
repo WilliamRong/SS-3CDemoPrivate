@@ -1,55 +1,56 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 namespace Character.Combat
 {
-[DisallowMultipleComponent]
-[RequireComponent(typeof(Collider))]
-public sealed class CombatHurtBox : MonoBehaviour
-{
-    [SerializeField] private CombatActor _owner;
-    [SerializeField] private Collider _hurtCollider;
-    [SerializeField] private string _partName = "Body";
-    [SerializeField] private float _damageMultiplier = 1f;
-
-    public CombatActor Owner => _owner;
-    public string PartName => _partName;
-    public float DamageMultiplier => _damageMultiplier <= 0f ? 1f : _damageMultiplier;
-
-    private void Reset()
+    /// <summary>
+    /// 把身体部位倍率和 CombatActor 所有权绑定到触发器，Resolver 无需猜测 Collider 层级。
+    /// </summary>
+    [DisallowMultipleComponent]
+    [RequireComponent(typeof(Collider))]
+    public sealed class CombatHurtBox : MonoBehaviour
     {
-        EnsureReferences();
-    }
+        [SerializeField] private CombatActor _owner;
+        [SerializeField] private Collider _hurtCollider;
+        [SerializeField] private string _partName = "Body";
+        [SerializeField] private float _damageMultiplier = 1f;
 
-    private void Awake()
-    {
-        EnsureReferences();
-    }
+        public CombatActor Owner => _owner;
+        public string PartName => _partName;
+        public float DamageMultiplier => _damageMultiplier <= 0f ? 1f : _damageMultiplier;
 
-    public bool TryGetOwner(out CombatActor owner)
-    {
-        EnsureReferences();
-        owner = _owner;
-        return owner != null;
-    }
+        // ============ Unity 生命周期 ============
 
-    private void EnsureReferences()
-    {
-        if(_owner == null)
+        private void Reset()
         {
-            _owner = GetComponentInParent<CombatActor>();
+            EnsureReferences();
         }
 
-        if(_hurtCollider == null)
+        private void Awake()
         {
-            _hurtCollider = GetComponent<Collider>();
+            EnsureReferences();
         }
 
-        if(_hurtCollider != null)
+        // ============ 所有权查询 ============
+
+        public bool TryGetOwner(out CombatActor owner)
         {
-            _hurtCollider.isTrigger = true;
+            EnsureReferences();
+            owner = _owner;
+            return owner != null;
+        }
+
+        // ============ 引用维护 ============
+
+        private void EnsureReferences()
+        {
+            if (_owner == null)
+                _owner = GetComponentInParent<CombatActor>();
+
+            if (_hurtCollider == null)
+                _hurtCollider = GetComponent<Collider>();
+
+            if (_hurtCollider != null)
+                _hurtCollider.isTrigger = true;
         }
     }
-}
 }

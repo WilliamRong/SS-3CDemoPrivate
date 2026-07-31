@@ -2,6 +2,9 @@ using UnityEngine;
 
 namespace Character.Core
 {
+    /// <summary>
+    /// 为纯 C# 状态对象提供稳定的角色依赖和易失运行时数据，避免状态直接搜索场景组件。
+    /// </summary>
     public sealed class CharacterContext
     {
         public CharacterController Controller { get; private set; }
@@ -21,6 +24,8 @@ namespace Character.Core
             ViewCamera = viewCamera;
             Velocity = Vector3.zero;
         }
+
+        // ============ 生命状态 ============
 
         public void ConfigureHealth(float maxHp)
         {
@@ -47,6 +52,11 @@ namespace Character.Core
             IsInvincible = false;
         }
 
+        // ============ 相机坐标基 ============
+
+        /// <summary>
+        /// 把相机方向投影到水平面，避免镜头俯仰把垂直分量带入角色移动。
+        /// </summary>
         public void GetCameraBasis(out Vector3 forward, out Vector3 right)
         {
             forward = Vector3.forward;

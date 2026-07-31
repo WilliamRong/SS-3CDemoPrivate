@@ -3,6 +3,9 @@ using Character.Intent;
 
 namespace Character.StateMachine
 {
+    /// <summary>
+    /// 将转换图、窗口打断和状态生命周期集中原子执行，避免各状态绕过统一优先级。
+    /// </summary>
     public sealed class CharacterStateMachine
     {
         public ICharacterState CurrentState { get; private set; }
@@ -44,6 +47,11 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Hit, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
         };
 
+        // ============ 状态运行 ============
+
+        /// <summary>
+        /// 初始化也递增进入版本，使发布端能用同一边沿机制识别初始状态与后续重入。
+        /// </summary>
         public void Initialize(ICharacterState initialState)
         {
             CurrentState = initialState;
@@ -58,6 +66,11 @@ namespace Character.StateMachine
             CurrentState.Tick(intent, deltaTime);
         }
 
+        // ============ 状态转换 ============
+
+        /// <summary>
+        /// 先完成全部资格检查再退出旧状态，保证失败转换不会产生半执行生命周期。
+        /// </summary>
         public bool TryTransition(CharacterStateId targetId, CharacterStateRegistry registry, TransitionReason reason = TransitionReason.Any)
         {
             if (targetId == CurrentId && !CanReenterCurrentState(targetId, reason)) return false;
@@ -80,6 +93,8 @@ namespace Character.StateMachine
             _runtime.OnStateEntered(newStateId);
         }
 
+        // ============ 打断规则 ============
+
         private static bool CanReenterCurrentState(CharacterStateId targetId, TransitionReason reason)
         {
             return targetId == CharacterStateId.Hit
@@ -97,7 +112,7 @@ namespace Character.StateMachine
                 return rule.IsAllowed;
             }
 
-            // Default: allow unless an explicit rule rejects.
+            // 规则表只声明例外，默认放行可避免每加一个状态都复制完整矩阵。
             return true;
         }
     }

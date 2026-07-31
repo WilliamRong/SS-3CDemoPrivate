@@ -13,8 +13,7 @@ using UnityEngine;
 namespace Character.Sync
 {
     /// <summary>
-    /// Single LateUpdate entry for visual follow-up: remote interpolation, then presentation routing.
-    /// Priority: reaction/dodge/attack → guard (full-body or upper-body overlay) → Sprint → locomotion.
+    /// 将远端插值与所有 Animator 路由集中在同一个 LateUpdate 入口，并按反应、战斗、转身、冲刺、移动的优先级只提交一种表现。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CharacterLateUpdatePipeline : MonoBehaviour
@@ -39,6 +38,8 @@ namespace Character.Sync
         private CharacterStateId _lastPresentationStateId = CharacterStateId.None;
         private int _lastPresentationStateEnterVersion;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_remoteInterpolator == null)
@@ -60,6 +61,11 @@ namespace Character.Sync
             EnsurePresenters();
         }
 
+        // ============ 表现管线入口 ============
+
+        /// <summary>
+        /// 先应用远端位姿再构建表现帧，确保 Animator 读取到与本帧视觉位置一致的状态来源。
+        /// </summary>
         public void TickLateUpdate()
         {
             EnsurePresenters();
@@ -101,6 +107,11 @@ namespace Character.Sync
             TickLateUpdate();
         }
 
+        // ============ 表现帧构建 ============
+
+        /// <summary>
+        /// 把本地 Player、服务器 NPC 或远端快照归一为不可变帧，避免路由过程中多次读取到不同状态。
+        /// </summary>
         private PresentationFrame BuildPresentationFrame()
         {
             ResolvePresentation(
@@ -136,6 +147,7 @@ namespace Character.Sync
             _lastPresentationStateEnterVersion = frame.StateEnterVersion;
         }
 
+        // ============ Idle 转身表现 ============
 
         private bool TryPresentIdleTurn(PresentationFrame frame)
         {
@@ -161,6 +173,9 @@ namespace Character.Sync
             return frame.IdlePhase;
         }
 
+        /// <summary>
+        /// 权威实例读取实际计划角度，远端只有离散阶段时使用配置步长，避免依赖未同步的运行时对象。
+        /// </summary>
         private float ResolveIdleTurnAngle(PresentationFrame frame, IdleState.IdlePhase phase)
         {
             if (phase is not (IdleState.IdlePhase.TurnLeft or IdleState.IdlePhase.TurnRight))
@@ -185,6 +200,11 @@ namespace Character.Sync
             return presentation != null ? presentation.turnStepAngle : 180f;
         }
 
+        // ============ 高优先级战斗表现 ============
+
+        /// <summary>
+        /// 战斗状态进入前先释放冲刺层缓存，保证离散 Combat 动画能够立即取得层所有权。
+        /// </summary>
         private bool TryPresentCombat(PresentationFrame frame)
         {
             if (!IsCombatPresentationState(frame.StateId))
@@ -203,6 +223,9 @@ namespace Character.Sync
                 forceRestart: frame.EnteredState);
         }
 
+        /// <summary>
+        /// 本地与服务器 NPC 直接读取状态实例，远端从动作消息还原同一受击变体，减少快照字段膨胀。
+        /// </summary>
         private int ResolveActionParams(CharacterStateId stateId)
         {
             if (stateId != CharacterStateId.Hit)
@@ -234,6 +257,8 @@ namespace Character.Sync
             return hitVariant;
         }
 
+        // ============ 格挡表现 ============
+
         private bool TryPresentGuard(PresentationFrame frame)
         {
             if (frame.StateId != CharacterStateId.Guard)
@@ -252,6 +277,9 @@ namespace Character.Sync
         }
 
 
+        /// <summary>
+        /// 防御转身临时接管全身层并清理普通格挡层，防止两个表现路径同时向 Animator 写权重。
+        /// </summary>
         private bool TryPresentGuardTurn(PresentationFrame frame)
         {
             if (frame.StateId != CharacterStateId.Guard)
@@ -274,6 +302,9 @@ namespace Character.Sync
             return _turnPresenter.TickGuardTurn(_animator, phase, targetAngle);
         }
 
+        /// <summary>
+        /// 权威实例读取状态内的实际步进角，远端缺少该字段时使用配置回退，确保所有观察端仍能选到同一类动画。
+        /// </summary>
         private float ResolveGuardTurnAngle(PresentationFrame frame, GuardState.GuardPhase phase)
         {
             if (_playerController != null
@@ -295,12 +326,15 @@ namespace Character.Sync
             return presentation != null ? presentation.turnStepAngle : 180f;
         }
 
+        /// <summary>
+        /// 格挡反应边沿只消费一次，但计时期间每帧维持战斗层权重，防止被普通 Guard 路由覆盖。
+        /// </summary>
         private bool TryPresentGuardReaction(PresentationFrame frame)
         {
             if (_combatPresenter == null || _animator == null)
                 return false;
 
-            // Forced full-body reactions must supersede any timed guard reaction.
+            // 全身受击、死亡和崩防必须覆盖尚未结束的格挡受击计时。
             if (frame.StateId is CharacterStateId.Hit
                 or CharacterStateId.Dead
                 or CharacterStateId.PostureBroken)
@@ -332,6 +366,11 @@ namespace Character.Sync
             return frame.GuardPhase;
         }
 
+        // ============ 闪避上下文 ============
+
+        /// <summary>
+        /// 本地状态上下文优先，远端在快照字段缺失时用动作边沿补齐，兼容动作与快照不同到达顺序。
+        /// </summary>
         private DodgePresentationContext ResolveDodgePresentationContext(CharacterStateId stateId)
         {
             if (stateId != CharacterStateId.Dodge)
@@ -378,6 +417,8 @@ namespace Character.Sync
             return snapshot.WithDodgeMode(_remoteActionApplier.LastDodgeMode);
         }
 
+        // ============ 冲刺与移动表现 ============
+
         private bool TryPresentSprint(PresentationFrame frame)
         {
             if (frame.StateId != CharacterStateId.Sprint)
@@ -402,6 +443,9 @@ namespace Character.Sync
             return true;
         }
 
+        /// <summary>
+        /// 离开冲刺的首帧走专用过渡，避免直接切回常规移动时沿用冲刺层残留权重。
+        /// </summary>
         private bool TryPresentAfterSprint(PresentationFrame frame)
         {
             if (!frame.LeftSprint)
@@ -451,6 +495,8 @@ namespace Character.Sync
                 or CharacterStateId.Dodge;
         }
 
+        // ============ Presenter 组装 ============
+
         private void EnsurePresenters()
         {
             var presentation = ResolvePresentationConfig();
@@ -467,6 +513,11 @@ namespace Character.Sync
                 : GameDataManager.Instance.Npc.presentation;
         }
 
+        // ============ 表现来源选择 ============
+
+        /// <summary>
+        /// 来源优先级固定为本地 Player、服务器 NPC、远端快照，防止 Host 上同一对象同时被两套数据驱动。
+        /// </summary>
         private void ResolvePresentation(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
@@ -530,6 +581,11 @@ namespace Character.Sync
                 return;
         }
 
+        // ============ 本地 Player 来源 ============
+
+        /// <summary>
+        /// 本地来源直接读取输入与活跃状态对象，保留比网络快照更完整的阶段上下文。
+        /// </summary>
         private bool TryResolveFromLocalPlayer(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
@@ -605,6 +661,8 @@ namespace Character.Sync
             return true;
         }
 
+        // ============ 本地表现权威 ============
+
         private bool HasLocalPresentationAuthority()
         {
             if (_authorityGate != null)
@@ -616,6 +674,11 @@ namespace Character.Sync
             return true;
         }
 
+        // ============ 服务器 NPC 来源 ============
+
+        /// <summary>
+        /// Host 上的服务器 NPC 使用 NavMesh 与状态机实时值，避免等待自身广播快照回环后再表现。
+        /// </summary>
         private bool TryResolveFromServerNpc(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
@@ -686,6 +749,11 @@ namespace Character.Sync
             return true;
         }
 
+        // ============ 远端快照来源 ============
+
+        /// <summary>
+        /// 远端只消费插值器最后应用的快照，并让动作边沿补足同状态重入版本。
+        /// </summary>
         private bool TryResolveFromRemoteSnapshot(
             out CharacterStateId stateId,
             out Vector2 velocityXZ,
@@ -745,6 +813,11 @@ namespace Character.Sync
             return 0;
         }
 
+        // ============ LateUpdate 驱动仲裁 ============
+
+        /// <summary>
+        /// 本地 Player 由 PlayerController 显式调用，其他实体由组件自身 LateUpdate 调用，避免同帧重复推进 Presenter 缓存。
+        /// </summary>
         private bool IsDrivenByPlayerControllerLateUpdate()
         {
             if (_playerController == null)
@@ -762,6 +835,11 @@ namespace Character.Sync
             return _authorityGate != null && _authorityGate.CanProcessLocalInput;
         }
 
+        // ============ 归一化表现帧 ============
+
+        /// <summary>
+        /// 保存前后状态与进入版本，用于识别同状态重入和离开 Layer 所有权的边沿。
+        /// </summary>
         private readonly struct PresentationFrame
         {
             public PresentationFrame(

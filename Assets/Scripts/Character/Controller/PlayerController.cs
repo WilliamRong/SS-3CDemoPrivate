@@ -13,6 +13,9 @@ using UnityEngine;
 
 namespace Character.Controller
 {
+    /// <summary>
+    /// 作为本地 Player 的组合根，把输入、状态机、生命、Motor 和表现管线接到同一权威生命周期。
+    /// </summary>
     public class PlayerController : MonoBehaviour, IAnimatorRootMotionReceiver
     {
         private InputHandler _inputHandler;
@@ -47,20 +50,10 @@ namespace Character.Controller
 
         public event Action<float, float> HealthChanged;
 
-        /// <summary>Set on dodge <see cref="DodgeState.Prepare"/>; used for network sync before FSM enters Dodge.</summary>
+        /// <summary>
+        /// 在状态切换前缓存，确保同帧发布的闪避动作已经带有最终表现模式。
+        /// </summary>
         public byte LastPreparedDodgeMode { get; private set; }
-
-        public bool TryGetActiveSprintState(out SprintState sprintState)
-        {
-            if (_fsm?.CurrentState is SprintState active)
-            {
-                sprintState = active;
-                return true;
-            }
-
-            sprintState = null;
-            return false;
-        }
 
         public Vector3 Velocity;
 
@@ -70,12 +63,17 @@ namespace Character.Controller
         private ILockOnLocomotionQuery _lockOnQuery;
         private float _forcedGuardTimer;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
         }
 
-        void Start()
+        /// <summary>
+        /// 放在 Start 组装状态机，确保更早执行的 GameDataManager 已发布完整配置。
+        /// </summary>
+        private void Start()
         {
             _inputHandler = GetComponent<InputHandler>();
             _authorityGate = GetComponent<PlayerAuthorityGate>();
@@ -129,53 +127,10 @@ namespace Character.Controller
             _fsm.Initialize(_idleState);
         }
 
-        public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
-        {
-            ctx = default;
-            if (_fsm?.CurrentState is not DodgeState dodge)
-                return false;
-
-            ctx = dodge.PresentationContext;
-            return ctx.IsValid;
-        }
-
-        public bool TryGetActiveAttackState(out AttackState attackState)
-        {
-            if (_fsm?.CurrentState is AttackState active)
-            {
-                attackState = active;
-                return true;
-            }
-
-            attackState = null;
-            return false;
-        }
-
-        public bool TryGetActiveHitState(out HitState hitState)
-        {
-            if (_fsm?.CurrentState is HitState active)
-            {
-                hitState = active;
-                return true;
-            }
-
-            hitState = null;
-            return false;
-        }
-
-        public bool TryGetActivePostureBrokenState(out PostureBrokenState postureBrokenState)
-        {
-            if (_fsm?.CurrentState is PostureBrokenState active)
-            {
-                postureBrokenState = active;
-                return true;
-            }
-
-            postureBrokenState = null;
-            return false;
-        }
-
-        void Update()
+        /// <summary>
+        /// 本地输入、服务器强制格挡与服务器崩防计时共享状态机 Tick，但只有拥有输入权威的实例读取 InputHandler。
+        /// </summary>
+        private void Update()
         {
             bool canProcessLocalInput = CanProcessLocalInput();
 
@@ -254,6 +209,8 @@ namespace Character.Controller
             _lateUpdatePipeline?.TickLateUpdate();
         }
 
+        // ============ 权威状态入口 ============
+
         public bool TryEnterPostureBroken()
         {
             if (_context == null || _context.IsDead ||
@@ -293,6 +250,11 @@ namespace Character.Controller
                 TransitionReason.Death);
         }
 
+        // ============ 生命结算 ============
+
+        /// <summary>
+        /// 将数值修改与状态反应拆开，CombatActor 才能先原子决定死亡、破势和最终表现优先级。
+        /// </summary>
         public float ApplyHealthDamageOnly(float damage)
         {
             if (_context == null ||
@@ -314,6 +276,9 @@ namespace Character.Controller
             return appliedDamage;
         }
 
+        /// <summary>
+        /// 保留旧调试入口的数值加反应组合；正式战斗通过 CombatActor 事务入口决定更完整的优先级。
+        /// </summary>
         public void ApplyHit(float damage, bool isHeavyHit, byte hitVariant = 1)
         {
             if (_context == null ||
@@ -349,9 +314,10 @@ namespace Character.Controller
                 TryEnterDead();
         }
 
+        // ============ 远端纠正与表现 ============
+
         /// <summary>
-        /// 仅扣除血量并触发 HealthChanged 事件，不触发状态机切换。
-        /// 供 RemoteActionApplier 给客户端上的非本地玩家使用（状态由 StateSnapshot 驱动）。
+        /// 远端状态由快照决定，这里只应用数值，避免客户端根据伤害自行抢跑状态机。
         /// </summary>
         public void ApplyHealthDelta(float damage)
         {
@@ -360,14 +326,16 @@ namespace Character.Controller
 
         public void ApplyAuthoritativeHealth(float currentHp, float maxHp)
         {
+            // 使用绝对值覆盖累计误差，迟到或丢失的增量不会永久造成血量漂移。
             if (_context == null) return;
 
             _context.SetHealth(currentHp, maxHp);
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
-
         }
 
-        //只播放反应不扣血
+        /// <summary>
+        /// 网络消息已经携带权威伤害结果，因此远端反应不能再次扣血。
+        /// </summary>
         public void ApplyRemoteHitReaction(bool isHeavyHit, byte hitVariant, bool isDead)
         {
             if (_context == null || _fsm == null || _stateRegistry == null) return;
@@ -383,7 +351,7 @@ namespace Character.Controller
             TryEnterHitReaction(isHeavyHit, hitVariant);
         }
 
-
+        // ============ 复活与 GM 控制 ============
 
         public void Revive(float hp)
         {
@@ -413,6 +381,8 @@ namespace Character.Controller
 
             return _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Timeout);
         }
+
+        // ============ 输入与状态约束 ============
 
         private bool CanProcessLocalInput()
         {
@@ -444,6 +414,66 @@ namespace Character.Controller
                 or CharacterStateId.Dead;
         }
 
+        // ============ 活跃状态查询 ============
+
+        public bool TryGetActiveSprintState(out SprintState sprintState)
+        {
+            if (_fsm?.CurrentState is SprintState active)
+            {
+                sprintState = active;
+                return true;
+            }
+
+            sprintState = null;
+            return false;
+        }
+
+        public bool TryGetDodgePresentationContext(out DodgePresentationContext ctx)
+        {
+            ctx = default;
+            if (_fsm?.CurrentState is not DodgeState dodge)
+                return false;
+
+            ctx = dodge.PresentationContext;
+            return ctx.IsValid;
+        }
+
+        public bool TryGetActiveAttackState(out AttackState attackState)
+        {
+            if (_fsm?.CurrentState is AttackState active)
+            {
+                attackState = active;
+                return true;
+            }
+
+            attackState = null;
+            return false;
+        }
+
+        public bool TryGetActiveHitState(out HitState hitState)
+        {
+            if (_fsm?.CurrentState is HitState active)
+            {
+                hitState = active;
+                return true;
+            }
+
+            hitState = null;
+            return false;
+        }
+
+        public bool TryGetActivePostureBrokenState(out PostureBrokenState postureBrokenState)
+        {
+            if (_fsm?.CurrentState is PostureBrokenState active)
+            {
+                postureBrokenState = active;
+                return true;
+            }
+
+            postureBrokenState = null;
+            return false;
+        }
+
         public bool TryGetActiveGuardState(out GuardState guardState)
         {
             if (_fsm?.CurrentState is GuardState active)
@@ -468,6 +498,11 @@ namespace Character.Controller
             return false;
         }
 
+        // ============ 根位移接收 ============
+
+        /// <summary>
+        /// 只让明确白名单状态把 Animator 位移交给 Motor，普通移动和破势保持逻辑位置稳定。
+        /// </summary>
         public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
         {
             if (!CanProcessLocalInput()) return;

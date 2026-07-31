@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 在不启动 Mirror 的场景中模拟延迟、抖动和丢包，验证同步算法而不改变发布器与接收器接口。
+    /// </summary>
     public sealed class FakeNetworkPipe : MonoBehaviour, ISyncTransport
     {
         private NetworkSyncConfig Sync => GameDataManager.Instance.NetworkSync;
@@ -13,12 +16,18 @@ namespace Character.Sync
         public event Action<StateSnapshot> OnSnapshotReceived;
         public event Action<ActionEvent> OnActionEventReceived;
 
+        /// <summary>
+        /// 将载荷与本地投递时刻绑定，避免模拟层修改业务快照本身。
+        /// </summary>
         private struct QueuedSnapshot
         {
             public float DeliverTime;
             public StateSnapshot Payload;
         }
 
+        /// <summary>
+        /// 动作与快照使用独立队列，才能模拟两类消息不同的乱序关系。
+        /// </summary>
         private struct QueuedAction
         {
             public float DeliverTime;
@@ -27,6 +36,8 @@ namespace Character.Sync
 
         private readonly MinHeap<QueuedSnapshot> _snapshotQueue = new((a, b) => a.DeliverTime < b.DeliverTime);
         private readonly MinHeap<QueuedAction> _actionQueue = new((a, b) => a.DeliverTime < b.DeliverTime);
+
+        // ============ 传输接口 ============
 
         public void SendSnapshot(StateSnapshot snapshot)
         {
@@ -54,6 +65,8 @@ namespace Character.Sync
             _actionQueue.Push(new QueuedAction { DeliverTime = deliverTime, Payload = actionEvent });
         }
 
+        // ============ 延迟投递 ============
+
         private void Update()
         {
             float now = Time.time;
@@ -70,6 +83,8 @@ namespace Character.Sync
                 OnActionEventReceived?.Invoke(evt.Payload);
             }
         }
+
+        // ============ 网络条件模拟 ============
 
         private float ComputeDelaySeconds()
         {
@@ -88,6 +103,9 @@ namespace Character.Sync
             return $"lat={Sync.baseLatencyMs:F0}ms jitter=+/-{Sync.jitterMs:F0}ms loss={Sync.packetLossRate * 100f:F1}%";
         }
 
+        /// <summary>
+        /// 优先队列让不同抖动延迟的包按实际投递时间出队，能够自然模拟乱序而无需每帧排序全部数据。
+        /// </summary>
         private sealed class MinHeap<T>
         {
             private readonly List<T> _data = new();
@@ -129,6 +147,9 @@ namespace Character.Sync
                 }
             }
 
+            /// <summary>
+            /// 用调用方提供的优先级比较器维护堆序，不把队列实现绑定到某一种网络消息或时间单位。
+            /// </summary>
             private void SiftDown(int index)
             {
                 int count = _data.Count;

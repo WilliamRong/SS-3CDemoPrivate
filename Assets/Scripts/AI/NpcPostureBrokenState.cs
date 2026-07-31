@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 破势期间只允许权威超时或死亡打断，阻断 AI 移动意图对硬直状态的干扰。
+    /// </summary>
     public sealed class NpcPostureBrokenState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -33,16 +36,16 @@ namespace AI
             _motor?.Stop();
         }
 
-        public void Exit()
-        {
-            _timer = 0f;
-        }
-
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _timer += deltaTime;
             if (_timer >= Mathf.Max(0.01f, _combat.postureBreakDuration))
                 _fsm.TryTransition(CharacterStateId.Idle, _registry, TransitionReason.Timeout);
+        }
+
+        public void Exit()
+        {
+            _timer = 0f;
         }
     }
 }

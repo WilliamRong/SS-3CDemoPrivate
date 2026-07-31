@@ -6,20 +6,22 @@ using UnityEngine.AI;
 namespace AI
 {
     /// <summary>
-    /// 仅在服务器运行 AI（行为树 / NavMesh / Motor）。客户端关闭本地仿真，避免与网络快照打架。
-    /// 单机未启动 Mirror（AITest 等）时不介入，便于本地调试 AI。
+    /// 只在网络会话中关闭非服务器 AI，避免客户端仿真与快照竞争，同时保留离线 AI 测试能力。
     /// </summary>
     [RequireComponent(typeof(NetworkIdentity))]
     public class NpcServerAiGate : MonoBehaviour
     {
         [SerializeField] private bool _log;
 
+        /// <summary>
+        /// 等待 Mirror 完成身份初始化后再裁剪 AI 组件，否则 Awake 阶段无法可靠区分服务器实例和客户端镜像。
+        /// </summary>
         private void Start()
         {
             if (!ShouldApplyNetworkRules())
                 return;
 
-            // 无本地 Client 的纯服进程：不可能是“需要关本地仿真”的客户端，直接保留 AI。
+            // 纯服没有客户端镜像，必须保留本地 AI 栈。
             if (NetworkServer.active && !NetworkClient.active)
             {
                 if (_log)
@@ -41,10 +43,14 @@ namespace AI
             DisableClientSimulation();
         }
 
+        // ============ 网络模式判断 ============
+
         private static bool ShouldApplyNetworkRules()
         {
             return NetworkClient.active || NetworkServer.active;
         }
+
+        // ============ 客户端仿真关闭 ============
 
         private void DisableClientSimulation()
         {

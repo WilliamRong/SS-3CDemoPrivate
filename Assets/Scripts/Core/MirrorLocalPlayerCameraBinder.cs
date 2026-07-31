@@ -6,8 +6,7 @@ using UnityEngine;
 namespace Core
 {
     /// <summary>
-    /// Binds scene Cinemachine rigs to the local network player.
-    /// Triggered from Mirror local-player lifecycle callback.
+    /// 从 Mirror 的本地玩家生命周期接线场景相机，避免远端镜像争用同一个 Cinemachine Rig。
     /// </summary>
     public sealed class MirrorLocalPlayerCameraBinder : NetworkBehaviour
     {
@@ -19,12 +18,19 @@ namespace Core
         [SerializeField] private int _maxRetryCount = 30;
         [SerializeField] private bool _logBinding = true;
 
+        // ============ Mirror 生命周期 ============
+
         public override void OnStartLocalPlayer()
         {
             base.OnStartLocalPlayer();
             StartCoroutine(BindWhenCameraReady());
         }
 
+        // ============ 延迟绑定 ============
+
+        /// <summary>
+        /// 场景相机和网络玩家可能分帧创建，因此使用有上限的重试而不是依赖不稳定的生成顺序。
+        /// </summary>
         private IEnumerator BindWhenCameraReady()
         {
             for (int i = 0; i < _maxRetryCount; i++)
@@ -44,6 +50,9 @@ namespace Core
                 Debug.LogWarning("[MirrorLocalPlayerCameraBinder] Failed to bind camera rig.");
         }
 
+        /// <summary>
+        /// 只在 isLocalPlayer 后绑定，并允许等待场景相机出现，避免远端 Player 抢占唯一 Camera Rig。
+        /// </summary>
         private bool TryBind()
         {
             Transform followTp = ResolveChildPoint(_followPointTpName);
@@ -65,6 +74,11 @@ namespace Core
             return rig.TryInitialize(followTp, followLockOn, lookTarget);
         }
 
+        // ============ 层级查询 ============
+
+        /// <summary>
+        /// 优先使用明确命名的跟随点，缺失时回退角色根节点，保证旧预制体仍可运行。
+        /// </summary>
         private Transform ResolveChildPoint(string pointName)
         {
             if (string.IsNullOrEmpty(pointName))

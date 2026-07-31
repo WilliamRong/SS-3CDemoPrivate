@@ -4,6 +4,9 @@ using Character.Motor;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 受击状态只接收结算后的时长和变体，避免在状态内重复判断伤害或格挡结果。
+    /// </summary>
     public sealed class HitState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -40,6 +43,8 @@ namespace Character.StateMachine.States
             _duration = duration > 0f ? duration : _combat.lightHitDuration;
         }
 
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             _timer = 0f;
@@ -48,6 +53,9 @@ namespace Character.StateMachine.States
             _motor.SetMovementBlocked(true);
         }
 
+        /// <summary>
+        /// 受击只由配置时长退出，忽略普通输入，确保权威反应不会被本地操作提前取消。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _timer += deltaTime;

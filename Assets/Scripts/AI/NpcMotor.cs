@@ -3,6 +3,9 @@ using UnityEngine.AI;
 
 namespace AI
 {
+    /// <summary>
+    /// 集中保护所有 NavMeshAgent 操作，避免场景卸载或纯客户端禁用 Agent 后仍调用其 API。
+    /// </summary>
     [RequireComponent(typeof(NavMeshAgent))]
     public class NpcMotor : MonoBehaviour
     {
@@ -13,6 +16,8 @@ namespace AI
 
         public Transform Root => transform;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_agent == null)
@@ -20,6 +25,8 @@ namespace AI
                 _agent = GetComponent<NavMeshAgent>();
             }
         }
+
+        // ============ 导航控制 ============
 
         public void SetDestination(Vector3 destination)
         {
@@ -29,14 +36,12 @@ namespace AI
             _agent.SetDestination(destination);
         }
 
-        /// <summary>停止寻路（停在当前位置）。</summary>
         public void Stop()
         {
             if (!CanControlAgent()) return;
             _agent.isStopped = true;
         }
 
-        /// <summary>取消路径，常用于重新设目标前清理。</summary>
         public void ResetPath()
         {
             if (!CanControlAgent()) return;
@@ -44,13 +49,8 @@ namespace AI
         }
 
         /// <summary>
-        /// Host 退出 / 场景卸载时 NavMesh 可能已失效，agent 会不在网格上。
+        /// 同时等待路径计算、剩余距离和实际速度收敛，避免 Agent 仍在减速时状态机提前切回 Idle。
         /// </summary>
-        private bool CanControlAgent()
-        {
-            return _agent != null && _agent.enabled && _agent.isOnNavMesh;
-        }
-
         public bool HasReachedDestination()
         {
             if (_agent == null || !_agent.isOnNavMesh)
@@ -71,6 +71,11 @@ namespace AI
             return _agent.velocity.sqrMagnitude < 0.1f;
         }
 
+        // ============ 权威位移 ============
+
+        /// <summary>
+        /// 通过 Agent.Move 消费根位移，避免直接改 Transform 让 NavMesh 的 nextPosition 漂移。
+        /// </summary>
         public void ApplyRootMotionDelta(Vector3 deltaPosition, Quaternion deltaRotation)
         {
             if (!CanControlAgent())
@@ -93,6 +98,16 @@ namespace AI
 
             if (_agent != null && _agent.enabled && _agent.isOnNavMesh)
                 _agent.nextPosition = transform.position;
+        }
+
+        // ============ Agent 安全检查 ============
+
+        /// <summary>
+        /// Host 退出或场景卸载时 Agent 可能已经脱离 NavMesh，所有写操作必须统一短路。
+        /// </summary>
+        private bool CanControlAgent()
+        {
+            return _agent != null && _agent.enabled && _agent.isOnNavMesh;
         }
     }
 }

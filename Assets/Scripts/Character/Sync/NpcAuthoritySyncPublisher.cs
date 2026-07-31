@@ -9,6 +9,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 只在服务器采样 NPC 的运动、状态与战斗数值，并将同一份权威结果广播给所有观察端。
+    /// </summary>
     [DefaultExecutionOrder(100)]
     [RequireComponent(typeof(NetworkIdentity))]
     public class NpcAuthoritySyncPublisher : NetworkBehaviour
@@ -26,10 +29,9 @@ namespace Character.Sync
         private Vector3 _lastSentPos;
         private float _lastSentYaw;
 
-        // 事件去重：上一帧逻辑状态（发 ActionEvent）
+        // 动作事件按状态边沿去重，快照则按完整字段变化去重，两者缓存不可共用。
         private CharacterStateId _lastStateId = CharacterStateId.None;
         private int _lastStateEnterVersion;
-        // 快照去重：上次已发送的快照内容
         private CharacterStateId _lastSentStateId = CharacterStateId.None;
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
@@ -47,6 +49,8 @@ namespace Character.Sync
         private float _lastSentMaxPosture;
 
         private int _nextSeqId = 1;
+
+        // ============ Unity 与 Mirror 生命周期 ============
 
         private void Awake()
         {
@@ -87,6 +91,11 @@ namespace Character.Sync
             TrySendActionOnStateChange(_clock.CurrentTick);
         }
 
+        // ============ 权威快照发布 ============
+
+        /// <summary>
+        /// revision 变化立即发送，静态 NPC 仍按间隔发送绝对生命与架势，修复丢包造成的长期数值漂移。
+        /// </summary>
         private void TrySendSnapshot(int tick)
         {
             Vector3 pos = transform.position;
@@ -102,7 +111,7 @@ namespace Character.Sync
             byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
-            // NPC 当前无锁定：字段置 0；以后有 NpcLockOn 再补
+            // 当前 NPC 尚无锁定来源，明确清零字段，避免序列化默认值被误认为有效目标。
             byte lockOnActive = 0;
             uint lockTargetNetId = 0;
             float moveInputX = 0f;
@@ -182,6 +191,7 @@ namespace Character.Sync
             _lastSentMaxPosture = maxPosture;
         }
 
+        // ============ 快照字段解析 ============
 
         private Vector2 ResolveVelocityXZ()
         {
@@ -252,6 +262,11 @@ namespace Character.Sync
                 : (byte)1;
         }
 
+        // ============ 动作事件发布 ============
+
+        /// <summary>
+        /// NPC 动作事件与 Player 使用同一映射和重入规则，保证接收端无需区分 Actor 类型。
+        /// </summary>
         private void TrySendActionOnStateChange(int tick)
         {
             CharacterStateId current = ResolveCurrentStateId();
@@ -291,6 +306,8 @@ namespace Character.Sync
 
             return 0;
         }
+
+        // ============ 状态查询 ============
 
         private CharacterStateId ResolveCurrentStateId()
         {

@@ -5,8 +5,7 @@ using UnityEngine;
 namespace Core
 {
     /// <summary>
-    /// Drives FreeLook / LockOn Cinemachine rigs for the local player.
-    /// All tunable values live in <see cref="PlayerCameraRigConfig"/>.
+    /// 在不复制相机配置的前提下切换 FreeLook 与锁定 Rig，并集中维护运行时辅助目标的生命周期。
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class PlayerCameraRigController : MonoBehaviour
@@ -34,6 +33,11 @@ namespace Core
 
         public bool IsInitialized => _initialized;
 
+        // ============ 初始化与管线构建 ============
+
+        /// <summary>
+        /// 由本地玩家绑定器显式传入跟随点，避免控制器通过全局搜索绑定到远端玩家。
+        /// </summary>
         public bool TryInitialize(Transform playerFollowTp, Transform playerFollowLockOn, Transform playerLookAt)
         {
             if (playerFollowTp == null && playerFollowLockOn == null && playerLookAt == null)
@@ -102,6 +106,9 @@ namespace Core
             config.ApplyToGroupComposer(_lockGroupComposer);
         }
 
+        /// <summary>
+        /// 锁定管线允许优先复用场景对象，缺失时再运行时创建，以兼容现有场景同时避免重复 Rig。
+        /// </summary>
         private bool EnsureLockOnPipeline()
         {
             var owner = _lockOnVcam.GetComponentOwner();
@@ -126,6 +133,9 @@ namespace Core
             return true;
         }
 
+        /// <summary>
+        /// 辅助目标脱离玩家层级，防止玩家旋转再次叠加到相机瞄准方向。
+        /// </summary>
         private void EnsureLockHelpers()
         {
             if (_lockPivot == null)
@@ -146,14 +156,20 @@ namespace Core
             }
         }
 
+        // ============ Unity 生命周期 ============
+
         private void OnDestroy()
         {
+            // 辅助对象使用 HideAndDontSave，必须由所有者主动销毁，避免退出场景后残留。
             if (_lockPivot != null)
                 Destroy(_lockPivot.gameObject);
             if (_lockTargetGroup != null)
                 Destroy(_lockTargetGroup.gameObject);
         }
 
+        /// <summary>
+        /// 跟随目标在角色和锁定状态更新后再刷新，保证 Cinemachine 本帧读取最终位置。
+        /// </summary>
         private void LateUpdate()
         {
             if (!_initialized || _lockOnQuery == null)
@@ -184,6 +200,8 @@ namespace Core
             }
         }
 
+        // ============ 锁定模式切换 ============
+
         private void ApplyLockOnState(Transform target, PlayerCameraRigConfig config)
         {
             ApplyConfig(config);
@@ -201,6 +219,11 @@ namespace Core
             SetFreeLookInputEnabled(true);
         }
 
+        // ============ 锁定轴向 ============
+
+        /// <summary>
+        /// Pivot 只跟随位置并按水平目标方向旋转，使相机可锁定角色背后的相机可见目标。
+        /// </summary>
         private void UpdateLockPivot(Transform target, PlayerCameraRigConfig config)
         {
             if (_lockPivot == null || _playerFollowLockOn == null)
@@ -237,6 +260,11 @@ namespace Core
             return Quaternion.LookRotation(toTarget.normalized, Vector3.up);
         }
 
+        // ============ 目标组取景 ============
+
+        /// <summary>
+        /// 将玩家与目标同时放入 TargetGroup，由 Composer 统一取景，避免手工推导屏幕边界。
+        /// </summary>
         private void UpdateLockTargetGroup(Transform target, PlayerCameraRigConfig config)
         {
             if (_lockTargetGroup == null || target == null)
@@ -267,6 +295,11 @@ namespace Core
             _lockTargetGroup.m_Targets = System.Array.Empty<CinemachineTargetGroup.Target>();
         }
 
+        // ============ FreeLook 输入切换 ============
+
+        /// <summary>
+        /// 保存而不是写死恢复速度，确保退出锁定后回到场景原有的输入调参。
+        /// </summary>
         private void SetFreeLookInputEnabled(bool enabled)
         {
             if (_freeLook == null)
@@ -293,6 +326,11 @@ namespace Core
             }
         }
 
+        // ============ 场景对象查询 ============
+
+        /// <summary>
+        /// 逐段查找包含未激活节点的场景路径，弥补 GameObject.Find 无法发现禁用相机 Rig 的限制。
+        /// </summary>
         private static GameObject FindSceneObject(string path)
         {
             if (string.IsNullOrEmpty(path))

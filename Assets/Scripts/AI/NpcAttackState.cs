@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 由服务器计时结束 NPC 攻击，避免 Animator 播放长度成为权威状态退出条件。
+    /// </summary>
     public sealed class NpcAttackState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -35,6 +38,8 @@ namespace AI
         public void Prepare(AttackMoveId attackId) => _attackId = attackId.ClampOrDefault();
         
         
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             _timer = 0f;

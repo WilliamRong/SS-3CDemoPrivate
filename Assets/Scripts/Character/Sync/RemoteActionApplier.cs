@@ -6,9 +6,11 @@ using Character.StateMachine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 将离散动作、权威战斗结果和快照状态边沿汇聚到单个远端实体，统一处理去重与 Host 回环保护。
+    /// </summary>
     public class RemoteActionApplier : MonoBehaviour
     {
-
         private CombatActor _combatActor;
         private NpcHealthBarView _healthBarView;
 
@@ -20,7 +22,7 @@ namespace Character.Sync
         public int LastAppliedSeqId { get; private set; } = 0;
         public int LastAppliedTick { get; private set; } = 0;
         public ActionType CurrentRemoteAction { get; private set; } = ActionType.None;
-        /// <summary>Last dodge mode from <see cref="ActionEvent.Param"/> on <see cref="ActionType.DodgeStart"/>.</summary>
+        /// <summary>缓存进入动作时的模式，避免后续快照缺失时无法还原闪避表现。</summary>
         public byte LastDodgeMode { get; private set; }
         public int LastHitParam { get; private set; }
         public int LastHitSeqId { get; private set; }
@@ -36,6 +38,8 @@ namespace Character.Sync
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             _networkIdentity = GetComponent<NetworkIdentity>();
@@ -44,6 +48,11 @@ namespace Character.Sync
             _healthBarView = GetComponent<NpcHealthBarView>();
         }
 
+        // ============ 动作入口 ============
+
+        /// <summary>
+        /// 服务器战斗序列、格挡序列和普通动作序列分别去重，避免不同发布源的编号空间互相吞掉消息。
+        /// </summary>
         public void Apply(ActionEvent evt)
         {
             if (_networkIdentity != null && _networkIdentity.netId != 0
@@ -80,8 +89,6 @@ namespace Character.Sync
             LastAppliedSeqId = evt.SeqId;
             LastAppliedTick = evt.Tick;
 
-            // 最小版：只记录动作状态
-            // 后续可在这里驱动 Animator / VFX / SFX
             switch (evt.Type)
             {
                 case ActionType.AttackStart:
@@ -115,9 +122,13 @@ namespace Character.Sync
 
             if (_logApply)
                 Debug.Log($"[RemoteActionApplier] applied {evt}");
-
         }
 
+        // ============ 权威战斗结果 ============
+
+        /// <summary>
+        /// 观察端统一显示受击者世界血条；Host 已直接结算，只记录表现边沿而不再次应用生命伤害。
+        /// </summary>
         private void ApplyServerCombatResult(ActionEvent evt)
         {
             if (evt.SeqId <= _lastServerCombatSeqId)
@@ -156,14 +167,14 @@ namespace Character.Sync
             if (evt.Type == ActionType.Dead)
                 ClearPostureBreakTracking();
 
-            // Every observer shows the victim's world health bar, even for a zero-damage block.
+            // 即使格挡伤害为零，观察者也应看到被命中者的世界血条。
             _healthBarView?.ShowForHit();
 
-            // Host/Server 端 CombatResolver 已直接应用伤害，跳过以防二次扣血
+            // Host/Server 端 CombatResolver 已直接应用伤害，跳过以防二次扣血。
             if (NetworkServer.active)
                 return;
 
-            // Apply the server's absolute HP result; revision rejects stale delivery.
+            // 使用绝对生命值纠正累计误差，revision 会拒绝乱序旧结果。
             if (_combatActor != null && evt.HasHealthResult != 0)
             {
                 _combatActor.ApplyAuthoritativeHealth(
@@ -206,6 +217,11 @@ namespace Character.Sync
             }
         }
 
+        // ============ 快照状态协调 ============
+
+        /// <summary>
+        /// 崩防动作可能先于快照到达，在观察到对应快照前锁存状态，避免中间普通快照让动画提前退出。
+        /// </summary>
         public CharacterStateId ResolveSnapshotState(CharacterStateId snapshotState)
         {
             if (snapshotState == CharacterStateId.Dead)
@@ -230,6 +246,11 @@ namespace Character.Sync
             return snapshotState;
         }
 
+        // ============ 格挡反应 ============
+
+        /// <summary>
+        /// 非权威旧格式格挡事件使用独立序列去重，兼容仍未携带生命结果的发送路径。
+        /// </summary>
         private void ApplyGuardReaction(ActionEvent evt)
         {
             if (evt.SeqId <= LastGuardReactionSeqId)
@@ -262,9 +283,13 @@ namespace Character.Sync
             return true;
         }
 
+        // ============ 状态重置与边沿跟踪 ============
+
+        /// <summary>
+        /// 网络对象复用或重新绑定时必须清空全部序列水位，否则新生命周期的小序号会被当作旧消息丢弃。
+        /// </summary>
         public void ResetState()
         {
-
             LastAppliedSeqId = 0;
             LastAppliedTick = 0;
             CurrentRemoteAction = ActionType.None;

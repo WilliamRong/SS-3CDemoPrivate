@@ -2,21 +2,26 @@ using UnityEngine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 
+/// <summary>
+/// 用确定性几何体快速生成可撤销的战斗测试场，减少手工搭场导致的碰撞尺寸差异。
+/// </summary>
 public static class ArenaSetup
 {
+    /// <summary>
+    /// 将整个测试场登记为一次可撤销编辑，并显式标记场景脏状态，保证编辑器操作符合 Unity 保存语义。
+    /// </summary>
     [MenuItem("Tools/Arena Setup")]
     public static void CreateArena()
     {
         var arena = new GameObject("Arena");
         Undo.RegisterCreatedObjectUndo(arena, "Create Arena");
 
-        // 地面 20x20
+        // 固定尺寸便于不同开发者复现相同的移动和碰撞条件。
         CreateBlock("Ground", arena.transform,
             new Vector3(0f, -0.05f, 0f),
             new Vector3(20f, 0.1f, 20f),
             new Color(0.4f, 0.4f, 0.4f));
 
-        // 四面墙
         CreateBlock("Wall_North", arena.transform,
             new Vector3(0f, 1f, 10.25f),
             new Vector3(20.5f, 2f, 0.5f),
@@ -37,7 +42,6 @@ public static class ArenaSetup
             new Vector3(0.5f, 2f, 20.5f),
             new Color(0.55f, 0.55f, 0.55f));
 
-        // 障碍物
         CreateBlock("Obstacle_1", arena.transform,
             new Vector3(4f, 0.75f, 3f),
             new Vector3(2f, 1.5f, 2f),
@@ -53,7 +57,7 @@ public static class ArenaSetup
         Debug.Log("Arena created! 20x20 ground + 4 walls + 2 obstacles.");
     }
 
-    static void CreateBlock(string name, Transform parent, Vector3 pos, Vector3 scale, Color color)
+    private static void CreateBlock(string name, Transform parent, Vector3 pos, Vector3 scale, Color color)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         go.name = name;

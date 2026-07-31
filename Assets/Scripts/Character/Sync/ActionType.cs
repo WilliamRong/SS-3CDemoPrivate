@@ -1,5 +1,8 @@
 namespace Character.Sync
 {
+    /// <summary>
+    /// 显式编号属于网络协议，新增动作只能追加，不能重排已有值。
+    /// </summary>
     public enum ActionType : byte
     {
         None = 0,
@@ -14,6 +17,9 @@ namespace Character.Sync
         HealthResult = 9,
     }
 
+    /// <summary>
+    /// 调试字符串与协议枚举集中维护，避免日志遗漏新动作时误判网络数据。
+    /// </summary>
     public static class ActionTypeExtensions
     {
         public static string ToDebugString(this ActionType type)

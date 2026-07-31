@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Character.Presentation
 {
     /// <summary>
-    /// Sprint discrete states on layer 0. Phase advances in <see cref="SprintState"/> (timed).
+    /// 冲刺阶段由状态层计时，表现层只映射离散动画并缓存最后结果，避免 Animator 反向主导玩法状态。
     /// </summary>
     public sealed class CharacterSprintPresenter
     {
@@ -18,6 +18,8 @@ namespace Character.Presentation
         {
             _config = config;
         }
+
+        // ============ 阶段入口 ============
 
         public void Reset()
         {
@@ -41,6 +43,11 @@ namespace Character.Presentation
             CrossFadeToPhase(animator, sprintState.CurrentPhase);
         }
 
+        // ============ Animator 映射 ============
+
+        /// <summary>
+        /// 本地与远端阶段最终进入同一映射路径，保证两种同步来源不会使用不同淡入规则。
+        /// </summary>
         private void CrossFadeToPhase(Animator animator, SprintState.SprintPhase phase)
         {
             int targetHash = PhaseToHash(phase);

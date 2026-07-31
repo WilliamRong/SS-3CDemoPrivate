@@ -2,6 +2,9 @@ using System.Collections.Generic;
 
 namespace Character.StateMachine
 {
+    /// <summary>
+    /// 维护状态拓扑的硬边界，具体时机和原因仍由打断规则决定，避免两类规则混在状态代码中。
+    /// </summary>
     public static class CharacterTransitionMap
     {
         private static readonly Dictionary<CharacterStateId, HashSet<CharacterStateId>> _allowed =

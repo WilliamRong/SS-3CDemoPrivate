@@ -10,6 +10,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 作为服务器 NPC 的状态机组合根，集中状态创建、权威转换和根位移消费，客户端只接收同步结果。
+    /// </summary>
     [RequireComponent(typeof(NetworkIdentity))]
     [RequireComponent(typeof(CombatActor))]
     public class NpcCharacterDriver : NetworkBehaviour, IAnimatorRootMotionReceiver
@@ -40,6 +43,7 @@ namespace AI
 
         public byte LastPreparedDodgeMode { get; private set; }
 
+        // ============ Unity 与 Mirror 生命周期 ============
 
         private void Awake()
         {
@@ -58,6 +62,9 @@ namespace AI
             }
         }
 
+        /// <summary>
+        /// 状态机只在服务器身份确认后构建，避免客户端镜像创建一套会与权威快照竞争的 NPC 状态。
+        /// </summary>
         public override void OnStartServer()
         {
             base.OnStartServer();
@@ -87,7 +94,7 @@ namespace AI
         }
 
         /// <summary>
-        /// Must run after behavior trees produce intents — placed in LateUpdate to guarantee ordering.
+        /// 放在 LateUpdate，确保行为树先写完本帧黑板意图，再由状态机消费稳定快照。
         /// </summary>
         private void LateUpdate()
         {
@@ -97,6 +104,8 @@ namespace AI
 
             _fsm.Tick(intent, Time.deltaTime);
         }
+
+        // ============ 活跃状态查询 ============
 
         public bool TryGetActiveIdleState(out NpcIdleState idleState)
         {
@@ -185,9 +194,8 @@ namespace AI
         }
         public void SetLastPreparedDodgeMode(byte mode) => LastPreparedDodgeMode = mode;
 
+        // ============ 服务器状态转换 ============
 
-
-        // —— Server 调试入口（验收用，后续可换成 BT Task）——
         public bool ServerTryEnterAttack(AttackMoveId attackId = AttackMoveId.Combo1)
         {
             if (!isServer || _attack == null) return false;
@@ -245,6 +253,9 @@ namespace AI
             return _fsm.TryTransition(CharacterStateId.Sprint, _registry, TransitionReason.InputSprint);
         }
 
+        /// <summary>
+        /// 先确认状态机接受复活转换，再恢复战斗数值，防止失败的状态转换生成活着但仍处于 Dead 的实体。
+        /// </summary>
         public bool ServerTryRevive()
         {
             if (!isServer ||
@@ -266,6 +277,11 @@ namespace AI
             return _combatActor.RestoreFullHealthForRevive();
         }
 
+        // ============ 根位移 ============
+
+        /// <summary>
+        /// 只允许明确消费根位移的权威状态推动 Motor，避免普通移动和破势动画绕过 NavMesh。
+        /// </summary>
         public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
         {
             if (!isServer || _motor == null)
@@ -280,6 +296,7 @@ namespace AI
             _motor.ApplyRootMotionDelta(deltaPosition, deltaRotation);
         }
 
+        // ============ 强制调试控制 ============
 
         public bool ForceEnterGuard(float loopHoldDuration = 2f)
         {

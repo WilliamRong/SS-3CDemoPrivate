@@ -1,10 +1,11 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace Character.Combat
 {
-
+	/// <summary>
+	/// 以非分配 Physics 查询采样主动碰撞体，避免依赖 OnTriggerEnter 的帧时序和 GC 抖动。
+	/// </summary>
 	[DisallowMultipleComponent]
 	[RequireComponent(typeof(Collider))]
 	public sealed class CombatHitBox : MonoBehaviour
@@ -20,6 +21,8 @@ namespace Character.Combat
 		public static IReadOnlyList<CombatHitBox> ActiveHitBoxes => Active;
 		public CombatActor Owner => _owner;
 		public HitBoxSlot Slot => _slot;
+
+		// ============ Unity 生命周期 ============
 
 		private void Reset()
 		{
@@ -43,7 +46,7 @@ namespace Character.Combat
 		{
 			Active.Remove(this);
 		}
-
+		// ============ 碰撞采样 ============
 
 		public bool IsConfigured()
 		{
@@ -51,6 +54,9 @@ namespace Character.Combat
 			return _owner != null && _shapeCollider != null && _slot != HitBoxSlot.None;
 		}
 
+		/// <summary>
+		/// 根据实际 Collider 形状选择对应 NonAlloc 查询，避免用包围盒扩大有效命中范围并减少逐帧分配。
+		/// </summary>
 		public int OverlapHurtBoxesNonAlloc(Collider[] results)
 		{
 			if (!IsConfigured() || results == null || results.Length == 0)
@@ -66,8 +72,7 @@ namespace Character.Combat
 				_ => OverlapBounds(_shapeCollider, results)
 			};
 		}
-
-
+		// ============ 引用维护 ============
 
 		private void EnsureReferences()
 		{
@@ -92,7 +97,7 @@ namespace Character.Combat
 				_hurtBoxMask = mask != 0 ? mask : ~0;
 			}
 		}
-
+		// ============ Collider 形状查询 ============
 
 		private int OverlapCapsule(CapsuleCollider capsule, Collider[] results)
 		{

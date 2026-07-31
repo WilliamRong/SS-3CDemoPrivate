@@ -11,6 +11,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 从本地权威 Player 采样快照和状态边沿，并用变化阈值抑制无意义网络发送。
+    /// </summary>
     public sealed class LocalSyncPublisher : MonoBehaviour
     {
         [Header("Refs")]
@@ -21,7 +24,7 @@ namespace Character.Sync
         [SerializeField] private int _actorId = 1;
         [SerializeField] private NetworkIdentity _networkIdentity;
 
-        //锁定相关
+        // 锁定字段单独缓存，避免静止锁定时因输入微小噪声持续发包。
         [SerializeField] private PlayerLockOnController _lockOnController;
         private byte _lastSentLockOnActive;
         private uint _lastSentLockTargetNetId;
@@ -56,6 +59,8 @@ namespace Character.Sync
         private Vector2 _lastSentVelocityXZ;
         private int _lastSentSnapshotTick;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_clock == null) _clock = FindFirstObjectByType<NetTickClock>();
@@ -80,12 +85,19 @@ namespace Character.Sync
             TryProduceActionEventOnStateChange(_clock.CurrentTick);
         }
 
+        // ============ 发布权威 ============
+
         private bool CanPublishFromThisInstance()
         {
             if (_authorityGate == null) return true;
             return _authorityGate.CanProcessLocalInput;
         }
 
+        // ============ 快照发布 ============
+
+        /// <summary>
+        /// 仅在运动、状态、锁定或定期架势纠正需要时发送，降低带宽同时保留最终一致性。
+        /// </summary>
         private void TryProduceSnapshot(int tick)
         {
             Vector3 pos = transform.position;
@@ -178,6 +190,8 @@ namespace Character.Sync
             _lastSentSnapshotTick = tick;
         }
 
+        // ============ 快照字段解析 ============
+
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
         {
             if (stateId != CharacterStateId.Dodge
@@ -260,6 +274,11 @@ namespace Character.Sync
                 : (byte)1;
         }
 
+        // ============ 动作事件发布 ============
+
+        /// <summary>
+        /// 离散动作按状态进入边沿发布；Hit 额外比较进入版本，以支持连续受击重新进入同一状态。
+        /// </summary>
         private void TryProduceActionEventOnStateChange(int tick)
         {
             CharacterStateId current = _playerController.CurrentStateId;
@@ -287,6 +306,8 @@ namespace Character.Sync
             return stateId == CharacterStateId.Hit
                 && stateEnterVersion != _lastStateEnterVersion;
         }
+
+        // ============ Actor 与锁定身份 ============
 
         private int ResolveActorId()
         {

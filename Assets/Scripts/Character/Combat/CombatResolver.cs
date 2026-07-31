@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// 把物理采样、单次命中去重和权威结果广播集中在同一帧末执行，保证所有角色使用一致的战斗结算顺序。
+    /// </summary>
     [DefaultExecutionOrder(100)]
     public class CombatResolver : MonoBehaviour
     {
@@ -21,6 +24,8 @@ namespace Character.Combat
 
         private Collider[] _overlapResults;
         private readonly HashSet<HitKey> _resolvedHits = new();
+
+        // ============ Unity 生命周期 ============
 
         private void Awake()
         {
@@ -39,6 +44,11 @@ namespace Character.Combat
             _resolvedHits.Clear();
         }
 
+        // ============ 结算权威 ============
+
+        /// <summary>
+        /// 联机时只让服务器进行物理命中判定，离线场景仍允许本地运行，避免双端各自产生不同结果。
+        /// </summary>
         private bool CanResolve()
         {
             if (!_serverAuthoritative) return true;
@@ -48,6 +58,11 @@ namespace Character.Combat
             return NetworkServer.active;
         }
 
+        // ============ 命中采样 ============
+
+        /// <summary>
+        /// 以当前攻击定义的窗口驱动物理查询，使动画状态、配置窗口和碰撞槽位共同约束有效命中。
+        /// </summary>
         private void ResolveAllActiveHitBoxes()
         {
             var hitBoxes = CombatHitBox.ActiveHitBoxes;
@@ -78,6 +93,9 @@ namespace Character.Combat
             }
         }
 
+        /// <summary>
+        /// 使用 NonAlloc 数组遍历当前窗口的候选 HurtBox，高频攻击帧不产生临时碰撞集合。
+        /// </summary>
         private void ResolveWindow(CombatHitBox hitBox, AttackRuntimeInfo attack, AttackHitWindow window, int windowIndex)
         {
             int count = hitBox.OverlapHurtBoxesNonAlloc(_overlapResults);
@@ -95,6 +113,11 @@ namespace Character.Combat
             }
         }
 
+        // ============ 命中事务 ============
+
+        /// <summary>
+        /// 先写入去重键再结算，防止同一帧多个 HurtBox 或重复 Collider 让一次攻击多次命中同一目标。
+        /// </summary>
         private void TryResolveHit(CombatHitBox hitBox, CombatHurtBox hurtBox, CombatActor target, AttackRuntimeInfo attack, AttackHitWindow window, int windowIndex)
         {
             CombatActor attacker = attack.owner;
@@ -170,10 +193,13 @@ namespace Character.Combat
                         break;
                 }
             }
-
-
         }
 
+        // ============ 权威结果广播 ============
+
+        /// <summary>
+        /// 没有动画反应的命中仍需同步绝对生命值，否则崩防期受伤会只在服务器生效。
+        /// </summary>
         private void BroadcastHealthResult(
             CombatActor target,
             in CombatHitResult result)
@@ -200,6 +226,9 @@ namespace Character.Combat
             _transport.BroadcastActionFromServer(evt);
         }
 
+        /// <summary>
+        /// 崩防使用独立动作类型，让远端能够播放不可被普通 Hit 覆盖的高优先级状态。
+        /// </summary>
         private void BroadcastPostureBreak(CombatActor target,
             in CombatHitResult result)
         {
@@ -225,7 +254,9 @@ namespace Character.Combat
             _transport.BroadcastActionFromServer(evt);
         }
 
-
+        /// <summary>
+        /// 格挡结果携带权威伤害与反应类型，客户端只负责表现，避免再次执行格挡减伤。
+        /// </summary>
         private void BroadcastGuardReaction(
             CombatActor target,
             in CombatHitResult result)
@@ -254,6 +285,9 @@ namespace Character.Combat
             _transport.BroadcastActionFromServer(evt);
         }
 
+        /// <summary>
+        /// 将死亡与普通受击共用一套生命结果载荷，确保动作到达时能同时纠正累计血量误差。
+        /// </summary>
         private void BroadcastHitReaction(
             CombatActor target,
             in HitInfo hit,
@@ -287,9 +321,13 @@ namespace Character.Combat
             _transport.BroadcastActionFromServer(evt);
         }
 
+        // ============ 命中去重键 ============
+
+        /// <summary>
+        /// 将攻击者、攻击实例、目标和窗口组成值键，避免依赖 Collider 引用造成多 HurtBox 重复结算。
+        /// </summary>
         private readonly struct HitKey : IEquatable<HitKey>
         {
-
             private readonly int _attackerId;
             private readonly int _attackInstanceId;
             private readonly int _targetId;
@@ -302,7 +340,6 @@ namespace Character.Combat
                 _targetId = targetId;
                 _windowKey = windowKey;
             }
-
 
             public bool Equals(HitKey other)
             {
@@ -331,7 +368,11 @@ namespace Character.Combat
             }
         }
 
-        // 伤害编码：bit0=isHeavyHit, bit1-3=hitVariant(0-7), bit4+=damage*10
+        // ============ 动作参数编解码 ============
+
+        /// <summary>
+        /// 旧动作协议只有一个整型参数，因此保持位布局稳定以兼容已录制或在途的消息。
+        /// </summary>
         public static int PackHitParam(float damage, bool isHeavyHit, byte hitVariant = 1)
         {
             int damageInt = (int)(Mathf.Clamp(damage, 0f, 9999f) * 10f);
@@ -345,9 +386,11 @@ namespace Character.Combat
             if (hitVariant == 0) hitVariant = 1; // 兜底：默认 Hit1
             damage = (param >> 4) / 10f;
         }
+
+        // ============ 受击方向 ============
+
         /// <summary>
-        /// 根据攻击方向（相对受击者的朝向）选择受击动画变体
-        /// 正面→Hit3,  左侧→Hit1,  右侧→Hit2,  背面上方→Hit4,  背面中间→Hit5
+        /// 使用受击者的局部朝向选择动画变体，使网络只需同步小型编号而不必传输额外方向向量。
         /// </summary>
         private static byte CalculateHitVariant(CombatActor target, Vector3 attackerPos)
         {

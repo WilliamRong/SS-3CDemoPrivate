@@ -2,6 +2,9 @@ using UnityEngine;
 
 namespace Character.Config
 {
+    /// <summary>
+    /// 集中快照频率、插值和假网络参数，保证发布端与接收端使用一致的时间尺度和阈值。
+    /// </summary>
     [CreateAssetMenu(fileName = "NetworkSyncConfig", menuName = "SS3C/Character/Network Sync Config")]
     public sealed class NetworkSyncConfig : ScriptableObject
     {

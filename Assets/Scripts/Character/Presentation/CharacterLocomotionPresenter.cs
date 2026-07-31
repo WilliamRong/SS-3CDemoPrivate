@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Character.Presentation
 {
     /// <summary>
-    /// Idle + Locomotion blend tree. Not used while <see cref="CharacterStateId.Sprint"/> (sprint discrete states own layer 0).
+    /// 只在 Idle、Move 与移动格挡时拥有基础层，Sprint 的离散动画可显式接管并在退出时重新建立移动树状态。
     /// </summary>
     public sealed class CharacterLocomotionPresenter
     {
@@ -19,10 +19,16 @@ namespace Character.Presentation
             _config = config;
         }
 
+        // ============ 基础层所有权 ============
+
         public void ReleaseLayerToSprint()
         {
             _appliedStateHash = HashNone;
         }
+
+        /// <summary>
+        /// 退出冲刺时强制一次完整淡入，避免缓存仍认为移动树处于激活状态而跳过重新播放。
+        /// </summary>
 
         public void TickLeavingSprint(
             Animator animator,
@@ -40,6 +46,8 @@ namespace Character.Presentation
             ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, moveInput, isLockOn);
         }
 
+        // ============ 常规帧更新 ============
+
         public void Tick(
             Animator animator,
             Transform presentationRoot,
@@ -55,6 +63,11 @@ namespace Character.Presentation
             ApplyBlend(animator, presentationRoot, stateId, worldVelocityXZ, moveInput, isLockOn);
         }
 
+        // ============ 状态选择 ============
+
+        /// <summary>
+        /// 只在目标状态变化时 CrossFade，连续帧仅更新 Blend 参数，避免动画时间被重复归零。
+        /// </summary>
         private void ApplyState(Animator animator, CharacterStateId stateId, bool useFullCrossFade)
         {
             if (!IsLocomotionDrivingState(stateId))
@@ -101,6 +114,11 @@ namespace Character.Presentation
             animator.SetFloat(AnimatorParams.VelocityZ, _config.runForwardBlendZ);
         }
 
+        // ============ Blend 参数 ============
+
+        /// <summary>
+        /// 非移动状态显式清零参数，防止 Animator 在重新进入 BlendTree 时继承上一段方向。
+        /// </summary>
         private void ApplyBlend(
             Animator animator,
             Transform presentationRoot,
@@ -141,6 +159,9 @@ namespace Character.Presentation
             return Vector2.ClampMagnitude(moveInput, 1f);
         }
 
+        /// <summary>
+        /// 锁定使用输入意图保留侧移，非锁定使用实际世界速度并压到前向轴，匹配两套不同的 BlendTree 语义。
+        /// </summary>
         private Vector2 ComputeAnimatorBlendVelocity(
             Transform presentationRoot,
             Vector2 worldVelocityXZ,

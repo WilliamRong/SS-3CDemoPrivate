@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.Presentation
 {
+    /// <summary>
+    /// 数值会进入动作同步参数，显式编号用于保持不同版本客户端之间的表现兼容。
+    /// </summary>
     public enum DodgeMode : byte
     {
         None = 0,
@@ -14,6 +17,9 @@ namespace Character.Presentation
         LockOn8Way = 3,
     }
 
+    /// <summary>
+    /// 将状态进入瞬间的闪避选择冻结为值对象，避免后续输入变化改写已经开始的移动和动画。
+    /// </summary>
     public readonly struct DodgePresentationContext
     {
         public DodgePresentationContext(
@@ -38,10 +44,15 @@ namespace Character.Presentation
         public bool IsValid => Duration > 0f && WorldMoveDirection.sqrMagnitude > 0.0001f;
     }
 
+    /// <summary>
+    /// 在状态层和表现层之间统一闪避方向规则，确保根位移方向与 Animator Blend 参数来自同一次解析。
+    /// </summary>
     public static class DodgeModeResolver
     {
+        // ============ 模式选择 ============
+
         public static DodgePresentationContext Resolve(
-            CharacterIntent intent, CharacterStateId fromStateId,bool isLockOn, 
+            CharacterIntent intent, CharacterStateId fromStateId, bool isLockOn,
             CharacterContext context, CharacterPresentationConfig presentationConfig, CharacterCombatConfig combatConfig,
             float moveDeadZone = 0.2f)
         {
@@ -80,6 +91,8 @@ namespace Character.Presentation
                 eightWayDir);
         }
 
+        // ============ 坐标转换 ============
+
         public static Vector3 GetBackwardWorldDirection(CharacterContext context)
         {
             var back = -context.Root.forward;
@@ -106,6 +119,9 @@ namespace Character.Presentation
             return world.sqrMagnitude > 0.0001f ? world.normalized : context.Root.forward;
         }
 
+        /// <summary>
+        /// 先把相机系摇杆转为世界方向再转回角色局部，锁定八向 Blend 才能随镜头方向保持直觉一致。
+        /// </summary>
         public static Vector2 StickToCharacterLocalBlend(
             Vector2 move,
             CharacterContext context,

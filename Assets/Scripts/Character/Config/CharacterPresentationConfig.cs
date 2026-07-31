@@ -2,6 +2,9 @@ using UnityEngine;
 
 namespace Character.Config
 {
+    /// <summary>
+    /// 将 Animator 过渡和转身表现参数与玩法时长分离，使换动画资产不会改变状态机规则。
+    /// </summary>
     [CreateAssetMenu(fileName = "CharacterPresentationConfig", menuName = "SS3C/Character/Presentation Config")]
     public sealed class CharacterPresentationConfig : ScriptableObject
     {
@@ -70,6 +73,8 @@ namespace Character.Config
 
         [Header("PostureBroken")]
         public float postureBrokenCrossFadeDuration = 0.08f;
+
+        // ============ 表现时长查询 ============
 
         public float GetHitCrossFadeDuration(bool heavyHit)
         {

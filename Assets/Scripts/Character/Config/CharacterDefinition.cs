@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Character.Config
 {
     /// <summary>
-    /// Root character data asset. References domain-specific sub-configs.
+    /// 作为角色配置聚合根，让 Player/NPC 只选择一个定义资产而不会混用不同子配置。
     /// </summary>
     [CreateAssetMenu(fileName = "CharacterDefinition", menuName = "SS3C/Character/Character Definition")]
     public sealed class CharacterDefinition : ScriptableObject

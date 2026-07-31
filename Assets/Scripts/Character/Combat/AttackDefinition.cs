@@ -1,9 +1,11 @@
 using System;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// 数值会进入状态、配置和网络字段，因此使用显式 byte 并保持既有编号稳定。
+    /// </summary>
     public enum AttackMoveId : byte
     {
         None = 0,
@@ -18,6 +20,9 @@ namespace Character.Combat
         Heavy2 = 9
     }
 
+    /// <summary>
+    /// 把协议字节和连段推进的容错集中处理，避免非法攻击 ID 进入状态机或资产查询。
+    /// </summary>
     public static class AttackMoveIdExtensions
     {
         public static AttackMoveId FromByte(byte value)
@@ -69,6 +74,9 @@ namespace Character.Combat
         }
     }
 
+    /// <summary>
+    /// 将一次攻击的玩法时长、伤害和命中窗绑定为不可分割的数据单元，避免跨资产错配。
+    /// </summary>
     [Serializable]
     public sealed class AttackDefinition
     {
@@ -104,7 +112,9 @@ namespace Character.Combat
             return hitWindows[windowIndex].Contains(NormalizedTime(elapsedTime));
         }
 
-
+        /// <summary>
+        /// 配置缺失时仍返回确定性攻击，避免状态机运行但结算层完全失去命中数据。
+        /// </summary>
         public static AttackDefinition CreateFallback(AttackMoveId attackId, float duration)
         {
             attackId = attackId.ClampOrDefault();
@@ -129,6 +139,9 @@ namespace Character.Combat
     }
 
 
+    /// <summary>
+    /// 按帧携带攻击实例和经过时间，使 Resolver 不需要反查状态机内部字段。
+    /// </summary>
     public struct AttackRuntimeInfo
     {
         public CombatActor owner;

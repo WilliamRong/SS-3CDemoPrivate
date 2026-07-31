@@ -7,6 +7,9 @@ using Core;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 在进入前冻结闪避模式、方向和时长，使无敌窗、位移与远端表现使用同一上下文。
+    /// </summary>
     public sealed class DodgeState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -45,6 +48,8 @@ namespace Character.StateMachine.States
         }
         
 
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             _timer = 0f;
@@ -56,6 +61,9 @@ namespace Character.StateMachine.States
             _motor.BeginDodge(_presentationContext, _combat);
         }
 
+        /// <summary>
+        /// 闪避期间只在配置窗口开放攻击取消，并让预先冻结的移动上下文持续驱动 Motor。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             intent.IsDodgePressed = false;
@@ -98,6 +106,8 @@ namespace Character.StateMachine.States
             _context.IsInvincible = false;
             _presentationContext = default;
         }
+
+        // ============ 取消窗口 ============
 
         private bool CanTransitionToDodgeAttack()
         {

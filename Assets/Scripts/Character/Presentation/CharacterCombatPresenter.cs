@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.Presentation
 {
+    /// <summary>
+    /// 集中协调战斗层、上半身层和反应层的所有权，保证同一帧只有最高优先级状态控制相关 Animator Layer。
+    /// </summary>
     public sealed class CharacterCombatPresenter
     {
         private readonly CharacterPresentationConfig _config;
@@ -24,6 +27,11 @@ namespace Character.Presentation
             _config = config;
         }
 
+        // ============ 战斗状态分派 ============
+
+        /// <summary>
+        /// 所有战斗状态从单一入口选择动画层，避免各状态分别设置 LayerWeight 后互相残留。
+        /// </summary>
         public bool TickCombat(
             Animator animator,
             CharacterStateId stateId,
@@ -76,6 +84,8 @@ namespace Character.Presentation
             }
         }
 
+        // ============ 动画层重置 ============
+
         public void ResetReactionLayers(Animator animator)
         {
             if (animator == null) return;
@@ -116,6 +126,17 @@ namespace Character.Presentation
             }
         }
 
+        public void ResetAllCombatLayers(Animator animator)
+        {
+            ResetReactionLayers(animator);
+            ResetActiveCombatLayers(animator);
+        }
+
+        // ============ 格挡受击反应 ============
+
+        /// <summary>
+        /// 格挡受击在战斗层短暂独占播放，计时结束后再交还普通 Guard，防止移动格挡的上半身层覆盖反馈。
+        /// </summary>
         public bool PlayGuardReaction(
             Animator animator,
             GuardReactionType reaction,
@@ -159,12 +180,7 @@ namespace Character.Presentation
             return true;
         }
 
-        public void ResetAllCombatLayers(Animator animator)
-        {
-            ResetReactionLayers(animator);
-            ResetActiveCombatLayers(animator);
-        }
-
+        // ============ 攻击表现 ============
 
         private void TickAttack(Animator animator, byte comboStep)
         {
@@ -180,11 +196,10 @@ namespace Character.Presentation
             animator.CrossFade(targetHash, _config.attackCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
         }
 
-
+        // ============ 格挡表现 ============
 
         /// <summary>
-        /// Returns true when Guard is full-body and should block locomotion presentation.
-        /// Moving Guard is a temporary split: upper-body guard over layer-0 walk.
+        /// 静止格挡独占全身战斗层，移动格挡改用上半身层叠加基础移动，返回值让外层决定是否继续刷新 Locomotion。
         /// </summary>
         public bool TickGuard(Animator animator, GuardState.GuardPhase phase, bool hasMove)
         {
@@ -197,7 +212,7 @@ namespace Character.Presentation
             animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 0f);
             _lastDodgeMode = DodgeMode.None;
 
-            // Any guard phase can use upper-body overlay while moving, so layer-0 walk stays visible.
+            // 移动期间所有格挡阶段都让出基础层，保持脚步动画连续。
             bool isFullBody = !hasMove;
             int layerIndex = isFullBody
                 ? AnimatorParams.CombatLayerIndex
@@ -236,6 +251,11 @@ namespace Character.Presentation
             return isFullBody;
         }
 
+        // ============ 闪避表现 ============
+
+        /// <summary>
+        /// 八向闪避在 CrossFade 前写入冻结 Blend 值，同一动作后续帧不因输入变化而改方向。
+        /// </summary>
         private void TickDodge(Animator animator, in DodgePresentationContext ctx)
         {
             if (!ctx.IsValid) return;
@@ -265,6 +285,8 @@ namespace Character.Presentation
             animator.CrossFade(targetHash, _config.dodgeCrossFadeDuration, AnimatorParams.CombatLayerIndex, 0f);
         }
 
+        // ============ 高优先级反应 ============
+
         private void PlayReaction(Animator animator, int stateHash, float crossFadeDuration, bool forceRestart)
         {
             animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 1f);
@@ -273,6 +295,8 @@ namespace Character.Presentation
             _lastHash = stateHash;
             animator.CrossFade(stateHash, crossFadeDuration, AnimatorParams.ReactionLayerIndex, 0f);
         }
+
+        // ============ Animator 状态映射 ============
 
         private static int PhaseToGuardHash(GuardState.GuardPhase phase)
         {
@@ -325,6 +349,8 @@ namespace Character.Presentation
                 _ => AnimatorParams.StateHit1,
             };
         }
+
+        // ============ 播放缓存 ============
 
         private void ResetGuardCache()
         {

@@ -1,5 +1,8 @@
 namespace Character.Sync
 {
+    /// <summary>
+    /// 离散动作与权威生命结果放在同一消息中，保证动画反应和数值纠正以同一顺序到达。
+    /// </summary>
     public struct ActionEvent
     {
         public int SeqId;
@@ -17,7 +20,7 @@ namespace Character.Sync
 
         public uint HealthRevision;
 
-        //预留参数
+        // 保留通用整数槽位以兼容既有动作协议，具体位布局由动作类型解释。
         public int Param;
 
         public ActionEvent(

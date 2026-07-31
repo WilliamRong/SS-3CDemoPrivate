@@ -3,7 +3,7 @@
 namespace Character.Presentation
 {
     /// <summary>
-    /// Animator parameter hashes and layer indices. Tuning values live in <see cref="Character.Config.CharacterPresentationConfig"/>.
+    /// 集中保存 Animator 协议名和固定层索引，避免字符串拼写与 Layer 约定分散在各 Presenter 中。
     /// </summary>
     public static class AnimatorParams
     {
@@ -15,8 +15,8 @@ namespace Character.Presentation
         public const int CombatLayerIndex = 2;
         public const int ReactionLayerIndex = 3;
 
+        // ============ 基础移动 ============
 
-        //locomotion
         public static readonly int StateIdle = Animator.StringToHash("Idle");
         public static readonly int StateLocomotion = Animator.StringToHash("Locomotion");
         public static readonly int StateGuardWalk = Animator.StringToHash("GuardWalk");
@@ -25,13 +25,15 @@ namespace Character.Presentation
         public static readonly int StateIdleTurnRight = Animator.StringToHash("IdleTurnRight");
         public static readonly int TurnSpeed = Animator.StringToHash("TurnSpeed");
 
-        //sprint
+        // ============ 冲刺 ============
+
         public static readonly int StateSprintStart = Animator.StringToHash("SprintStart");
         public static readonly int StateSprintLoop = Animator.StringToHash("SprintLoop");
         public static readonly int StateSprintBrake = Animator.StringToHash("SprintBrake");
         public static readonly int StateSprintTurn180 = Animator.StringToHash("SprintTurn180");
 
-        //reaction
+        // ============ 受击与死亡 ============
+
         public static readonly int StateHit = Animator.StringToHash("Hit");
         public static readonly int StateHit1 = Animator.StringToHash("Hit1");
         public static readonly int StateHit2 = Animator.StringToHash("Hit2");
@@ -40,7 +42,8 @@ namespace Character.Presentation
         public static readonly int StateHit5 = Animator.StringToHash("Hit5");
         public static readonly int StateDeath = Animator.StringToHash("Death");
 
-        //dodge
+        // ============ 闪避 ============
+
         public static readonly int DodgeInputX = Animator.StringToHash("DodgeInputX");
         public static readonly int DodgeInputZ = Animator.StringToHash("DodgeInputZ");
 
@@ -48,8 +51,9 @@ namespace Character.Presentation
         public static readonly int StateDodgeNormal = Animator.StringToHash("NormalDodge");
         public static readonly int StateDodgeDirectional = Animator.StringToHash("DirectionalDodge");
 
-        //Guard
-        //GuardLoop exists on UpperBody and Combat layers with same state name.
+        // ============ 格挡与架势 ============
+
+        // GuardLoop 在 UpperBody 与 Combat 层保持同名，移动和静止格挡才能复用同一映射。
         public static readonly int StateGuardStart = Animator.StringToHash("GuardStart");
         public static readonly int StateGuardLoop = Animator.StringToHash("GuardLoop");
         public static readonly int StateGuardExit = Animator.StringToHash("GuardExit");
@@ -61,8 +65,8 @@ namespace Character.Presentation
         public static readonly int StateGuardTurnLeft = Animator.StringToHash("GuardTurnLeft");
         public static readonly int StateGuardTurnRight = Animator.StringToHash("GuardTurnRight");
 
+        // ============ 攻击 ============
 
-        //attack
         public static readonly int AttackCombo1 = Animator.StringToHash("Attack_Combo1");
         public static readonly int AttackCombo2 = Animator.StringToHash("Attack_Combo2");
         public static readonly int AttackCombo3 = Animator.StringToHash("Attack_Combo3");

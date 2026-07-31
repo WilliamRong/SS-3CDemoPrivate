@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 在服务器状态内完成防御阶段和离散转身，保证远端只表现权威相位而不自行选方向。
+    /// </summary>
     public sealed class NpcGuardState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -46,14 +49,18 @@ namespace AI
         }
         
         public void Prepare(float loopHoldDuration = 2f) => _loopHoldDuration = Mathf.Max(0.1f, loopHoldDuration);
-        
-        
+
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             SetPhase(GuardState.GuardPhase.Start);
             _motor?.Stop();
         }
 
+        /// <summary>
+        /// 防御阶段使用单一分派入口推进，保证服务器快照每帧只观察到一个确定阶段。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             switch (CurrentPhase)
@@ -84,6 +91,8 @@ namespace AI
             SetPhase(GuardState.GuardPhase.Start);
         }
 
+        // ============ 防御阶段推进 ============
+
         private void TickStart(float deltaTime)
         {
             _phaseTimer += deltaTime;
@@ -91,6 +100,9 @@ namespace AI
                 SetPhase(GuardState.GuardPhase.Loop);
         }
 
+        /// <summary>
+        /// 自动转身优先于持续时长退出，使 NPC 不会在刚发现目标偏角时恰好结束防御。
+        /// </summary>
         private void TickLoop(float deltaTime)
         {
             if (_turnCooldown > 0f)
@@ -121,6 +133,8 @@ namespace AI
             _phaseTimer = 0f;
         }
 
+        // ============ 锁定转身 ============
+
         private bool ShouldTurnToTarget(out bool turnLeft, out float angleDelta)
         {
             turnLeft = false;
@@ -147,6 +161,9 @@ namespace AI
             _motor.Stop();
         }
 
+        /// <summary>
+        /// 防御转身期间持续停止导航，并以对齐或超时结束，避免 NavMesh 与转身旋转同时写入朝向。
+        /// </summary>
         private void TickTurn(float deltaTime)
         {
             if (_motor == null)

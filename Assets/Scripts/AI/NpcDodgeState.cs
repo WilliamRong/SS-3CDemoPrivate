@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 在进入状态前冻结闪避表现上下文，使服务器计时和远端动画读取同一组方向与时长。
+    /// </summary>
     public sealed class NpcDodgeState : ICharacterState
     {
 
@@ -45,8 +48,9 @@ namespace AI
             _presentationContext = new DodgePresentationContext(mode, blendLocal, duration, moveDuration, worldDir);
             _duration = duration;
         }
-        
-        
+
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             _timer = 0f;

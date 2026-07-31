@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Character.Presentation
 {
+    /// <summary>
+    /// 将一次分段转身所需旋转和时长冻结，避免动画播放期间目标移动导致步长持续漂移。
+    /// </summary>
     public readonly struct CharacterTurnPlan
     {
         public readonly float StepAngle;
@@ -19,8 +22,13 @@ namespace Character.Presentation
         }
     }
 
+    /// <summary>
+    /// 统一 Idle 与 Guard 的分段转身几何计算，使状态层只负责决定何时执行计划。
+    /// </summary>
     public static class CharacterTurnPlanner
     {
+        // ============ 朝向几何 ============
+
         public static bool TryGetFacingDelta(
             Transform root,
             Vector3 targetPosition,
@@ -54,6 +62,11 @@ namespace Character.Presentation
             return turnCooldown <= 0f && angleDelta >= GetTriggerAngle(config);
         }
 
+        // ============ 转身计划 ============
+
+        /// <summary>
+        /// 大角度按固定步长拆分，最后一步使用精确目标旋转，避免多次 Quaternion 累积留下朝向误差。
+        /// </summary>
         public static CharacterTurnPlan BuildPlan(
             Transform root,
             bool turnLeft,
@@ -64,7 +77,6 @@ namespace Character.Presentation
             float stepAngle = Mathf.Min(angleDelta, GetStepAngle(config));
             Quaternion targetRotation;
 
-            // 最后一步（剩余角度不超过单步上限）：直接用精确面向目标的旋转，消除累积误差
             if (angleDelta <= GetStepAngle(config) && exactTargetRotation != default)
             {
                 stepAngle = angleDelta;
@@ -86,11 +98,15 @@ namespace Character.Presentation
             return Quaternion.Angle(currentRotation, targetRotation) <= GetAngleTolerance(config);
         }
 
-        /// <summary>统一的动画播放倍率，不随角度变化。</summary>
+        /// <summary>
+        /// 动画倍速保持固定，实际转身时长由角度缩放，避免同一动画在不同角度下产生突兀速度变化。
+        /// </summary>
         public static float CalculateSpeed(float angleDelta, CharacterPresentationConfig config)
         {
             return GetSpeedMultiplier(config);
         }
+
+        // ============ 配置回退 ============
 
         public static float GetCooldown(CharacterPresentationConfig config) => config != null
             ? Mathf.Max(0f, config.turnCooldown)

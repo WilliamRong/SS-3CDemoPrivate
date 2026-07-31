@@ -12,10 +12,12 @@ using UnityEngine;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// 统一承接 Player 与 NPC 的战斗事务，避免两套角色驱动各自计算生命、架势和网络纠正而产生分歧。
+    /// </summary>
     [DisallowMultipleComponent]
     public sealed class CombatActor : MonoBehaviour, IDamageable
     {
-
         [SerializeField]
         private int _teamId = 1;
 
@@ -129,6 +131,8 @@ namespace Character.Combat
             }
         }
 
+        // ============ Unity 生命周期 ============
+
         private void Reset()
         {
             EnsureReferences();
@@ -158,23 +162,7 @@ namespace Character.Combat
             TickPosture(Time.deltaTime);
         }
 
-
-        public bool TryGetCurrentAttack(out AttackRuntimeInfo attack)
-        {
-            attack = default;
-
-            if (!_trackingAttack || _trackedAttackDefinition == null) return false;
-
-            attack = new AttackRuntimeInfo(
-                this,
-                _trackedAttackDefinition,
-                _trackedAttackId,
-                _trackedAttackInstanceId,
-                _trackedAttackElapsed);
-
-            return attack.IsValid;
-        }
-
+        // ============ 权威生命状态 ============
 
         private void CommitHealthChange(float previousHp)
         {
@@ -187,6 +175,9 @@ namespace Character.Combat
             }
         }
 
+        /// <summary>
+        /// revision 只允许权威状态单向前进，防止乱序到达的旧快照覆盖客户端已经看到的新生命值。
+        /// </summary>
         public bool ApplyAuthoritativeHealth(float currentHp, float maxHp, uint revision)
         {
             if (_hasAppliedHealthRevision && revision <= HealthRevision) return false;
@@ -215,6 +206,35 @@ namespace Character.Combat
             return true;
         }
 
+        /// <summary>
+        /// 复活同时恢复生命与架势，确保新的战斗生命周期不会继承死亡前尚未恢复的架势。
+        /// </summary>
+        public bool RestoreFullHealthForRevive()
+        {
+            if (!HasPostureSimulationAuthority())
+                return false;
+
+            float previousHp = CurrentHp;
+
+            if (_playerController != null)
+            {
+                _playerController.Revive(MaxHp);
+            }
+            else
+            {
+                InitializeHealth(force: false);
+                _currentHp = _maxHp;
+                HealthChanged?.Invoke(_currentHp, _maxHp);
+            }
+
+            CommitHealthChange(previousHp);
+            ResetPosture(forceNotify: true);
+            _wasDead = false;
+
+            return CurrentHp > 0f;
+        }
+
+        // ============ 权威架势状态 ============
 
         public float AddPosture(float amount)
         {
@@ -249,31 +269,11 @@ namespace Character.Combat
                 maxPosture);
         }
 
-        public bool RestoreFullHealthForRevive()
-        {
-            if (!HasPostureSimulationAuthority())
-                return false;
+        // ============ 命中事务 ============
 
-            float previousHp = CurrentHp;
-
-            if (_playerController != null)
-            {
-                _playerController.Revive(MaxHp);
-            }
-            else
-            {
-                InitializeHealth(force: false);
-                _currentHp = _maxHp;
-                HealthChanged?.Invoke(_currentHp, _maxHp);
-            }
-
-            CommitHealthChange(previousHp);
-            ResetPosture(forceNotify: true);
-            _wasDead = false;
-
-            return CurrentHp > 0f;
-        }
-
+        /// <summary>
+        /// 在一次事务内先完成数值结算，再按 Dead、PostureBreak、Hit/Guard 的优先级选择唯一反应，避免同一命中触发互相冲突的状态。
+        /// </summary>
         public bool ApplyHit(in HitInfo hit)
         {
             LastHitResult = default;
@@ -360,7 +360,7 @@ namespace Character.Combat
             }
             else if (wasPostureBroken || IsPostureBroken())
             {
-                // 破势期间仍扣 HP，但不增加架势，也不播放普通 Hit。
+                // 崩防期继续接受生命伤害，但保持不可被普通受击动画打断。
                 finalReaction = CombatReactionType.None;
             }
             else if (wasGuardBreak)
@@ -406,6 +406,39 @@ namespace Character.Combat
             return true;
         }
 
+        private float ApplyResolvedHealthDamage(float damage)
+        {
+            float previousHp = CurrentHp;
+
+            if (_playerController != null)
+                _playerController.ApplyHealthDamageOnly(damage);
+            else
+                ApplyHealthDamage(damage);
+
+            return Mathf.Max(0f, previousHp - CurrentHp);
+        }
+
+        // ============ 攻击运行时跟踪 ============
+
+        public bool TryGetCurrentAttack(out AttackRuntimeInfo attack)
+        {
+            attack = default;
+
+            if (!_trackingAttack || _trackedAttackDefinition == null) return false;
+
+            attack = new AttackRuntimeInfo(
+                this,
+                _trackedAttackDefinition,
+                _trackedAttackId,
+                _trackedAttackInstanceId,
+                _trackedAttackElapsed);
+
+            return attack.IsValid;
+        }
+
+        /// <summary>
+        /// 招式变化立即开启新攻击实例，未处于攻击状态则清空跟踪，防止上一段命中窗口跨状态残留。
+        /// </summary>
         private void TickAttackRuntime(float deltaTime)
         {
             if (!TryReadActiveAttackId(out AttackMoveId attackId))
@@ -425,6 +458,7 @@ namespace Character.Combat
 
         private void BeginTrackingAttack(AttackMoveId attackId)
         {
+            // 实例 ID 区分连续使用同一招式的两次攻击，让命中箱能够按攻击实例去重。
             _trackingAttack = true;
             _trackedAttackId = attackId.ClampOrDefault();
             _trackedAttackElapsed = 0f;
@@ -445,6 +479,9 @@ namespace Character.Combat
             _trackedAttackDefinition = null;
         }
 
+        /// <summary>
+        /// 按本地 Player、服务器 NPC、远端快照三种所有权来源读取同一招式语义，让命中箱不依赖具体驱动类型。
+        /// </summary>
         private bool TryReadActiveAttackId(out AttackMoveId attackId)
         {
             if (_playerController != null
@@ -477,6 +514,7 @@ namespace Character.Combat
             return false;
         }
 
+        // ============ 格挡判定 ============
 
         private bool TryResolveGuard(in HitInfo hit, out float damageMultiplier)
         {
@@ -500,6 +538,9 @@ namespace Character.Combat
             return true;
         }
 
+        /// <summary>
+        /// 破防仍复用正常格挡的阶段与方向约束，重击不会从角色背后错误触发正面破防表现。
+        /// </summary>
         private bool TryResolveGuardBreak(in HitInfo hit, out float damageMultiplier)
         {
             damageMultiplier = 1f;
@@ -520,6 +561,9 @@ namespace Character.Combat
             return true;
         }
 
+        /// <summary>
+        /// 本地状态和远端快照共用相同的可格挡阶段集合，避免 Host 与纯 Client 对同一命中得出不同结果。
+        /// </summary>
         private bool IsGuardLoopActive()
         {
             if (_playerController != null && _playerController.TryGetActiveGuardState(out var playerGuard))
@@ -551,6 +595,9 @@ namespace Character.Combat
                 or GuardState.GuardPhase.TurnRight;
         }
 
+        /// <summary>
+        /// 优先使用命中携带的方向，缺失时才回退到攻击者位置，使网络重放不依赖双方稍后变化的 Transform。
+        /// </summary>
         private bool IsHitInsideGuardArc(in HitInfo hit, float guardBlockAngle)
         {
             Vector3 incoming = -hit.hitDirection;
@@ -574,17 +621,7 @@ namespace Character.Combat
             return dot >= threshold;
         }
 
-        private float ApplyResolvedHealthDamage(float damage)
-        {
-            float previousHp = CurrentHp;
-
-            if (_playerController != null)
-                _playerController.ApplyHealthDamageOnly(damage);
-            else
-                ApplyHealthDamage(damage);
-
-            return Mathf.Max(0f, previousHp - CurrentHp);
-        }
+        // ============ 状态反应路由 ============
 
         private bool TryEnterHitReaction(bool isHeavyHit, byte hitVariant)
         {
@@ -633,6 +670,11 @@ namespace Character.Combat
             };
         }
 
+        // ============ 攻击数据解析 ============
+
+        /// <summary>
+        /// 配置缺失时仍生成稳定的招式定义，使编辑器临时场景和不完整数据不会改变命中窗口的确定性。
+        /// </summary>
         private AttackDefinition ResolveAttackDefinition(AttackMoveId attackId)
         {
             attackId = attackId.ClampOrDefault();
@@ -656,7 +698,11 @@ namespace Character.Combat
             return config != null ? config.GetAttackDuration(attackId) : 0.8f;
         }
 
+        // ============ 权威与状态查询 ============
 
+        /// <summary>
+        /// 在线模式只允许服务器推进架势，离线模式则由本地实例接管，避免客户端预测与权威恢复同时写入。
+        /// </summary>
         private bool HasPostureSimulationAuthority()
         {
             if (NetworkServer.active)
@@ -696,6 +742,7 @@ namespace Character.Combat
             return GameDataManager.Instance.Player != null ? GameDataManager.Instance.Player.combat : null;
         }
 
+        // ============ 架势模拟 ============
 
         private void InitializePosture(bool forceNotify)
         {
@@ -719,7 +766,9 @@ namespace Character.Combat
                 OnPostureRuntimeChanged(_posture.Current, _posture.Max);
         }
 
-
+        /// <summary>
+        /// 客户端只消费权威架势；死亡边沿仅重置一次，避免每帧重复广播相同 UI 事件。
+        /// </summary>
         private void TickPosture(float deltaTime)
         {
             if (!HasPostureSimulationAuthority())
@@ -769,6 +818,8 @@ namespace Character.Combat
             PostureChanged?.Invoke(currentPosture, maxPosture);
         }
 
+        // ============ 本地生命存储 ============
+
         private void InitializeHealth(bool force)
         {
             if (_healthInitialized && !force) return;
@@ -797,6 +848,7 @@ namespace Character.Combat
             return true;
         }
 
+        // ============ 引用维护 ============
 
         private void EnsureReferences()
         {
@@ -825,6 +877,5 @@ namespace Character.Combat
                 _networkIdentity = GetComponent<NetworkIdentity>();
             }
         }
-
     }
 }

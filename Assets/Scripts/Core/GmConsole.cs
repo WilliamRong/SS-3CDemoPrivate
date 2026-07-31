@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Core
 {
+    /// <summary>
+    /// 显式携带排除的本地玩家，避免 Host 在服务器和客户端两条路径上重复进入防御。
+    /// </summary>
     public struct GmForceGuardMsg : NetworkMessage
     {
         public bool Guarded;
@@ -13,11 +16,17 @@ namespace Core
         public float NpcHoldDuration;
     }
 
+    /// <summary>
+    /// 锁定开关只发送意图，最近目标始终由服务器按当前世界状态选择。
+    /// </summary>
     public struct GmNpcLockNearestPlayerMsg : NetworkMessage
     {
         public bool Locked;
     }
 
+    /// <summary>
+    /// 让同一套调试入口覆盖 Offline、Host 和 Client，同时保持在线状态修改由服务器决定。
+    /// </summary>
     public sealed class GmConsole : MonoBehaviour
     {
         private const float ButtonWidth = 140f;
@@ -31,6 +40,8 @@ namespace Core
         private bool _isOpen;
         private bool _allCharactersGuarded;
         private bool _npcLockNearestPlayer;
+
+        // ============ 生命周期与网络注册 ============
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateOnLoad()
@@ -56,6 +67,9 @@ namespace Core
             NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
         }
 
+        /// <summary>
+        /// 从屏幕右下角反向布局，使分辨率变化时调试入口仍保持固定边距且不会遮挡主要 HUD。
+        /// </summary>
         private void OnGUI()
         {
             float panelHeight = ButtonHeight * 2f + PanelPadding * 3f;
@@ -80,6 +94,11 @@ namespace Core
                 RequestToggleNpcLockNearestPlayer();
         }
 
+        // ============ 本地请求入口 ============
+
+        /// <summary>
+        /// 按当前运行模式选择唯一发送路径，避免 Host 同时走 Client.Send 和服务器直调。
+        /// </summary>
         private void RequestToggleForceGuard()
         {
             _allCharactersGuarded = !_allCharactersGuarded;
@@ -109,6 +128,9 @@ namespace Core
             ApplyAllOffline(msg);
         }
 
+        /// <summary>
+        /// 联机调试命令统一由服务器选目标，避免每个 Client 根据各自场景位置得到不同最近玩家。
+        /// </summary>
         private void RequestToggleNpcLockNearestPlayer()
         {
             _npcLockNearestPlayer = !_npcLockNearestPlayer;
@@ -132,6 +154,8 @@ namespace Core
             ApplyNpcLockNearestPlayer(msg.Locked);
         }
 
+        // ============ 网络消息处理 ============
+
         private static void OnServerForceGuard(NetworkConnectionToClient conn, GmForceGuardMsg msg)
         {
             ApplyNpcGuardStateOnServer(msg);
@@ -147,6 +171,8 @@ namespace Core
         {
             ApplyLocalPlayerGuardState(msg);
         }
+
+        // ============ 防御状态应用 ============
 
         private static void ApplyLocalPlayerGuardState(GmForceGuardMsg msg)
         {
@@ -186,12 +212,17 @@ namespace Core
                 npc?.ForceExitGuardToIdle();
         }
 
+        // ============ NPC 目标应用 ============
+
         private static void ApplyNpcLockNearestPlayerOnServer(bool locked)
         {
             if (!NetworkServer.active) return;
             ApplyNpcLockNearestPlayer(locked);
         }
 
+        /// <summary>
+        /// 为每个 NPC 独立选择最近玩家，避免多人场景把所有 AI 强制指向同一个全局目标。
+        /// </summary>
         private static void ApplyNpcLockNearestPlayer(bool locked)
         {
             var npcs = FindObjectsByType<NpcCharacterDriver>(FindObjectsSortMode.None);
@@ -213,6 +244,9 @@ namespace Core
             }
         }
 
+        /// <summary>
+        /// 排除无效和已销毁对象后按平方距离比较，调试命令无需为开方支付额外成本。
+        /// </summary>
         private static Transform FindNearestPlayer(Vector3 from)
         {
             PlayerController[] players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
@@ -232,6 +266,8 @@ namespace Core
 
             return nearest;
         }
+
+        // ============ 离线兼容与查询 ============
 
         private static void ApplyAllOffline(GmForceGuardMsg msg)
         {

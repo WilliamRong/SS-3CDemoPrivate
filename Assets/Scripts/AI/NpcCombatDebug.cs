@@ -7,8 +7,7 @@ using UnityEngine.Serialization;
 namespace AI
 {
     /// <summary>
-    /// Server-only combat triggers for NPC presentation/network acceptance.
-    /// Attach to NPC prefab alongside <see cref="NpcCharacterDriver"/>.
+    /// 把调试触发限制在服务器入口，确保验证到的是正式网络传播链路而非客户端本地动画。
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(NpcCharacterDriver))]
@@ -20,6 +19,8 @@ namespace AI
         [SerializeField] private AttackMoveId _attackId = AttackMoveId.Combo1;
         [SerializeField] private float _guardLoopHoldDuration = 2f;
         [SerializeField] private float _sprintHoldDuration = 1.5f;
+
+        // ============ Unity 生命周期 ============
 
         private void Awake()
         {
@@ -42,10 +43,7 @@ namespace AI
             if (UnityEngine.Input.GetKeyDown(KeyCode.Keypad8)) TriggerRevive();
         }
 
-        private bool IsServerAuthority()
-        {
-            return NetworkServer.active && _driver != null && _driver.isServer;
-        }
+        // ============ 调试命令 ============
 
         [ContextMenu("Combat/Attack")]
         public void TriggerAttack()
@@ -108,6 +106,13 @@ namespace AI
         {
             if (!IsServerAuthority()) return;
             _driver.ServerTryRevive();
+        }
+
+        // ============ 权威检查 ============
+
+        private bool IsServerAuthority()
+        {
+            return NetworkServer.active && _driver != null && _driver.isServer;
         }
     }
 }

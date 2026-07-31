@@ -7,9 +7,14 @@ using Character.Presentation;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 在无移动输入时仲裁动作转换与锁定转身，避免 Motor 和状态机同时控制角色朝向。
+    /// </summary>
     public sealed class IdleState : ICharacterState
     {
-
+        /// <summary>
+        /// 用离散阶段同步待机转身过程，使状态逻辑、动画表现和网络快照共享同一语义。
+        /// </summary>
         public enum IdlePhase : byte
         {
             None = 0,
@@ -33,8 +38,8 @@ namespace Character.StateMachine.States
         private Quaternion _turnTargetRotation = Quaternion.identity;
 
         public IdlePhase CurrentPhase => _currentPhase;
-
         public CharacterStateId Id => CharacterStateId.Idle;
+        public float GetTargetTurnAngle() => _targetTurnAngle;
 
         public IdleState(CharacterStateMachine fsm, CharacterMotor motor, CharacterStateRegistry registry, CharacterPresentationConfig presentationConfig, ILockOnLocomotionQuery lockOnQuery)
         {
@@ -45,8 +50,13 @@ namespace Character.StateMachine.States
             _lockOnQuery = lockOnQuery;
         }
 
+        // ============ 状态生命周期 ============
+
         public void Enter() { }
 
+        /// <summary>
+        /// 主动战斗输入优先于自动转身，只有真正无输入时才启动锁定面向修正。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);
@@ -57,13 +67,11 @@ namespace Character.StateMachine.States
             {
                 TickTurnPhase(intent, deltaTime);
 
-                //如果转身被输入打断，继续处理输入
-                if(_currentPhase != IdlePhase.Normal)
+                if (_currentPhase != IdlePhase.Normal)
                 {
                     _motor.Tick(intent, deltaTime);
-                    return;//转身未被打断，直接return
+                    return;
                 }
-
             }
 
             if (intent.IsDodgePressed)
@@ -122,21 +130,18 @@ namespace Character.StateMachine.States
             _motor.SetTurnRotationOverride(false);
             _motor.SetMovementBlocked(false);
         }
-
+        // ============ 锁定转身判定 ============
 
         private bool ShouldTurnToTarget(out bool turnLeft, out float angleDelta)
         {
             turnLeft = false;
             angleDelta = 0f;
 
-            //2.必须不在冷却
             if (_turnCooldown > 0f) return false;
 
-            //3.计算角度差
             if (!TryGetFacingAngleToTarget(out turnLeft, out angleDelta, out _))
                 return false;
 
-            //4.角度差超过阈值
             return CharacterTurnPlanner.ShouldTurn(_turnCooldown, angleDelta, _presentationConfig);
         }
 
@@ -146,13 +151,13 @@ namespace Character.StateMachine.States
                 && _lockOnQuery.IsLockOnActive
                 && _lockOnQuery.CurrentTarget != null;
         }
-
+        // ============ 锁定转身执行 ============
 
         private void BeginTurn(bool turnLeft, float angleDelta)
         {
             _currentPhase = turnLeft ? IdlePhase.TurnLeft : IdlePhase.TurnRight;
 
-            // 计算精确面向目标的方向
+            // 使用实时目标方向作为最终旋转，步进角只控制动画选择与速度。
             TryGetFacingAngleToTarget(out _, out _, out Quaternion exactTargetRotation);
 
             CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(
@@ -171,9 +176,11 @@ namespace Character.StateMachine.States
         }
 
 
+        /// <summary>
+        /// 任意输入先结束转身并在同一 Tick 继续处理，避免多出一帧不可响应延迟。
+        /// </summary>
         private void TickTurnPhase(CharacterIntent intent, float deltaTime)
         {
-            // 检查是否有任何输入打断转身
             bool hasInput = intent.IsAttackPressed ||
                            intent.IsDodgePressed ||
                            intent.IsGuardHeld ||
@@ -182,11 +189,9 @@ namespace Character.StateMachine.States
             if (hasInput)
             {
                 EndTurn();
-                // 不return，让Tick的后续逻辑处理输入
             }
             else
             {
-                // 没有输入，继续转身
                 _phaseTimer += deltaTime;
                 ApplyTurnRotation(deltaTime);
 
@@ -221,8 +226,9 @@ namespace Character.StateMachine.States
             return CharacterTurnPlanner.IsAligned(_motor.Root.rotation, _turnTargetRotation, _presentationConfig);
         }
 
-        public float GetTargetTurnAngle() => _targetTurnAngle;
-
+        /// <summary>
+        /// 一次计算同时产出逻辑旋转与动画方向，确保本帧转身计划不会因重复读取移动目标而分叉。
+        /// </summary>
         private bool TryGetFacingAngleToTarget(out bool turnLeft, out float angleDelta, out Quaternion targetRotation)
         {
             turnLeft = false;

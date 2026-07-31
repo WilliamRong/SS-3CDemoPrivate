@@ -9,8 +9,7 @@ using UnityEngine;
 namespace Character.Diagnostics
 {
     /// <summary>
-    /// 右上角显示当前 / 上一帧切换前的状态（CharacterStateId 枚举名）。
-    /// 拖同一物体上的 PlayerController；上一状态在“发生切换”时更新。
+    /// 仅为本地 Player 保留状态转换历史和关键阶段，避免联机场景多个预制体重复绘制调试面板。
     /// </summary>
     public sealed class CharacterStateDebugOverlay : MonoBehaviour
     {
@@ -31,6 +30,8 @@ namespace Character.Diagnostics
 
         private CharacterStateId _lastSeen;
         private CharacterStateId _previous;
+
+        // ============ Unity 生命周期 ============
 
         private void Awake()
         {
@@ -54,12 +55,15 @@ namespace Character.Diagnostics
             }
         }
 
+        /// <summary>
+        /// 保存并恢复 GUI.matrix，防止调试面板的分辨率缩放污染同帧其他 IMGUI 工具。
+        /// </summary>
         private void OnGUI()
         {
             if (_player == null)
                 return;
 
-            // 同一 Player 预制体会挂在远端镜像上；仅本地玩家绘制，避免叠多层。
+            // 同一预制体也存在于远端镜像，只允许本地玩家绘制一次。
             var netId = _player.GetComponent<NetworkIdentity>();
             if (netId != null && NetworkClient.active && !netId.isLocalPlayer)
                 return;
@@ -113,6 +117,8 @@ namespace Character.Diagnostics
             GUI.matrix = oldMatrix;
         }
 
+        // ============ 响应式布局 ============
+
         private float ResolveGuiScale()
         {
             float referenceWidth = Mathf.Max(1f, _referenceResolution.x);
@@ -120,6 +126,8 @@ namespace Character.Diagnostics
             float scale = Mathf.Min(Screen.width / referenceWidth, Screen.height / referenceHeight);
             return Mathf.Clamp(scale, Mathf.Max(0.01f, _minScale), Mathf.Max(_minScale, _maxScale));
         }
+
+        // ============ 状态格式化 ============
 
         private string FormatSprintPhase()
         {
@@ -160,7 +168,6 @@ namespace Character.Diagnostics
 
         private string FormatState(CharacterStateId id)
         {
-            // 枚举打印成文本：Idle / Move / Sprint ...
             string name = id.ToString();
             if (!_showNumericId)
                 return name;

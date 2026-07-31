@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 让移动状态只桥接世界目标与 NavMesh，抵达判定统一由 NpcMotor 提供。
+    /// </summary>
     public sealed class NpcMoveState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -25,9 +28,7 @@ namespace AI
             _motor = motor;
         }
         
-        public void Enter()
-        {
-        }
+        public void Enter() { }
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
@@ -43,9 +44,6 @@ namespace AI
             }
         }
 
-        public void Exit()
-        {
-         
-        }
+        public void Exit() { }
     }
 }

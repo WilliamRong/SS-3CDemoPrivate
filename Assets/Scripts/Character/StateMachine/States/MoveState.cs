@@ -3,6 +3,9 @@ using Character.Motor;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 将有移动输入时的动作优先级集中处理，Motor 只负责落实本帧位移。
+    /// </summary>
     public sealed class MoveState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -19,6 +22,9 @@ namespace Character.StateMachine.States
         public CharacterStateId Id { get; } = CharacterStateId.Move;
         public void Enter() { }
 
+        /// <summary>
+        /// 先仲裁战斗转换再推进移动，确保按键边沿不会被同帧 Motor 位移延后一个状态 Tick。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);

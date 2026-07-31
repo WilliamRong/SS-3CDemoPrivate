@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 每个远端实体只接收自身 ActorId 的快照，并按到达时间排序，为抖动环境下的平滑采样提供稳定窗口。
+    /// </summary>
     public sealed class RemoteSnapshotBuffer : MonoBehaviour
     {
         [SerializeField] private int _maxBufferSize = 64;
@@ -21,12 +24,19 @@ namespace Character.Sync
         public float OldestArrivalTime => _buffer.Count > 0 ? _buffer[0].ArrivalTimeSec : 0f;
         public float NewestArrivalTime => _buffer.Count > 0 ? _buffer[_buffer.Count - 1].ArrivalTimeSec : 0f;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_networkIdentity == null) _networkIdentity = GetComponent<NetworkIdentity>();
             _maxBufferSize = GameDataManager.Instance.NetworkSync.snapshotBufferMaxSize;
         }
 
+        // ============ 快照写入 ============
+
+        /// <summary>
+        /// 插入时按到达时间保持有序并裁剪最旧数据，既容纳乱序包又限制长期运行的内存占用。
+        /// </summary>
         public void Push(StateSnapshot snapshot)
         {
             int expectedActorId = ResolveExpectedActorId();
@@ -60,6 +70,11 @@ namespace Character.Sync
             }
         }
 
+        // ============ 快照采样 ============
+
+        /// <summary>
+        /// 保留整数 Tick 查询供诊断和兼容调用使用，边界外夹到最近帧而不做不可靠外推。
+        /// </summary>
         public bool TryGetFrames(int targetTick, out StateSnapshot from, out StateSnapshot to)
         {
             from = default;
@@ -98,6 +113,9 @@ namespace Character.Sync
             return false;
         }
 
+        /// <summary>
+        /// 浮点 Tick 采样用于固定 Tick 时间轴，返回相邻帧与比例而不在 Buffer 内耦合位姿插值。
+        /// </summary>
         public bool TrySample(float targetTick, out StateSnapshot from, out StateSnapshot to, out float t)
         {
             from = default;
@@ -142,6 +160,9 @@ namespace Character.Sync
             return false;
         }
 
+        /// <summary>
+        /// 实际远端显示按本地到达时间采样，以缓冲发送时钟偏差并允许乱序包重新进入正确区间。
+        /// </summary>
         public bool TrySampleByArrivalTime(float targetTime, out StateSnapshot from, out StateSnapshot to, out float t)
         {
             from = default;
@@ -189,6 +210,8 @@ namespace Character.Sync
 
             return false;
         }
+
+        // ============ Actor 绑定 ============
 
         public void ResetActorBinding(int actorId = -1)
         {

@@ -5,8 +5,7 @@ using UnityEngine.UI;
 namespace Character.LockOn
 {
     /// <summary>
-    /// Screen-space lock reticle projected from the target LockPoint.
-    /// Updates only after Cinemachine moves the camera; canvas is not parented to the player.
+    /// 在 Cinemachine 完成相机更新后投影锁定点，避免普通 LateUpdate 与相机管线的先后差异造成准星抖动。
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(PlayerLockOnController))]
@@ -26,6 +25,8 @@ namespace Character.LockOn
         private bool _hasValidPosition;
         private Vector2 _lastAnchoredPosition;
         private Transform _trackedLockPoint;
+
+        // ============ 生命周期与本地启用 ============
 
         private void Awake()
         {
@@ -51,6 +52,8 @@ namespace Character.LockOn
                 Destroy(_canvasRect.gameObject);
         }
 
+        // ============ 相机投影 ============
+
         private void OnCameraUpdated(CinemachineBrain brain)
         {
             if (!_isLocalPlayer || brain == null)
@@ -59,6 +62,9 @@ namespace Character.LockOn
             UpdateReticle(brain.OutputCamera);
         }
 
+        /// <summary>
+        /// 在 Cinemachine 完成本帧相机更新后再投影，并拒绝切镜产生的异常大跳变，避免准星滞后一帧或穿屏。
+        /// </summary>
         private void UpdateReticle(Camera camera)
         {
             if (!_uiBuilt || _lockOn == null)
@@ -97,6 +103,7 @@ namespace Character.LockOn
 
             if (_hasValidPosition)
             {
+                // 相机切换时忽略单帧异常跳变，避免准星横穿整个屏幕。
                 float jump = Vector2.Distance(localPoint, _lastAnchoredPosition);
                 if (jump > _maxJumpPixels)
                     return;
@@ -108,6 +115,11 @@ namespace Character.LockOn
             SetReticleVisible(true);
         }
 
+        // ============ UI 构建 ============
+
+        /// <summary>
+        /// 准星使用独立 Overlay Canvas，避免角色缩放、遮挡和世界血条朝向影响屏幕空间定位。
+        /// </summary>
         private void EnsureUi()
         {
             if (_uiBuilt)
@@ -157,10 +169,16 @@ namespace Character.LockOn
         }
     }
 
+    /// <summary>
+    /// 在未配置美术资源时生成可缓存的最小准星，保证锁定功能仍有可见反馈且不重复分配纹理。
+    /// </summary>
     internal static class LockOnReticleSprite
     {
         private static Sprite _cached;
 
+        /// <summary>
+        /// 运行时生成资源只创建一次并缓存，避免多个远端角色各自分配相同纹理和 Sprite。
+        /// </summary>
         public static Sprite CreateDefault()
         {
             if (_cached != null)

@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 将连续运动、状态表现上下文和权威数值封装为单帧快照，远端可在不运行玩法状态机的前提下还原角色。
+    /// </summary>
     public struct StateSnapshot
     {
         public int Tick;
@@ -18,24 +21,23 @@ namespace Character.Sync
         public Vector2 VelocityXZ;
 
         public CharacterStateId StateId;
-        /// <summary>Valid when <see cref="StateId"/> is Sprint; otherwise 0.</summary>
+        /// <summary>仅 Sprint 状态有效，其他状态保持 0，避免旧字段残留。</summary>
         public byte SprintPhase;
-        /// <summary>Valid when <see cref="StateId"/> is Dodge; otherwise 0. See <see cref="Presentation.DodgeMode"/>.</summary>
+        /// <summary>仅 Dodge 状态有效，枚举定义见 <see cref="Presentation.DodgeMode"/>。</summary>
         public byte DodgeMode;
-        /// <summary>Valid when <see cref="StateId"/> is Guard; otherwise 0. See <see cref="GuardState.GuardPhase"/>.</summary>
+        /// <summary>仅 Guard 状态有效，枚举定义见 <see cref="GuardState.GuardPhase"/>。</summary>
         public byte GuardPhase;
-        /// <summary>Valid when <see cref="StateId"/> is Idle; otherwise 0. See <see cref="IdleState.IdlePhase"/>.</summary>
+        /// <summary>仅 Idle 状态有效，枚举定义见 <see cref="IdleState.IdlePhase"/>。</summary>
         public byte IdlePhase;
-        /// <summary>Valid when <see cref="StateId"/> is Attack; otherwise 0. Encodes <see cref="AttackMoveId"/> as a byte.</summary>
+        /// <summary>仅 Attack 状态有效，以 byte 编码 <see cref="AttackMoveId"/>。</summary>
         public byte AttackComboStep;
 
-        /// <summary>1 = locked on a target; otherwise 0.</summary>
+        /// <summary>使用 byte 而非 bool，保持 Mirror 序列化布局明确。</summary>
         public byte LockOnActive;
-        /// <summary>Mirror NetworkIdentity.netId of lock target; 0 when not locked.</summary>
+        /// <summary>只传锁定对象 netId，0 表示未锁定，LockPoint 由接收端本地解析。</summary>
         public uint LockTargetNetId;
-        /// <summary>Locomotion blend input X while locked (VelocityX).</summary>
+        /// <summary>锁定移动时直接同步 Blend 输入，避免远端从插值速度反推八向意图。</summary>
         public float MoveInputX;
-        /// <summary>Locomotion blend input Z while locked (VelocityZ).</summary>
         public float MoveInputY;
 
         public byte HasAuthoritativeHealth;
@@ -100,6 +102,8 @@ namespace Character.Sync
 
         public Vector2 GetMoveInputOrDefault() => new Vector2(MoveInputX, MoveInputY);
 
+        // ============ 状态字段清洗 ============
+
         public SprintState.SprintPhase GetSprintPhaseOrDefault()
         {
             if (StateId != CharacterStateId.Sprint)
@@ -152,6 +156,8 @@ namespace Character.Sync
             return AttackMoveIdExtensions.FromByte(AttackComboStep).ToByte();
         }
 
+        // ============ 值对象变换 ============
+
         public StateSnapshot WithDodgeMode(byte dodgeMode)
         {
             var copy = this;
@@ -159,6 +165,9 @@ namespace Character.Sync
             return copy;
         }
 
+        /// <summary>
+        /// 只用快照内的冻结方向重建闪避，接收端当前输入和相机变化不会改写已经发生的动作。
+        /// </summary>
         public bool TryBuildDodgePresentationContext(
             CharacterCombatConfig combat,
             out DodgePresentationContext ctx)
@@ -198,6 +207,8 @@ namespace Character.Sync
             ctx = new DodgePresentationContext(mode, blendLocal, duration, moveDuration, worldDir);
             return ctx.IsValid;
         }
+
+        // ============ 调试输出 ============
 
         public override string ToString()
         {

@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Character.Diagnostics
 {
+    /// <summary>
+    /// 汇总本地状态、远端动作、位置误差和假网络参数，便于在同一画面判断同步问题属于哪一段链路。
+    /// </summary>
     public sealed class SyncDebugOverlay : MonoBehaviour
     {
         [Header("Refs")]
@@ -17,6 +20,8 @@ namespace Character.Diagnostics
         [SerializeField] private Vector2 _offset = new(12f, 96f);
         [SerializeField] private int _fontSize = 16;
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_remoteActionApplier == null) _remoteActionApplier = FindFirstObjectByType<RemoteActionApplier>();
@@ -24,6 +29,9 @@ namespace Character.Diagnostics
             if (_pipe == null) _pipe = FindFirstObjectByType<FakeNetworkPipe>();
         }
 
+        /// <summary>
+        /// 每次绘制前重新解析本地玩家，允许调试面板跨越网络重连而不持有已销毁的对象引用。
+        /// </summary>
         private void OnGUI()
         {
             TryResolveLocalPlayer();
@@ -49,9 +57,13 @@ namespace Character.Diagnostics
             GUILayout.EndArea();
         }
 
+        // ============ 本地玩家解析 ============
+
+        /// <summary>
+        /// 联机优先绑定 Mirror localPlayer，只有离线模式才回退场景搜索，防止误显示远端 Player 状态。
+        /// </summary>
         private bool TryResolveLocalPlayer()
         {
-            // 1) Mirror 本地玩家优先（联机最稳）
             if (NetworkClient.active && NetworkClient.localPlayer != null)
             {
                 var pc = NetworkClient.localPlayer.GetComponent<PlayerController>();
@@ -62,7 +74,6 @@ namespace Character.Diagnostics
                 }
             }
 
-            // 2) 离线回退（单机场景）
             if (_localPlayer == null)
                 _localPlayer = FindFirstObjectByType<PlayerController>();
 

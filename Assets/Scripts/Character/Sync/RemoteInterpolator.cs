@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.Sync
 {
+    /// <summary>
+    /// 远端实体按到达时间缓冲插值，本地玩家只接收权威数值纠正，不允许快照覆盖自身预测位置。
+    /// </summary>
     public class RemoteInterpolator : MonoBehaviour
     {
         [Header("Refs")]
@@ -23,6 +26,8 @@ namespace Character.Sync
         public StateSnapshot LastAppliedSnapshot { get; private set; }
         public float LastPosError { get; private set; }
 
+        // ============ Unity 生命周期 ============
+
         private void Awake()
         {
             if (_buffer == null) _buffer = GetComponent<RemoteSnapshotBuffer>();
@@ -30,6 +35,11 @@ namespace Character.Sync
             _combatActor = GetComponent<CombatActor>();
         }
 
+        // ============ 远端插值与纠正 ============
+
+        /// <summary>
+        /// 使用本地到达时间而非发送 Tick 作为插值轴，降低时钟偏差和网络抖动对画面的直接影响。
+        /// </summary>
         public void TickInterpolation()
         {
             if (_buffer == null || _buffer.Count == 0) return;
@@ -77,7 +87,7 @@ namespace Character.Sync
 
             LastAppliedSnapshot = to;
 
-            // Dedicated Server 和 Host 都已经持有权威 HP，不能重复覆盖。
+            // Dedicated Server 和 Host 已持有权威数值，不能再消费回环快照覆盖。
             if (!NetworkServer.active && _combatActor != null)
             {
                 if (to.HasAuthoritativeHealth != 0)

@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Character.Config
 {
+    /// <summary>
+    /// 以显式阶段时长驱动冲刺状态，避免用 Animator normalizedTime 作为逻辑事实源。
+    /// </summary>
     [CreateAssetMenu(fileName = "SprintPhaseConfig", menuName = "SS3C/Character/Sprint Phase Config")]
     public class SprintPhaseConfig : ScriptableObject
     {
@@ -24,6 +27,8 @@ namespace Character.Config
         [Range(0f, 1f)]
         [Tooltip("Dot below -threshold counts as opposite (0.2 ≈ >101°).")]
         public float oppositeInputDotThreshold = 0.2f;
+
+        // ============ 阶段时长查询 ============
 
         public float GetOneShotDuration(SprintState.SprintPhase phase)
         {

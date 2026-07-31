@@ -1,6 +1,9 @@
 namespace Character.StateMachine
 {
-    public enum StateWindowType  : byte
+    /// <summary>
+    /// 使用稳定 byte 值表达逻辑窗口，便于调试和未来协议字段保持兼容。
+    /// </summary>
+    public enum StateWindowType : byte
     {
         Always = 0,
         PreHitWindow = 1,
@@ -8,6 +11,9 @@ namespace Character.StateMachine
         RecoveryWindow = 3,
     }
 
+    /// <summary>
+    /// 将转换来源显式化，使同一目标状态可以按输入、受击或超时采用不同打断规则。
+    /// </summary>
     public enum TransitionReason : byte
     {
         Any = 0,
@@ -25,14 +31,16 @@ namespace Character.StateMachine
     }
 
 
-    public readonly struct CharacterInterruptRule 
+    /// <summary>
+    /// 用不可变值描述一条打断覆盖，避免运行时修改共享规则表。
+    /// </summary>
+    public readonly struct CharacterInterruptRule
     {
-       public readonly CharacterStateId FromState;
-       public readonly CharacterStateId IncomingState;
-       public readonly StateWindowType WindowType;
-       public readonly TransitionReason Reason;
-       public readonly bool IsAllowed;
-    
+        public readonly CharacterStateId FromState;
+        public readonly CharacterStateId IncomingState;
+        public readonly StateWindowType WindowType;
+        public readonly TransitionReason Reason;
+        public readonly bool IsAllowed;
 
         public CharacterInterruptRule(CharacterStateId fromState, CharacterStateId incomingState, StateWindowType windowType, TransitionReason reason, bool isAllowed)
         {

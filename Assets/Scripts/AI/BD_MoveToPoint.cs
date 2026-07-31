@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 让行为树只决定移动是否完成，具体寻路目标和 NavMesh 控制继续由 Motor/黑板持有。
+    /// </summary>
     [Category("NPC")]
     public class BD_MoveToPoint : Action
     {
@@ -14,6 +17,8 @@ namespace AI
         [SerializeField] protected SharedVariable<Vector3> _destination;
 
         private NpcMotor _motor;
+
+        // ============ 行为树生命周期 ============
 
         public override void OnAwake()
         {

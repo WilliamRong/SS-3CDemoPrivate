@@ -6,6 +6,9 @@ using UnityEngine;
 
 namespace Character.Motor
 {
+    /// <summary>
+    /// 统一处理逻辑位移、根位移、闪避和锁定移动，状态只发意图而不直接改角色 Transform。
+    /// </summary>
     public class CharacterMotor
     {
         private readonly CharacterContext _context;
@@ -40,11 +43,16 @@ namespace Character.Motor
             _config = config;
         }
 
+        // ============ 外部绑定与主循环 ============
+
         public void SetLockOnQuery(ILockOnLocomotionQuery query)
         {
             _lockOnQuery = query;
         }
 
+        /// <summary>
+        /// 位移模式按闪避、根位移、普通移动互斥选择，保证同一帧 CharacterController 只消费一种水平来源。
+        /// </summary>
         public void Tick(CharacterIntent intent, float dt)
         {
             if (_isDodgeActive)
@@ -53,15 +61,9 @@ namespace Character.Motor
                 return;
             }
 
-            if (_attackRootMotionActive)
+            if (_attackRootMotionActive || _reactionRootMotionActive)
             {
-                TickAttackRootMotion(intent, dt);
-                return;
-            }
-
-            if (_reactionRootMotionActive)
-            {
-                TickReactionRootMotion(intent, dt);
+                TickRootMotion(intent, dt);
                 return;
             }
 
@@ -78,13 +80,18 @@ namespace Character.Motor
             _context.Controller.Move(_context.Velocity * dt);
         }
 
+        // ============ 闪避位移 ============
+
+        /// <summary>
+        /// 进入时冻结世界方向与移动时长，闪避开始后的相机和摇杆变化不会弯折轨迹。
+        /// </summary>
         public void BeginDodge(in DodgePresentationContext ctx, CharacterCombatConfig combat)
         {
             _isDodgeActive = true;
             _isSprintActive = false;
             _dodgeWorldDirection = ctx.WorldMoveDirection;
 
-            // 前翻滚动画是前向播放，需要先把角色转向位移方向
+            // 前翻滚动画沿模型前向播放，因此逻辑位移开始前先对齐朝向。
             if (ctx.Mode == DodgeMode.ForwardAlongMove && ctx.WorldMoveDirection.sqrMagnitude > 0.0001f)
             {
                 _context.Root.rotation = Quaternion.LookRotation(ctx.WorldMoveDirection);
@@ -111,6 +118,9 @@ namespace Character.Motor
             StopHorizontalMotion();
         }
 
+        /// <summary>
+        /// 水平速度按逻辑时长推进，垂直速度继续走统一重力链路，避免闪避离地时悬空。
+        /// </summary>
         private void TickDodge(CharacterIntent intent, float dt)
         {
             if (_dodgeMoveActive)
@@ -135,6 +145,8 @@ namespace Character.Motor
             TickVertical(intent, dt);
             _context.Controller.Move(_context.Velocity * dt);
         }
+
+        // ============ 根位移模式 ============
 
         public void BeginAttackRootMotion()
         {
@@ -192,6 +204,7 @@ namespace Character.Motor
 
         public void SetAttackRootMotionDelta(Vector3 deltaPosition, Quaternion deltaRotation)
         {
+            // Animator 回调可能在状态 Tick 之后到达，先累积到下一次 Motor Tick 再消费。
             if (!_attackRootMotionActive && !_reactionRootMotionActive)
                 return;
 
@@ -200,7 +213,10 @@ namespace Character.Motor
             _pendingAttackDeltaYaw += Mathf.DeltaAngle(0f, deltaRotation.eulerAngles.y);
         }
 
-        private void TickAttackRootMotion(CharacterIntent intent, float dt)
+        /// <summary>
+        /// 攻击与反应根位移使用完全相同的 Animator 增量消费路径，只由进入/退出接口区分所有权。
+        /// </summary>
+        private void TickRootMotion(CharacterIntent intent, float dt)
         {
             Vector3 deltaPosition = _hasPendingAttackRootMotion ? _pendingAttackDeltaPosition : Vector3.zero;
             float deltaYaw = _hasPendingAttackRootMotion ? _pendingAttackDeltaYaw : 0f;
@@ -224,29 +240,7 @@ namespace Character.Motor
             _context.Controller.Move(move);
         }
 
-        private void TickReactionRootMotion(CharacterIntent intent, float dt)
-        {
-            Vector3 deltaPosition = _hasPendingAttackRootMotion ? _pendingAttackDeltaPosition : Vector3.zero;
-            float deltaYaw = _hasPendingAttackRootMotion ? _pendingAttackDeltaYaw : 0f;
-
-            _hasPendingAttackRootMotion = false;
-            _pendingAttackDeltaPosition = Vector3.zero;
-            _pendingAttackDeltaYaw = 0f;
-
-            deltaPosition.y = 0f;
-            if (Mathf.Abs(deltaYaw) > 0.0001f)
-                _context.Root.Rotate(0f, deltaYaw, 0f, Space.World);
-
-            float invDt = dt > 0.0001f ? 1f / dt : 0f;
-            var v = _context.Velocity;
-            v.x = deltaPosition.x * invDt;
-            v.z = deltaPosition.z * invDt;
-            _context.Velocity = v;
-
-            TickVertical(intent, dt);
-            var move = new Vector3(deltaPosition.x, _context.Velocity.y * dt, deltaPosition.z);
-            _context.Controller.Move(move);
-        }
+        // ============ 输入方向 ============
 
         private bool TryGetInputWorldDirection(CharacterIntent intent, out Vector3 inputDir)
         {
@@ -255,20 +249,7 @@ namespace Character.Motor
             if (intent.Move.sqrMagnitude <= 0.0001f)
                 return false;
 
-            //角色自身局部空间
-            // Vector3 rootForward = _context.Root.forward;
-            // Vector3 rootRight = _context.Root.right;
-            // rootForward.y = 0f;
-            // rootRight.y = 0f;
-            //
-            // if (rootForward.sqrMagnitude > 0.0001f)
-            //     rootForward.Normalize();
-            // if (rootRight.sqrMagnitude > 0.0001f)
-            //     rootRight.Normalize();
-            //
-            // inputDir = rootRight * intent.Move.x + rootForward * intent.Move.y;
-
-            //相机空间
+            // 玩家输入使用相机水平基，才能保证背对目标时仍按镜头方向闪避。
             _context.GetCameraBasis(out var camForward, out var camRight);
             inputDir = camRight * intent.Move.x + camForward * intent.Move.y;
             inputDir.y = 0f;
@@ -279,6 +260,8 @@ namespace Character.Motor
             inputDir.Normalize();
             return true;
         }
+
+        // ============ 移动开关与水平移动 ============
 
         public void SetMovementBlocked(bool blocked)
         {
@@ -318,6 +301,9 @@ namespace Character.Motor
             TickFreeHorizontal(intent, dt);
         }
 
+        /// <summary>
+        /// 锁定移动保留角色朝向目标并允许相机系侧移，速度方向与模型前向不再强制一致。
+        /// </summary>
         private void TickLockOnHorizontal(CharacterIntent intent, float dt, Transform target)
         {
             _context.GetCameraBasis(out var camForward, out var camRight);
@@ -356,6 +342,9 @@ namespace Character.Motor
             _context.Velocity = v;
         }
 
+        /// <summary>
+        /// 非锁定模式让角色朝实际移动方向旋转，保持前向 BlendTree 与世界速度语义一致。
+        /// </summary>
         private void TickFreeHorizontal(CharacterIntent intent, float dt)
         {
             _context.GetCameraBasis(out var camForward, out var camRight);
@@ -390,6 +379,8 @@ namespace Character.Motor
             _context.Velocity = v;
         }
 
+        // ============ 垂直移动 ============
+
         private void TickVertical(CharacterIntent intent, float dt)
         {
             var v = _context.Velocity;
@@ -403,6 +394,8 @@ namespace Character.Motor
             v.y += _config.gravity * dt;
             _context.Velocity = v;
         }
+
+        // ============ 状态标志 ============
 
         public void SetSprintActive(bool active) => _isSprintActive = active;
     }

@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 在配置时长内阻断玩家移动和普通输入，退出条件只由权威超时或死亡转换决定。
+    /// </summary>
     public sealed class PostureBrokenState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -34,12 +37,9 @@ namespace Character.StateMachine.States
             _motor.SetMovementBlocked(true);
         }
 
-        public void Exit()
-        {
-            _timer = 0f;
-            _motor.SetMovementBlocked(false);
-        }
-
+        /// <summary>
+        /// 崩防期间仍推进 Motor 的垂直链路但封锁水平移动，结束后再按当前输入选择 Idle 或 Move。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _timer += deltaTime;
@@ -53,6 +53,12 @@ namespace Character.StateMachine.States
                 : CharacterStateId.Idle;
 
             _fsm.TryTransition(target, _registry, TransitionReason.Timeout);
+        }
+
+        public void Exit()
+        {
+            _timer = 0f;
+            _motor.SetMovementBlocked(false);
         }
     }
 }

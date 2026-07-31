@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Character.Presentation
 {
+    /// <summary>
+    /// Idle 与 Guard 共用转身播放缓存，避免状态每帧重复 CrossFade 同一个离散动画而使动画无法推进。
+    /// </summary>
     public sealed class CharacterTurnPresenter
     {
         private readonly CharacterPresentationConfig _config;
@@ -17,6 +20,11 @@ namespace Character.Presentation
             _config = config;
         }
 
+        // ============ Idle 转身 ============
+
+        /// <summary>
+        /// 只在离散阶段或目标 Hash 变化时重播，连续帧仅更新倍速以保留动画归一化时间。
+        /// </summary>
         public bool TickIdleTurn(Animator animator, IdleState.IdlePhase phase, float targetAngle)
         {
             if (animator == null) return false;
@@ -55,6 +63,11 @@ namespace Character.Presentation
             return true;
         }
 
+        // ============ Guard 转身 ============
+
+        /// <summary>
+        /// Guard 转身独占全身战斗层，避免上半身格挡叠加在旋转脚步上产生两套姿势。
+        /// </summary>
         public bool TickGuardTurn(Animator animator, GuardState.GuardPhase phase, float targetAngle)
         {
             if (animator == null) return false;
@@ -90,6 +103,7 @@ namespace Character.Presentation
             return true;
         }
 
+        // ============ 播放缓存 ============
 
         public void Reset()
         {

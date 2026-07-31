@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// 使用归一化区间描述命中窗，使动画替换或播放倍率变化时数据仍可复用。
+    /// </summary>
     [Serializable]
     public struct AttackHitWindow
     {
@@ -23,7 +26,7 @@ namespace Character.Combat
             return IsValid && normalizedTime >= startNormalized && normalizedTime <= endNormalized;
         }
 
-        public static AttackHitWindow Create( HitBoxSlot slot, float start, float end,float multiplier = 1f)
+        public static AttackHitWindow Create(HitBoxSlot slot, float start, float end, float multiplier = 1f)
         {
             return new AttackHitWindow
             {
@@ -35,7 +38,10 @@ namespace Character.Combat
         }
     }
 
-    public enum HitBoxSlot: byte
+    /// <summary>
+    /// 槽位而非 Collider 引用进入攻击数据，使同一攻击定义可以绑定不同角色预制体。
+    /// </summary>
+    public enum HitBoxSlot : byte
     {
         None = 0,
         Katana = 1,

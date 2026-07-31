@@ -6,10 +6,15 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
+/// <summary>
+/// 把 Unity 新导入资产和对应 meta 一起暂存，避免只提交资产或只提交 GUID 映射。
+/// </summary>
 public static class GitAutoAddNewAssets
 {
     private const string MenuPath = "Tools/Git/Auto Add New Assets";
     private const string PrefKey = "SS3CDemo.GitAutoAddNewAssets.Enabled";
+
+    // ============ 编辑器偏好与菜单 ============
 
     private static bool Enabled
     {
@@ -38,6 +43,11 @@ public static class GitAutoAddNewAssets
         return true;
     }
 
+    // ============ 资产收集 ============
+
+    /// <summary>
+    /// 只处理 importedAssets，删除和移动仍交给开发者确认，避免工具隐式扩大 Git 变更范围。
+    /// </summary>
     internal static void HandleImportedAssets(string[] importedAssets)
     {
         if (!Enabled || importedAssets == null || importedAssets.Length == 0)
@@ -69,6 +79,11 @@ public static class GitAutoAddNewAssets
         RunGitAdd(repoRoot, toAdd);
     }
 
+    // ============ Git 调用 ============
+
+    /// <summary>
+    /// 使用参数列表限定到已筛选路径，避免在编辑器回调里暂存整个工作区。
+    /// </summary>
     private static void RunGitAdd(string repoRoot, IEnumerable<string> paths)
     {
         string args = "add --";
@@ -106,6 +121,9 @@ public static class GitAutoAddNewAssets
     }
 }
 
+/// <summary>
+/// 保持 AssetPostprocessor 只做桥接，让 Git 策略能够脱离 Unity 回调单独维护。
+/// </summary>
 public sealed class GitAutoAddAssetPostprocessor : AssetPostprocessor
 {
     private static void OnPostprocessAllAssets(

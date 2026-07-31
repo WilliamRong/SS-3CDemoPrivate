@@ -7,6 +7,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 在待机态仲裁移动与离散转身，避免行为树、Motor 和表现层分别抢写角色朝向。
+    /// </summary>
     public sealed class NpcIdleState : ICharacterState
     {
 
@@ -23,11 +26,10 @@ namespace AI
         private float _turnYawSpeed;
         private Quaternion _turnTargetRotation = Quaternion.identity;
 
-        public IdleState.IdlePhase CurrentPhase { get; private set; } = IdleState.IdlePhase.Normal;
-        public float GetTargetTurnAngle() => _targetTurnAngle;
-
         private const float MinMoveDistSq = 0.0025f; // 0.05f ^2
 
+        public IdleState.IdlePhase CurrentPhase { get; private set; } = IdleState.IdlePhase.Normal;
+        public float GetTargetTurnAngle() => _targetTurnAngle;
         public CharacterStateId Id => CharacterStateId.Idle;
 
         public NpcIdleState(
@@ -44,6 +46,8 @@ namespace AI
             _presentationConfig = presentationConfig;
         }
 
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             CurrentPhase = IdleState.IdlePhase.Normal;
@@ -56,6 +60,9 @@ namespace AI
             _motor?.Stop();
         }
 
+        /// <summary>
+        /// 导航转换优先于自动转身，避免已有世界移动目标时 NPC 仍被原地朝向动画阻塞。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             if (_intentSource == null || _motor == null) return;
@@ -90,6 +97,8 @@ namespace AI
                 _turnTargetRotation = _motor.Root.rotation;
         }
 
+        // ============ 移动判定 ============
+
         private bool ShouldMoveToDestination()
         {
             if (!_intentSource.TryGetMoveDestination(out var dest))
@@ -99,6 +108,8 @@ namespace AI
             delta.y = 0f;
             return delta.sqrMagnitude >= MinMoveDistSq;
         }
+
+        // ============ 锁定转身 ============
 
         private bool ShouldTurnToTarget(out bool turnLeft, out float angleDelta)
         {
@@ -126,6 +137,9 @@ namespace AI
             _motor.Stop();
         }
 
+        /// <summary>
+        /// 角速度和超时双重结束转身，既让逻辑朝向跟随动画，也避免异常配置导致状态无法退出。
+        /// </summary>
         private void TickTurn(float deltaTime)
         {
             _motor.Stop();

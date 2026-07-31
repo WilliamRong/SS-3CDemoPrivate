@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Core
 {
+    /// <summary>
+    /// 把 Cinemachine 组件参数放在共享资产中，避免场景相机与运行时补建组件使用不同默认值。
+    /// </summary>
     [CreateAssetMenu(fileName = "PlayerCameraRigConfig", menuName = "SS3C/Camera/Player Camera Rig Config")]
     public sealed class PlayerCameraRigConfig : ScriptableObject
     {
@@ -41,6 +44,11 @@ namespace Core
         public float maxDollyOut = 10f;
         public float frameDamping = 1.5f;
 
+        // ============ Cinemachine 配置应用 ============
+
+        /// <summary>
+        /// 每次锁定都重放完整参数，避免场景预制值或上一次运行残留影响相机行为。
+        /// </summary>
         public void ApplyToTransposer(CinemachineTransposer transposer)
         {
             transposer.m_BindingMode = CinemachineTransposer.BindingMode.LockToTargetWithWorldUp;
@@ -54,6 +62,9 @@ namespace Core
             transposer.m_RollDamping = 0f;
         }
 
+        /// <summary>
+        /// 目标组构图参数集中由同一配置覆盖，避免场景相机残留值让不同关卡锁定画面不一致。
+        /// </summary>
         public void ApplyToGroupComposer(CinemachineGroupComposer composer)
         {
             composer.m_TrackedObjectOffset = Vector3.zero;

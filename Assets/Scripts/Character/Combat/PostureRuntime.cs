@@ -3,6 +3,9 @@ using UnityEngine;
 
 namespace Character.Combat
 {
+    /// <summary>
+    /// 封装架势钳制、恢复延迟和绝对纠正，使 Player/NPC 共享完全一致的数值规则。
+    /// </summary>
     public sealed class PostureRuntime
     {
         private const float MinimumMax = 0.01f;
@@ -22,6 +25,8 @@ namespace Character.Combat
             RecoveryDelayRemaining = 0f;
         }
 
+        // ============ 配置与权威修改 ============
+
         public bool ConfigureMax(float max)
         {
             float nextMax = SanitizeMax(max);
@@ -37,6 +42,9 @@ namespace Character.Combat
             return changed;
         }
 
+        /// <summary>
+        /// 只有实际增加架势时才刷新恢复延迟，零值或已满时的重复命中不会无期限阻止恢复。
+        /// </summary>
         public float Add(float amount, float recoveryDelay)
         {
             float requested = SanitizeNonNegative(amount);
@@ -55,6 +63,11 @@ namespace Character.Combat
             return applied;
         }
 
+        // ============ 恢复模拟 ============
+
+        /// <summary>
+        /// 先消费延迟再用剩余步长恢复，避免较大 deltaTime 跨过延迟时丢失本帧有效恢复时间。
+        /// </summary>
         public float TickRecovery(
             float deltaTime,
             float healthRatio,
@@ -95,6 +108,8 @@ namespace Character.Combat
             return recovered;
         }
 
+        // ============ 重置与远端纠正 ============
+
         public bool Reset(bool forceNotify = false)
         {
             bool changed = Current != 0f;
@@ -107,6 +122,9 @@ namespace Character.Combat
             return changed;
         }
 
+        /// <summary>
+        /// 绝对快照清除本地恢复延迟，客户端不保留任何可能继续模拟的权威计时状态。
+        /// </summary>
         public bool ApplyAuthoritative(float current, float max)
         {
             float nextMax = SanitizeMax(max);
@@ -125,6 +143,8 @@ namespace Character.Combat
 
             return changed;
         }
+
+        // ============ 通知与输入清洗 ============
 
         private void NotifyChanged()
         {

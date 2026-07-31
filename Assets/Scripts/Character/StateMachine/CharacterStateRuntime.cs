@@ -2,6 +2,9 @@ using Character.Config;
 
 namespace Character.StateMachine
 {
+    /// <summary>
+    /// 独立跟踪状态经过时间和打断窗口，使状态实现与统一转换规则读取同一时间源。
+    /// </summary>
     public class CharacterStateRuntime
     {
         private CharacterCombatConfig _combat;
@@ -12,6 +15,8 @@ namespace Character.StateMachine
         public float PreHitEnd { get; private set; }
         public float ActiveEnd { get; private set; }
         public float RecoveryEnd { get; private set; }
+
+        // ============ 配置与状态进入 ============
 
         public void SetCombatConfig(CharacterCombatConfig combat)
         {
@@ -25,6 +30,8 @@ namespace Character.StateMachine
             SetWindowsForState(stateId);
         }
 
+        // ============ 时间与窗口查询 ============
+
         public void Tick(float dt)
         {
             StateElapsedTime += dt;
@@ -37,6 +44,8 @@ namespace Character.StateMachine
             if (StateElapsedTime < RecoveryEnd) return StateWindowType.RecoveryWindow;
             return StateWindowType.Always;
         }
+
+        // ============ 窗口缓存 ============
 
         private void SetWindowsForState(CharacterStateId stateId)
         {

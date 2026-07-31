@@ -3,8 +3,7 @@ using UnityEngine;
 namespace Character.Presentation
 {
     /// <summary>
-    /// 锁定目标时返回 true，表现层才使用八向 VelocityX/Z。
-    /// 未挂实现或返回 false 时仅前向 Locomotion。
+    /// 表现层只依赖锁定结果而不依赖具体输入组件，使本地角色和远端快照可以复用同一套移动混合逻辑。
     /// </summary>
     public interface ILockOnLocomotionQuery
     {

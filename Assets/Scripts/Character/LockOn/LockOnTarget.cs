@@ -5,6 +5,9 @@ using UnityEngine;
 
 namespace Character.LockOn
 {
+    /// <summary>
+    /// 将角色根节点、网络身份和稳定的胸口瞄准点组合为一个目标契约，隔离不同角色骨骼层级的差异。
+    /// </summary>
     [DisallowMultipleComponent]
     public sealed class LockOnTarget : MonoBehaviour, ILockOnTarget
     {
@@ -34,6 +37,8 @@ namespace Character.LockOn
             }
         }
 
+        // ============ Unity 生命周期 ============
+
         private void Reset()
         {
             EnsureReferences();
@@ -44,6 +49,8 @@ namespace Character.LockOn
             EnsureReferences();
             ResolveLockPoint();
         }
+
+        // ============ 网络身份 ============
 
         public bool TryGetNetworkId(out uint netId)
         {
@@ -59,6 +66,8 @@ namespace Character.LockOn
             return true;
         }
 
+        // ============ 引用维护 ============
+
         private void EnsureReferences()
         {
             if (_referencesResolved) return;
@@ -71,6 +80,11 @@ namespace Character.LockOn
             _referencesResolved = true;
         }
 
+        // ============ 锁定点解析 ============
+
+        /// <summary>
+        /// 运行时锁定点挂在实际胸骨上，使模型缩放和动画都能自然带动瞄准点，同时保留手工配置回退。
+        /// </summary>
         private Transform ResolveLockPoint()
         {
             if (!_useHumanoidChest)
@@ -100,6 +114,9 @@ namespace Character.LockOn
             return _resolvedLockPoint;
         }
 
+        /// <summary>
+        /// Humanoid 骨骼优先，名称递归只作为非标准 Avatar 的兼容路径，减少对具体模型层级的依赖。
+        /// </summary>
         private Transform ResolveChestBone()
         {
             if (_animator == null)
@@ -127,6 +144,9 @@ namespace Character.LockOn
                 ?? FindDeepChild(searchRoot, "Spine");
         }
 
+        /// <summary>
+        /// 非 Humanoid 模型只能依赖名称回退，深度优先返回首个稳定匹配以兼容不同层级的骨架资源。
+        /// </summary>
         private static Transform FindDeepChild(Transform root, string namePart)
         {
             if (root == null) return null;

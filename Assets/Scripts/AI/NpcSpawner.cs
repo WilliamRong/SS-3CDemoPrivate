@@ -6,7 +6,7 @@ using UnityEngine.Serialization;
 namespace AI
 {
     /// <summary>
-    /// Spawns NPC prefabs on the server at configured points, snapping to NavMesh.
+    /// 只由服务器生成并先贴合 NavMesh，避免客户端重复生成或出生点让 Agent 处于无效位置。
     /// </summary>
     public class NpcSpawner : NetworkBehaviour
     {
@@ -16,6 +16,9 @@ namespace AI
         [FormerlySerializedAs("m_AIPrefab")]
         [SerializeField] private GameObject _npcPrefab;
 
+        /// <summary>
+        /// 实例只有在 NavMesh 采样成功后才注册进网络，避免客户端收到一个服务器立即销毁的无效 NPC。
+        /// </summary>
         public override void OnStartServer()
         {
             base.OnStartServer();

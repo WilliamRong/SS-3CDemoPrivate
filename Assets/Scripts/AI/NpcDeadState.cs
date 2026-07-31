@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace AI
 {
+    /// <summary>
+    /// 死亡态不自行退出，复活必须由服务器显式发起，避免计时或 AI 意图意外复活角色。
+    /// </summary>
     public sealed class NpcDeadState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -27,7 +30,7 @@ namespace AI
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
-            // 保持死亡直到 ServerTryRevive / BT 触发 Revive
+            // 有意留空：死亡只接受外部 Revive 转换。
         }
 
         public void Exit()

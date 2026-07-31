@@ -5,6 +5,9 @@ using Character.Motor;
 
 namespace Character.StateMachine.States
 {
+    /// <summary>
+    /// 让连段、重击升级和方向采样共享一个权威计时器，避免每段攻击拆成状态后产生转换缝隙。
+    /// </summary>
     public sealed class AttackState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -33,6 +36,8 @@ namespace Character.StateMachine.States
             _combat = combat;
         }
 
+        // ============ 状态生命周期 ============
+
         public void Enter()
         {
             BeginAttack(_preparedAttackId);
@@ -40,6 +45,9 @@ namespace Character.StateMachine.States
             _motor.SetSprintActive(false);
         }
 
+        /// <summary>
+        /// 在同一计时轴上处理方向采样、重击升级和连段窗口，确保一次攻击每个边沿只跨越一次。
+        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             float previousTimer = _timer;
@@ -91,6 +99,8 @@ namespace Character.StateMachine.States
             _hasSampledDirection = false;
         }
 
+        // ============ 下一次攻击准备 ============
+
         public void PrepareSprintAttack()
         {
             _preparedAttackId = AttackMoveId.Sprint;
@@ -111,6 +121,8 @@ namespace Character.StateMachine.States
             _preparedAttackId = AttackMoveId.Combo1;
         }
 
+        // ============ 攻击段推进 ============
+
         private float CurrentDuration => _combat.GetAttackDuration(_currentAttackId);
 
         private void BeginAttack(AttackMoveId attackId)
@@ -121,6 +133,9 @@ namespace Character.StateMachine.States
             _motor.BeginAttackRootMotion();
         }
 
+        /// <summary>
+        /// 使用前后计时值检测跨越采样点，低帧率下也不会因为跳过精确时刻而漏掉朝向锁定。
+        /// </summary>
         private void TrySampleAttackDirection(CharacterIntent intent, float previousTimer)
         {
             if (_currentAttackId == AttackMoveId.Sprint)
@@ -133,7 +148,7 @@ namespace Character.StateMachine.States
             if (previousTimer <= sampleTime && _timer >= sampleTime)
             {
                 _hasSampledDirection = true;
-                //锁定时不改变方向
+                // 锁定朝向由锁定系统持续维护，攻击采样不能覆盖它。
                 if (_motor.IsLockOnActive) return;
                 _motor.SnapAttackDirection(intent);
             }
