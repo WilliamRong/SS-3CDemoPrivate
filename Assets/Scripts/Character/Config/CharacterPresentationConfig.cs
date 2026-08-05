@@ -74,6 +74,10 @@ namespace Character.Config
         [Header("PostureBroken")]
         public float postureBrokenCrossFadeDuration = 0.08f;
 
+        [Header("Parry")]
+        public float parryCrossFadeDuration = 0.08f;
+        public float parriedCrossFadeDuration = 0.08f;
+
         // ============ 表现时长查询 ============
 
         public float GetHitCrossFadeDuration(bool heavyHit)

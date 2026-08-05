@@ -32,6 +32,8 @@ namespace Character.Controller
         private AttackState _attackState;
         private DodgeState _dodgeState;
         private GuardState _guardState;
+        private ParryState _parryState;
+        private ParriedState _parriedState;
         private PostureBrokenState _postureBrokenState;
         private HitState _hitState;
         private DeadState _deadState;
@@ -110,6 +112,8 @@ namespace Character.Controller
             _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
             _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
             _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat, def.presentation, _lockOnQuery);
+            _parryState = new ParryState(_fsm, _stateRegistry, _motor, def.combat);
+            _parriedState = new ParriedState(_fsm, _stateRegistry, _motor, def.combat);
             _postureBrokenState = new PostureBrokenState(_fsm, _stateRegistry, _motor, def.combat);
             _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
@@ -120,6 +124,8 @@ namespace Character.Controller
             _stateRegistry.Register(_attackState);
             _stateRegistry.Register(_dodgeState);
             _stateRegistry.Register(_guardState);
+            _stateRegistry.Register(_parryState);
+            _stateRegistry.Register(_parriedState);
             _stateRegistry.Register(_postureBrokenState);
             _stateRegistry.Register(_hitState);
             _stateRegistry.Register(_deadState);
@@ -138,8 +144,12 @@ namespace Character.Controller
             bool shouldTickServerPostureBreak =
                 NetworkServer.active &&
                 CurrentStateId == CharacterStateId.PostureBroken;
+            bool shouldTickServerForcedReaction =
+                NetworkServer.active &&
+                (CurrentStateId == CharacterStateId.Parried || CurrentStateId == CharacterStateId.Parry);
 
-            if (!canProcessLocalInput && _forcedGuardTimer <= 0f && !shouldTickServerPostureBreak) return;
+            if (!canProcessLocalInput && _forcedGuardTimer <= 0f &&
+                !shouldTickServerPostureBreak && !shouldTickServerForcedReaction) return;
 
             TickForcedGuardTimer();
 
@@ -152,6 +162,7 @@ namespace Character.Controller
                 intent.IsAttackPressed = _inputHandler.AttackTriggered;
                 intent.IsDodgePressed = _inputHandler.DodgeTriggered;
                 intent.IsGuardHeld = _inputHandler.IsGuardHeld;
+                intent.IsParryPressed = _inputHandler.ParryTriggered;
             }
 
             if (_forcedGuardTimer > 0f)
@@ -161,6 +172,7 @@ namespace Character.Controller
                 intent.IsJumpPressed = false;
                 intent.IsAttackPressed = false;
                 intent.IsDodgePressed = false;
+                intent.IsParryPressed = false;
                 intent.IsGuardHeld = true;
             }
 
@@ -171,6 +183,7 @@ namespace Character.Controller
                 intent.IsJumpPressed = false;
                 intent.IsSprintHeld = false;
                 intent.IsGuardHeld = false;
+                intent.IsParryPressed = false;
             }
 
             if (intent.IsDodgePressed && CanPrepareDodgeFromCurrentState())
@@ -232,6 +245,17 @@ namespace Character.Controller
             _hitState.Configure(duration, isHeavyHit, hitVariant);
 
             return _fsm.TryTransition(CharacterStateId.Hit, _stateRegistry, isHeavyHit ? TransitionReason.HitHeavy : TransitionReason.HitLight);
+        }
+
+        public bool TryEnterParried()
+        {
+            if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null)
+                return false;
+            if (CurrentStateId == CharacterStateId.Parried)
+                return true;
+
+            _forcedGuardTimer = 0f;
+            return _fsm.TryTransition(CharacterStateId.Parried, _stateRegistry, TransitionReason.Parried);
         }
 
         public bool TryEnterDead()
@@ -411,6 +435,8 @@ namespace Character.Controller
         {
             return CurrentStateId is CharacterStateId.Dodge or CharacterStateId.PostureBroken
                 or CharacterStateId.Hit
+                or CharacterStateId.Parry
+                or CharacterStateId.Parried
                 or CharacterStateId.Dead;
         }
 
@@ -449,6 +475,37 @@ namespace Character.Controller
             attackState = null;
             return false;
         }
+
+        public bool TryGetActiveParryState(out ParryState parryState)
+        {
+            if (_fsm?.CurrentState is ParryState active)
+            {
+                parryState = active;
+                return true;
+            }
+
+            parryState = null;
+            return false;
+        }
+
+        public bool TryGetActiveParriedState(out ParriedState parriedState)
+        {
+            if (_fsm?.CurrentState is ParriedState active)
+            {
+                parriedState = active;
+                return true;
+            }
+
+            parriedState = null;
+            return false;
+        }
+
+        public bool IsParryActive =>
+            TryGetActiveParryState(out var parry) &&
+            parry.CurrentPhase == ParryPhase.Active;
+
+        public ParryPhase CurrentParryPhase =>
+            TryGetActiveParryState(out var parry) ? parry.CurrentPhase : ParryPhase.None;
 
         public bool TryGetActiveHitState(out HitState hitState)
         {

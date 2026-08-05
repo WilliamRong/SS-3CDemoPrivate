@@ -28,6 +28,8 @@ namespace Character.StateMachine
         Timeout = 9,
         InputGuard = 10,
         PostureBreak = 11,
+        InputParry = 12,
+        Parried = 13,
     }
 
 

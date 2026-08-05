@@ -13,5 +13,6 @@ namespace Character.Intent
         public bool IsAttackPressed;
         public bool IsDodgePressed;
         public bool IsGuardHeld;
+        public bool IsParryPressed;
     }
 }

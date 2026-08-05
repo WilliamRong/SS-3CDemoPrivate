@@ -3,6 +3,7 @@ using Character.Config;
 using Character.Controller;
 using Character.Presentation;
 using Character.StateMachine;
+using Character.StateMachine.States;
 using Character.LockOn;
 using Character.Combat;
 using Core;
@@ -53,6 +54,7 @@ namespace Character.Sync
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
         private byte _lastSentGuardPhase;
+        private byte _lastSentParryPhase;
         private byte _lastSentIdlePhase;
         private byte _lastSentAttackComboStep;
 
@@ -82,6 +84,7 @@ namespace Character.Sync
                 TryProduceSnapshot(_clock.CurrentTick - (tickCount - 1 - i));
             }
 
+            TryProduceImmediateParryEdgeSnapshot(_clock.CurrentTick);
             TryProduceActionEventOnStateChange(_clock.CurrentTick);
         }
 
@@ -116,11 +119,17 @@ namespace Character.Sync
             byte sprintPhase = ResolveSprintPhase(stateId);
             byte dodgeMode = ResolveDodgeMode(stateId);
             byte guardPhase = ResolveGuardPhase(stateId);
+            byte parryPhase = ResolveParryPhase(stateId);
             byte idlePhase = ResolveIdlePhase(stateId);
             byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
 
             ResolveLockOnSync(out byte lockOnActive, out uint lockTargetNetId, out Vector2 moveInput);
+            if (stateId is CharacterStateId.Parry or CharacterStateId.Parried)
+            {
+                velocityXZ = Vector2.zero;
+                moveInput = Vector2.zero;
+            }
 
             bool postureCorrectionDue = _hasSentAnySnapshot && tick - _lastSentSnapshotTick >= Mathf.Max(1, _postureCorrectionIntervalTicks);
 
@@ -136,7 +145,8 @@ namespace Character.Sync
                     || stateId != _lastSentStateId
                     || sprintPhase != _lastSentSprintPhase
                     || dodgeMode != _lastSentDodgeMode
-                    || guardPhase != _lastSentGuardPhase
+                     || guardPhase != _lastSentGuardPhase
+                     || parryPhase != _lastSentParryPhase
                     || idlePhase != _lastSentIdlePhase
                     || attackComboStep != _lastSentAttackComboStep
                     || lockOnActive != _lastSentLockOnActive
@@ -169,7 +179,8 @@ namespace Character.Sync
                 hasAuthoritativePosture:
                 hasAuthoritativePosture ? (byte)1 : (byte)0,
                 currentPosture: _combatActor != null ? _combatActor.CurrentPosture : 0f,
-                maxPosture: _combatActor != null ? _combatActor.MaxPosture : 0f
+                maxPosture: _combatActor != null ? _combatActor.MaxPosture : 0f,
+                parryPhase: parryPhase
             );
 
             OnSnapshotProduced?.Invoke(snapshot);
@@ -181,6 +192,7 @@ namespace Character.Sync
             _lastSentSprintPhase = sprintPhase;
             _lastSentDodgeMode = dodgeMode;
             _lastSentGuardPhase = guardPhase;
+            _lastSentParryPhase = parryPhase;
             _lastSentIdlePhase = idlePhase;
             _lastSentAttackComboStep = attackComboStep;
             _lastSentLockOnActive = lockOnActive;
@@ -194,6 +206,9 @@ namespace Character.Sync
 
         private Vector2 ResolveSnapshotVelocityXZ(CharacterStateId stateId, Vector2 computedVelocityXZ)
         {
+            if (stateId is CharacterStateId.Parry or CharacterStateId.Parried)
+                return Vector2.zero;
+
             if (stateId != CharacterStateId.Dodge
                 || !_playerController.TryGetDodgePresentationContext(out var ctx))
             {
@@ -274,6 +289,31 @@ namespace Character.Sync
                 : (byte)1;
         }
 
+        private byte ResolveParryPhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Parry || _playerController == null)
+                return 0;
+
+            return _playerController.TryGetActiveParryState(out ParryState parryState)
+                ? (byte)parryState.CurrentPhase
+                : (byte)ParryPhase.None;
+        }
+
+        private void TryProduceImmediateParryEdgeSnapshot(int tick)
+        {
+            CharacterStateId stateId = _playerController.CurrentStateId;
+            byte phase = ResolveParryPhase(stateId);
+            bool enteredOrChangedParry =
+                stateId == CharacterStateId.Parry &&
+                (stateId != _lastSentStateId || phase != _lastSentParryPhase);
+            bool leftParry =
+                _lastSentStateId == CharacterStateId.Parry &&
+                stateId != CharacterStateId.Parry;
+
+            if (enteredOrChangedParry || leftParry)
+                TryProduceSnapshot(tick);
+        }
+
         // ============ 动作事件发布 ============
 
         /// <summary>
@@ -290,6 +330,9 @@ namespace Character.Sync
             }
 
             ActionType actionType = CharacterStateActionMapping.MapStateToActionType(current);
+            if (actionType == ActionType.Parried)
+                return;
+
             if (actionType != ActionType.None)
             {
                 int param = ResolveActionEventParam(current, actionType);

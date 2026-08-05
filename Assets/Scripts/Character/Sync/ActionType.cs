@@ -15,6 +15,8 @@ namespace Character.Sync
         GuardBreak = 7,
         PostureBreak = 8,
         HealthResult = 9,
+        ParryStart = 10,
+        Parried = 11,
     }
 
     /// <summary>
@@ -36,6 +38,8 @@ namespace Character.Sync
                 ActionType.GuardBreak => "GuardBreak",
                 ActionType.PostureBreak => "PostureBreak",
                 ActionType.HealthResult => "HealthResult",
+                ActionType.ParryStart => "ParryStart",
+                ActionType.Parried => "Parried",
                 _ => $"Unknown({(byte)type})"
             };
         }

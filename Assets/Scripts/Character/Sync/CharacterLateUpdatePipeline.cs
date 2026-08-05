@@ -77,6 +77,7 @@ namespace Character.Sync
                 return;
 
             var frame = BuildPresentationFrame();
+            ReleaseGuardPresentationIfNeeded(frame);
 
             if (TryPresentGuardReaction(frame))
             {
@@ -145,6 +146,21 @@ namespace Character.Sync
         {
             _lastPresentationStateId = frame.StateId;
             _lastPresentationStateEnterVersion = frame.StateEnterVersion;
+        }
+
+        /// <summary>
+        /// Guard 离开边沿必须在所有短路路由之前释放层权重，特别是同帧进入 Idle Turn 时。
+        /// </summary>
+        private void ReleaseGuardPresentationIfNeeded(PresentationFrame frame)
+        {
+            if (frame.PreviousStateId != CharacterStateId.Guard
+                || frame.StateId == CharacterStateId.Guard)
+            {
+                return;
+            }
+
+            _combatPresenter.ResetGuardLayers(_animator);
+            _turnPresenter.Reset();
         }
 
         // ============ Idle 转身表现 ============
@@ -337,7 +353,9 @@ namespace Character.Sync
             // 全身受击、死亡和崩防必须覆盖尚未结束的格挡受击计时。
             if (frame.StateId is CharacterStateId.Hit
                 or CharacterStateId.Dead
-                or CharacterStateId.PostureBroken)
+                or CharacterStateId.PostureBroken
+                or CharacterStateId.Parry
+                or CharacterStateId.Parried)
             {
                 return false;
             }
@@ -492,7 +510,9 @@ namespace Character.Sync
                 or CharacterStateId.Dead
                 or CharacterStateId.PostureBroken
                 or CharacterStateId.Attack
-                or CharacterStateId.Dodge;
+                or CharacterStateId.Dodge
+                or CharacterStateId.Parry
+                or CharacterStateId.Parried;
         }
 
         // ============ Presenter 组装 ============
@@ -810,6 +830,12 @@ namespace Character.Sync
             if (stateId == CharacterStateId.PostureBroken)
                 return _remoteActionApplier.LastPostureBreakSeqId;
 
+            if (stateId == CharacterStateId.Parry)
+                return _remoteActionApplier.LastParrySeqId;
+
+            if (stateId == CharacterStateId.Parried)
+                return _remoteActionApplier.LastParriedSeqId;
+
             return 0;
         }
 
@@ -899,7 +925,9 @@ namespace Character.Sync
                     or CharacterStateId.PostureBroken
                     or CharacterStateId.Attack
                     or CharacterStateId.Dodge
-                    or CharacterStateId.Guard;
+                    or CharacterStateId.Guard
+                    or CharacterStateId.Parry
+                    or CharacterStateId.Parried;
             }
         }
     }

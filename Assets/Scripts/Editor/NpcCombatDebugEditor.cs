@@ -25,7 +25,7 @@ namespace SS3C.Editor
             EditorGUILayout.Space(8);
             EditorGUILayout.LabelField("Server Combat Triggers", EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "仅在 Host/Server 上生效。小键盘 1-8 对应下列动作；Client 端观察远端 NPC 表现。",
+                "仅在 Host/Server 上生效。小键盘 1-9 对应下列动作；Client 端观察远端 NPC 表现。",
                 MessageType.Info);
 
             using (new EditorGUILayout.HorizontalScope())
@@ -45,6 +45,7 @@ namespace SS3C.Editor
             using (new EditorGUILayout.HorizontalScope())
             {
                 if (GUILayout.Button("Sprint")) debug.TriggerSprint();
+                if (GUILayout.Button("Parry")) debug.TriggerParry();
                 if (GUILayout.Button("Dead")) debug.TriggerDead();
                 if (GUILayout.Button("Revive")) debug.TriggerRevive();
             }

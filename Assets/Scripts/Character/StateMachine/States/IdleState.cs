@@ -61,6 +61,15 @@ namespace Character.StateMachine.States
         {
             _motor.SetSprintActive(false);
 
+            if (intent.IsParryPressed)
+            {
+                _fsm.TryTransition(
+                    CharacterStateId.Parry,
+                    _registry,
+                    TransitionReason.InputParry);
+                return;
+            }
+
             if (_turnCooldown > 0f) _turnCooldown -= deltaTime;
 
             if (_currentPhase == IdlePhase.TurnLeft || _currentPhase == IdlePhase.TurnRight)

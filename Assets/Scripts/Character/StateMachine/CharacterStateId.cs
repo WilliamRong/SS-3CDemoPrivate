@@ -15,5 +15,7 @@ namespace Character.StateMachine
         Dead = 7,
         Guard = 8,
         PostureBroken = 9,
+        Parry =10,
+        Parried = 11,
     }
 }

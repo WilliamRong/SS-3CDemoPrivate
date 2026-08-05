@@ -24,6 +24,7 @@ namespace Character.Combat
 
         private Collider[] _overlapResults;
         private readonly HashSet<HitKey> _resolvedHits = new();
+        private readonly HashSet<AttackInstanceKey> _cancelledAttackInstances = new();
 
         // ============ Unity 生命周期 ============
 
@@ -42,6 +43,7 @@ namespace Character.Combat
         private void OnDisable()
         {
             _resolvedHits.Clear();
+            _cancelledAttackInstances.Clear();
         }
 
         // ============ 结算权威 ============
@@ -75,11 +77,18 @@ namespace Character.Combat
                 CombatActor attacker = hitBox.Owner;
                 if (attacker == null || !attacker.TryGetCurrentAttack(out var attack)) continue;
 
+                var attackKey = new AttackInstanceKey(
+                    attacker.ActorId,
+                    attack.attackInstanceId);
+                if (_cancelledAttackInstances.Contains(attackKey)) continue;
+
                 AttackDefinition definition = attack.definition;
                 if (definition.hitWindows == null) continue;
 
                 for (int windowIndex = 0; windowIndex < definition.hitWindows.Length; windowIndex++)
                 {
+                    if (_cancelledAttackInstances.Contains(attackKey)) break;
+
                     AttackHitWindow window = definition.hitWindows[windowIndex];
 
                     if (!window.IsValid) continue;
@@ -99,9 +108,14 @@ namespace Character.Combat
         private void ResolveWindow(CombatHitBox hitBox, AttackRuntimeInfo attack, AttackHitWindow window, int windowIndex)
         {
             int count = hitBox.OverlapHurtBoxesNonAlloc(_overlapResults);
+            var attackKey = new AttackInstanceKey(
+                attack.owner.ActorId,
+                attack.attackInstanceId);
 
             for (int i = 0; i < count; i++)
             {
+                if (_cancelledAttackInstances.Contains(attackKey)) return;
+
                 Collider col = _overlapResults[i];
                 if (col == null) continue;
 
@@ -123,6 +137,11 @@ namespace Character.Combat
             CombatActor attacker = attack.owner;
 
             if (attacker == null || target == null) return;
+
+            var attackKey = new AttackInstanceKey(
+                attacker.ActorId,
+                attack.attackInstanceId);
+            if (_cancelledAttackInstances.Contains(attackKey)) return;
 
             if (attacker == target) return;
 
@@ -177,6 +196,12 @@ namespace Character.Combat
                 CombatHitResult result = target.LastHitResult;
                 switch (result.FinalReaction)
                 {
+                    case CombatReactionType.Parry:
+                        _cancelledAttackInstances.Add(attackKey);
+                        attacker.CancelCurrentAttack();
+                        if (attacker.TryEnterParriedReaction())
+                            BroadcastParried(attacker);
+                        break;
                     case CombatReactionType.None:
                         BroadcastHealthResult(target, result);
                         break;
@@ -200,6 +225,25 @@ namespace Character.Combat
         /// <summary>
         /// 没有动画反应的命中仍需同步绝对生命值，否则崩防期受伤会只在服务器生效。
         /// </summary>
+        private void BroadcastParried(CombatActor attacker)
+        {
+            if (!NetworkServer.active)
+                return;
+            if (_transport == null)
+                _transport = FindFirstObjectByType<MirrorSyncTransport>();
+            if (_transport == null)
+                return;
+
+            var evt = new ActionEvent(
+                _nextServerCombatSeqId++,
+                Time.frameCount,
+                attacker.ActorId,
+                ActionType.Parried,
+                param: 0);
+
+            _transport.BroadcastActionFromServer(evt);
+        }
+
         private void BroadcastHealthResult(
             CombatActor target,
             in CombatHitResult result)
@@ -373,6 +417,37 @@ namespace Character.Combat
         /// <summary>
         /// 旧动作协议只有一个整型参数，因此保持位布局稳定以兼容已录制或在途的消息。
         /// </summary>
+        private readonly struct AttackInstanceKey : IEquatable<AttackInstanceKey>
+        {
+            private readonly int _attackerId;
+            private readonly int _attackInstanceId;
+
+            public AttackInstanceKey(int attackerId, int attackInstanceId)
+            {
+                _attackerId = attackerId;
+                _attackInstanceId = attackInstanceId;
+            }
+
+            public bool Equals(AttackInstanceKey other)
+            {
+                return _attackerId == other._attackerId &&
+                       _attackInstanceId == other._attackInstanceId;
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is AttackInstanceKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return (_attackerId * 397) ^ _attackInstanceId;
+                }
+            }
+        }
+
         public static int PackHitParam(float damage, bool isHeavyHit, byte hitVariant = 1)
         {
             int damageInt = (int)(Mathf.Clamp(damage, 0f, 9999f) * 10f);

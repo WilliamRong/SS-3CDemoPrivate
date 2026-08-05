@@ -36,6 +36,7 @@ namespace Character.Sync
         private byte _lastSentSprintPhase;
         private byte _lastSentDodgeMode;
         private byte _lastSentGuardPhase;
+        private byte _lastSentParryPhase;
         private byte _lastSentIdlePhase;
         private byte _lastSentAttackComboStep;
 
@@ -107,6 +108,7 @@ namespace Character.Sync
             byte sprintPhase = ResolveSprintPhase(stateId);
             byte dodgeMode = ResolveDodgeMode(stateId);
             byte guardPhase = ResolveGuardPhase(stateId);
+            byte parryPhase = ResolveParryPhase(stateId);
             byte idlePhase = ResolveIdlePhase(stateId);
             byte attackComboStep = ResolveAttackComboStep(stateId);
             velocityXZ = ResolveSnapshotVelocityXZ(stateId, velocityXZ);
@@ -141,6 +143,7 @@ namespace Character.Sync
                              || sprintPhase != _lastSentSprintPhase
                              || dodgeMode != _lastSentDodgeMode
                              || guardPhase != _lastSentGuardPhase
+                             || parryPhase != _lastSentParryPhase
                              || idlePhase != _lastSentIdlePhase
                              || attackComboStep != _lastSentAttackComboStep
                              || healthRevision != _lastSentHealthRevision
@@ -171,7 +174,8 @@ namespace Character.Sync
                 healthRevision,
                 _combatActor != null ? (byte)1 : (byte)0,
                 currentPosture,
-                maxPosture
+                maxPosture,
+                parryPhase
             );
 
             _transport.BroadcastSnapshotFromServer(snapshot);
@@ -183,6 +187,7 @@ namespace Character.Sync
             _lastSentSprintPhase = sprintPhase;
             _lastSentDodgeMode = dodgeMode;
             _lastSentGuardPhase = guardPhase;
+            _lastSentParryPhase = parryPhase;
             _lastSentIdlePhase = idlePhase;
             _lastSentAttackComboStep = attackComboStep;
             _lastSentHealthRevision = healthRevision;
@@ -240,6 +245,20 @@ namespace Character.Sync
                 return 0;
             return _npcDriver.TryGetActiveGuardState(out var guardState)
                 ? (byte)guardState.CurrentPhase
+                : (byte)0;
+        }
+
+        private byte ResolveParryPhase(CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Parry ||
+                _npcDriver == null)
+            {
+                return 0;
+            }
+
+            return _npcDriver.TryGetActiveParryState(
+                out NpcParryState parryState)
+                ? (byte)parryState.CurrentPhase
                 : (byte)0;
         }
 

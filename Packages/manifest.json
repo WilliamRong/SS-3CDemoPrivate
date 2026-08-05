@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.gamebooom.unity.mcp": "https://github.com/FunplayAI/funplay-unity-mcp.git",
     "com.unity.ai.navigation": "1.1.7",
     "com.unity.cinemachine": "2.10.7",
     "com.unity.collab-proxy": "2.4.4",

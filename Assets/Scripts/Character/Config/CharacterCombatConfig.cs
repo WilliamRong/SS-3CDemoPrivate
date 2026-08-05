@@ -77,6 +77,23 @@ namespace Character.Config
         public float guardHitReactionDuration = 0.28f;
         public float guardBreakReactionDuration = 0.65f;
 
+        [Header("Parry")]
+        [Min(1)] public int parrySampleRate = 60;
+        [Min(0)] public int parryActiveStartFrame = 8;
+        [Min(1)] public int parryActiveEndFrame = 22;
+        [Min(1)] public int parryTotalFrames = 34;
+        [Min(0.01f)] public float parriedDuration = 64f / 60f;
+
+        public float ParryActiveStartTime =>
+         parryActiveStartFrame / (float)parrySampleRate;
+
+        public float ParryActiveEndTime =>
+            parryActiveEndFrame / (float)parrySampleRate;
+
+        public float ParryTotalDuration =>
+            parryTotalFrames / (float)parrySampleRate;
+
+
         [Header("Posture")]
         [Min(0.01f)]
         public float maxPosture = 100f;
@@ -175,6 +192,15 @@ namespace Character.Config
                 postureRecoveryPerSecondAtLowHealth,
                 postureRecoveryPerSecondAtFullHealth);
             postureBreakDuration = Mathf.Max(0.01f, postureBreakDuration);
+
+            parrySampleRate = Mathf.Max(1, parrySampleRate);
+            parryTotalFrames = Mathf.Max(1, parryTotalFrames);
+            parryActiveStartFrame = Mathf.Clamp(parryActiveStartFrame, 0, parryTotalFrames - 1);
+            parryActiveEndFrame = Mathf.Clamp(
+                parryActiveEndFrame,
+                parryActiveStartFrame + 1,
+                parryTotalFrames);
+            parriedDuration = Mathf.Max(0.01f, parriedDuration);
         }
     }
 }

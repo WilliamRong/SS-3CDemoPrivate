@@ -40,6 +40,7 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Hit, CharacterStateId.Hit, StateWindowType.Always, TransitionReason.HitLight, true),
             new CharacterInterruptRule(CharacterStateId.Hit, CharacterStateId.Hit, StateWindowType.Always, TransitionReason.HitHeavy, true),
             new CharacterInterruptRule(CharacterStateId.PostureBroken, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
+
             
             // 死亡永远可抢占
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),

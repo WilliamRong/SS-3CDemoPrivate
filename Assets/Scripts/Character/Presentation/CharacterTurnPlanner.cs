@@ -98,12 +98,15 @@ namespace Character.Presentation
             return Quaternion.Angle(currentRotation, targetRotation) <= GetAngleTolerance(config);
         }
 
-        /// <summary>
-        /// 动画倍速保持固定，实际转身时长由角度缩放，避免同一动画在不同角度下产生突兀速度变化。
-        /// </summary>
         public static float CalculateSpeed(float angleDelta, CharacterPresentationConfig config)
         {
-            return GetSpeedMultiplier(config);
+            if (config == null || config.turnAnimationAngle <= 0.001f)
+                return 1f;
+
+            float normalizedAngle = Mathf.Clamp01(angleDelta / GetAnimationAngle(config));
+            return Mathf.Max(
+                0.01f,
+                Mathf.Lerp(GetSpeedMultiplierMax(config), GetSpeedMultiplierMin(config), normalizedAngle));
         }
 
         // ============ 配置回退 ============
@@ -128,11 +131,7 @@ namespace Character.Presentation
 
         private static float CalculateDuration(float angleDelta, CharacterPresentationConfig config)
         {
-            float baseDuration = GetDuration(config);
-            float animAngle = GetAnimationAngle(config);
-            float speed = GetSpeedMultiplier(config);
-            if (animAngle <= 0.001f) return baseDuration / speed;
-            return Mathf.Max(0.01f, (angleDelta / animAngle) * baseDuration / speed);
+            return Mathf.Max(0.01f, GetDuration(config)) / CalculateSpeed(angleDelta, config);
         }
 
         private static float GetTriggerAngle(CharacterPresentationConfig config) => config != null
@@ -151,9 +150,13 @@ namespace Character.Presentation
             ? Mathf.Max(1f, config.turnAnimationAngle)
             : 90f;
 
-        private static float GetSpeedMultiplier(CharacterPresentationConfig config) => config != null
-            ? Mathf.Max(0.5f, config.turnSpeedMultiplierMax)
-            : 1.5f;
+        private static float GetSpeedMultiplierMax(CharacterPresentationConfig config) => config != null
+            ? Mathf.Max(0.01f, config.turnSpeedMultiplierMax)
+            : 1.3f;
+
+        private static float GetSpeedMultiplierMin(CharacterPresentationConfig config) => config != null
+            ? Mathf.Max(0.01f, config.turnSpeedMultiplierMin)
+            : 1f;
 
         private static float GetDuration(CharacterPresentationConfig config) => config != null
             ? config.idleTurnDuration

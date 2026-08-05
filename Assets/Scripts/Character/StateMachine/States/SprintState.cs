@@ -60,6 +60,10 @@ namespace Character.StateMachine.States
         /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
+            // Sprint -> Parry is intentionally forbidden. Consume the one-frame
+            // pulse here so it cannot survive a same-frame sprint exit.
+            intent.IsParryPressed = false;
+
             _turn180Cooldown = Mathf.Max(0f, _turn180Cooldown - deltaTime);
             TickInputBufferDecay(deltaTime);
 

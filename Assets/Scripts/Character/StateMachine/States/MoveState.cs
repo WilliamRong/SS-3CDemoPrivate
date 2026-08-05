@@ -28,7 +28,16 @@ namespace Character.StateMachine.States
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             _motor.SetSprintActive(false);
-            
+
+            if (intent.IsParryPressed)
+            {
+                _fsm.TryTransition(
+                    CharacterStateId.Parry,
+                    _registry,
+                    TransitionReason.InputParry);
+                return;
+            }
+
             if (intent.IsDodgePressed)
             {
                 _fsm.TryTransition(CharacterStateId.Dodge, _registry, TransitionReason.InputDodge);

@@ -41,6 +41,7 @@ namespace Character.Combat
         GuardBreak = 3,
         PostureBreak = 4,
         Dead = 5,
+        Parry = 6,
     }
 
     /// <summary>
@@ -51,6 +52,7 @@ namespace Character.Combat
         public bool Applied;
         public float AppliedHealthDamage;
         public float AppliedPostureDamage;
+        public bool WasParried;
         public bool WasGuarded;
         public bool WasGuardBreak;
         public bool WasPostureBroken;

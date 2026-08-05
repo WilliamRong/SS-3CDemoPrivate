@@ -70,6 +70,15 @@ namespace Character.StateMachine.States
             intent.IsSprintHeld = false;
             intent.IsJumpPressed = false;
 
+            if (intent.IsParryPressed)
+            {
+                _fsm.TryTransition(
+                    CharacterStateId.Parry,
+                    _registry,
+                    TransitionReason.InputParry);
+                return;
+            }
+
             switch (CurrentPhase)
             {
                 case GuardPhase.Start:
@@ -202,7 +211,10 @@ namespace Character.StateMachine.States
         {
             SetPhase(turnLeft ? GuardPhase.TurnLeft : GuardPhase.TurnRight);
 
-            CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(_motor.Root, turnLeft, angleDelta, _presentationConfig);
+            TryGetFacingAngleToTarget(out _, out _, out Quaternion exactTargetRotation);
+
+            CharacterTurnPlan plan = CharacterTurnPlanner.BuildPlan(
+                _motor.Root, turnLeft, angleDelta, _presentationConfig, exactTargetRotation);
             _targetTurnAngle = plan.StepAngle;
             _turnTargetRotation = plan.TargetRotation;
             _turnDuration = plan.Duration;

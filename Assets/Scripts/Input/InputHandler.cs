@@ -18,6 +18,7 @@ namespace Input
         public bool JumpTriggered { get; private set; }
         public bool AttackTriggered { get; private set; }
         public bool DodgeTriggered { get; private set; }
+        public bool ParryTriggered { get; private set; }
         public bool LockOnTriggered { get; private set; }
         public bool IsGuardHeld { get; private set; }
 
@@ -35,6 +36,7 @@ namespace Input
             _inputActions.Player.Jump.performed += OnJumpPerformed;
             _inputActions.Player.Attack.performed += OnAttackPerformed;
             _inputActions.Player.Dodge.performed += OnDodgePerformed;
+            _inputActions.Player.Parry.performed += OnParryPerformed;
             _inputActions.Player.LockOn.performed += OnLockOnPerformed;
         }
 
@@ -43,6 +45,7 @@ namespace Input
             _inputActions.Player.Jump.performed -= OnJumpPerformed;
             _inputActions.Player.Attack.performed -= OnAttackPerformed;
             _inputActions.Player.Dodge.performed -= OnDodgePerformed;
+            _inputActions.Player.Parry.performed -= OnParryPerformed;
             _inputActions.Player.LockOn.performed -= OnLockOnPerformed;
             _inputActions.Disable();
             // 组件可能在触发帧被禁用，必须清理脉冲，避免重新启用后补消费旧输入。
@@ -96,6 +99,12 @@ namespace Input
             DodgeTriggered = true;
         }
 
+        private void OnParryPerformed(InputAction.CallbackContext obj)
+        {
+            if (!CanProcessLocalInput()) return;
+            ParryTriggered = true;
+        }
+
         private void OnLockOnPerformed(InputAction.CallbackContext obj)
         {
             if (!CanProcessLocalInput()) return;
@@ -109,6 +118,7 @@ namespace Input
             JumpTriggered = false;
             AttackTriggered = false;
             DodgeTriggered = false;
+            ParryTriggered = false;
             LockOnTriggered = false;
         }
 

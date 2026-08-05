@@ -31,6 +31,8 @@ namespace AI
         private NpcAttackState _attack;
         private NpcDodgeState _dodge;
         private NpcGuardState _guard;
+        private NpcParryState _parry;
+        private NpcParriedState _parried;
         private NpcPostureBrokenState _postureBroken;
         private NpcHitState _hit;
         private NpcDeadState _dead;
@@ -76,6 +78,8 @@ namespace AI
             _attack = new NpcAttackState(_fsm, _registry, _motor, combatConfig);
             _dodge = new NpcDodgeState(_fsm, _registry, _motor, combatConfig);
             _guard = new NpcGuardState(_fsm, _registry, _motor, combatConfig, presentationConfig, _intentSource);
+            _parry = new NpcParryState(_fsm, _registry, _motor, combatConfig);
+            _parried = new NpcParriedState(_fsm, _registry, _motor, combatConfig);
             _postureBroken = new NpcPostureBrokenState(_fsm, _registry, _motor, combatConfig);
             _hit = new NpcHitState(_fsm, _registry, _motor, combatConfig);
             _dead = new NpcDeadState(_fsm, _registry, _motor);
@@ -86,6 +90,8 @@ namespace AI
             _registry.Register(_attack);
             _registry.Register(_dodge);
             _registry.Register(_guard);
+            _registry.Register(_parry);
+            _registry.Register(_parried);
             _registry.Register(_postureBroken);
             _registry.Register(_hit);
             _registry.Register(_dead);
@@ -168,6 +174,30 @@ namespace AI
             return false;
         }
 
+        public bool TryGetActiveParryState(out NpcParryState parryState)
+        {
+            if (_fsm?.CurrentState is NpcParryState active)
+            {
+                parryState = active;
+                return true;
+            }
+
+            parryState = null;
+            return false;
+        }
+
+        public bool TryGetActiveParriedState(out NpcParriedState parriedState)
+        {
+            if (_fsm?.CurrentState is NpcParriedState active)
+            {
+                parriedState = active;
+                return true;
+            }
+
+            parriedState = null;
+            return false;
+        }
+
         public bool TryGetActivePostureBrokenState(out NpcPostureBrokenState postureBrokenState)
         {
             if (_fsm?.CurrentState is NpcPostureBrokenState active)
@@ -228,6 +258,50 @@ namespace AI
                 _registry,
                 isHeavy ? TransitionReason.HitHeavy : TransitionReason.HitLight);
         }
+
+        public bool ServerTryEnterParry()
+        {
+            if (!isServer || _fsm == null || _registry == null || _parry == null)
+            {
+                return false;
+            }
+
+            if (CurrentStateId is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move or
+                    CharacterStateId.Guard))
+            {
+                return false;
+            }
+
+            return _fsm.TryTransition(
+                CharacterStateId.Parry,
+                _registry,
+                TransitionReason.InputParry);
+        }
+
+        public bool ServerTryEnterParried()
+        {
+            if (!isServer || _fsm == null || _registry == null || _parried == null ||
+                CurrentStateId != CharacterStateId.Attack)
+            {
+                return false;
+            }
+
+            if (!_fsm.TryTransition(
+                    CharacterStateId.Parried,
+                    _registry,
+                    TransitionReason.Parried))
+            {
+                return false;
+            }
+
+            _combatActor?.CancelCurrentAttack();
+            _motor?.Stop();
+            _motor?.ResetPath();
+            return true;
+        }
+
 
         public bool ServerTryEnterPostureBroken()
         {

@@ -35,6 +35,7 @@ namespace Character.Sync
         public byte HasAuthoritativePosture;
         public float CurrentPosture;
         public float MaxPosture;
+        public byte ParryPhase;
     }
 
     /// <summary>
@@ -190,24 +191,51 @@ namespace Character.Sync
             msg.MaxPosture =
                 actor != null ? actor.MaxPosture : 0f;
 
+            CharacterStateId clientState = (CharacterStateId)msg.StateId;
+            if (clientState != CharacterStateId.Parry ||
+                msg.ParryPhase < (byte)Character.StateMachine.States.ParryPhase.Startup ||
+                msg.ParryPhase > (byte)Character.StateMachine.States.ParryPhase.Recovery)
+            {
+                msg.ParryPhase = 0;
+            }
+
             // 破势由 Server FSM 决定。Client 只能上报普通表现状态，不能提前退出或伪造破势。
             PlayerController playerController = identity.GetComponent<PlayerController>();
             if (playerController != null)
             {
-                CharacterStateId clientState = (CharacterStateId)msg.StateId;
                 CharacterStateId serverState = playerController.CurrentStateId;
 
-                if (serverState == CharacterStateId.PostureBroken ||
-                    clientState == CharacterStateId.PostureBroken)
+                if (serverState is CharacterStateId.PostureBroken or CharacterStateId.Parried)
                 {
                     msg.StateId = (int)serverState;
-
-                    if (serverState == CharacterStateId.PostureBroken)
+                    msg.ParryPhase = 0;
+                    ZeroSnapshotMotion(ref msg);
+                }
+                else if (clientState is CharacterStateId.PostureBroken or CharacterStateId.Parried)
+                {
+                    // These states are server-only and cannot be forged or extended.
+                    msg.StateId = (int)serverState;
+                    msg.ParryPhase = 0;
+                }
+                else if (serverState == CharacterStateId.Parry)
+                {
+                    msg.StateId = (int)CharacterStateId.Parry;
+                    msg.ParryPhase = (byte)(playerController.TryGetActiveParryState(out var serverParry)
+                        ? serverParry.CurrentPhase
+                        : Character.StateMachine.States.ParryPhase.None);
+                    ZeroSnapshotMotion(ref msg);
+                }
+                else if (clientState == CharacterStateId.Parry)
+                {
+                    if (msg.ParryPhase == 0)
                     {
-                        msg.Vx = 0f;
-                        msg.Vz = 0f;
-                        msg.MoveInputX = 0f;
-                        msg.MoveInputY = 0f;
+                        msg.StateId = (int)serverState;
+                    }
+                    else
+                    {
+                        // Remote Player Parry uses the latest ownership-validated
+                        // client phase, matching the existing Guard trust boundary.
+                        ZeroSnapshotMotion(ref msg);
                     }
                 }
             }
@@ -241,10 +269,14 @@ namespace Character.Sync
         /// </summary>
         private static void OnServerAction(NetworkConnectionToClient conn, ActionMsg msg)
         {
+            if (conn?.identity == null || msg.ActorId != unchecked((int)conn.identity.netId))
+                return;
+
             // 权威 HP 结果和破势边沿只能由 Server 战斗结算发布。
             if (msg.HasHealthResult != 0 ||
                 msg.Type == (int)ActionType.PostureBreak ||
-                msg.Type == (int)ActionType.HealthResult)
+                msg.Type == (int)ActionType.HealthResult ||
+                msg.Type == (int)ActionType.Parried)
                 return;
 
             if (_activeInstance != null && _activeInstance._logRelay)
@@ -262,6 +294,14 @@ namespace Character.Sync
                 if (target == null || target == conn) continue;
                 target.Send(msg);
             }
+        }
+
+        private static void ZeroSnapshotMotion(ref SnapshotMsg msg)
+        {
+            msg.Vx = 0f;
+            msg.Vz = 0f;
+            msg.MoveInputX = 0f;
+            msg.MoveInputY = 0f;
         }
 
         // ============ Client 接收 ============
@@ -319,6 +359,7 @@ namespace Character.Sync
                 HasAuthoritativePosture = s.HasAuthoritativePosture,
                 CurrentPosture = s.CurrentPosture,
                 MaxPosture = s.MaxPosture,
+                ParryPhase = s.ParryPhase,
             };
         }
 
@@ -346,7 +387,8 @@ namespace Character.Sync
                 m.HealthRevision,
                 m.HasAuthoritativePosture,
                 m.CurrentPosture,
-                m.MaxPosture
+                m.MaxPosture,
+                m.ParryPhase
             );
         }
 

@@ -44,6 +44,11 @@ MonoBehaviour:
   guardBreakDamageMultiplier: 1
   guardHitReactionDuration: 0.28
   guardBreakReactionDuration: 0.65
+  parrySampleRate: 60
+  parryActiveStartFrame: 8
+  parryActiveEndFrame: 22
+  parryTotalFrames: 34
+  parriedDuration: 1.0666667
   maxPosture: 100
   postureRecoveryDelay: 2
   postureRecoveryPerSecondAtLowHealth: 5

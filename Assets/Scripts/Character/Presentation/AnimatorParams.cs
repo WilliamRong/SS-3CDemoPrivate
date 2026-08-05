@@ -62,6 +62,8 @@ namespace Character.Presentation
         public static readonly int StateGuardHit3 = Animator.StringToHash("GuardHit3");
         public static readonly int StateGuardBreak = Animator.StringToHash("GuardBreak");
         public static readonly int StatePostureBroken = Animator.StringToHash("PostureBroken");
+        public static readonly int StateParry = Animator.StringToHash("Parry");
+        public static readonly int StateParried = Animator.StringToHash("Parried");
         public static readonly int StateGuardTurnLeft = Animator.StringToHash("GuardTurnLeft");
         public static readonly int StateGuardTurnRight = Animator.StringToHash("GuardTurnRight");
 

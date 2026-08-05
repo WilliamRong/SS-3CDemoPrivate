@@ -48,6 +48,7 @@ namespace Character.Sync
         public byte HasAuthoritativePosture;
         public float CurrentPosture;
         public float MaxPosture;
+        public byte ParryPhase;
 
         public StateSnapshot(
             int tick,
@@ -71,7 +72,8 @@ namespace Character.Sync
             uint healthRevision = 0,
             byte hasAuthoritativePosture = 0,
             float currentPosture = 0f,
-            float maxPosture = 0f)
+            float maxPosture = 0f,
+            byte parryPhase = 0)
         {
             Tick = tick;
             ActorId = actorId;
@@ -96,6 +98,7 @@ namespace Character.Sync
             HasAuthoritativePosture = hasAuthoritativePosture;
             CurrentPosture = currentPosture;
             MaxPosture = maxPosture;
+            ParryPhase = parryPhase;
         }
 
         public bool IsLockOnActive => LockOnActive != 0;
@@ -156,6 +159,18 @@ namespace Character.Sync
             return AttackMoveIdExtensions.FromByte(AttackComboStep).ToByte();
         }
 
+        public Character.StateMachine.States.ParryPhase GetParryPhaseOrDefault()
+        {
+            if (StateId != CharacterStateId.Parry ||
+                ParryPhase < (byte)Character.StateMachine.States.ParryPhase.Startup ||
+                ParryPhase > (byte)Character.StateMachine.States.ParryPhase.Recovery)
+            {
+                return Character.StateMachine.States.ParryPhase.None;
+            }
+
+            return (Character.StateMachine.States.ParryPhase)ParryPhase;
+        }
+
         // ============ 值对象变换 ============
 
         public StateSnapshot WithDodgeMode(byte dodgeMode)
@@ -213,7 +228,7 @@ namespace Character.Sync
         public override string ToString()
         {
             return $"[Snapshot] tick={Tick}, actor={ActorId}, state={StateId}, " +
-                   $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, idlePhase={IdlePhase}, attackCombo={AttackComboStep}, " +
+                   $"sprintPhase={SprintPhase}, dodgeMode={DodgeMode}, guardPhase={GuardPhase}, parryPhase={ParryPhase}, idlePhase={IdlePhase}, attackCombo={AttackComboStep}, " +
                    $"lockOn={LockOnActive}, lockTarget={LockTargetNetId}, moveInput=({MoveInputX:F2},{MoveInputY:F2}), " +
                    $"pos=({Position.x:F2},{Position.y:F2},{Position.z:F2}), yaw={Yaw:F1}, velXZ=({VelocityXZ.x:F2},{VelocityXZ.y:F2}), " +
                    $"posture=({CurrentPosture:F1}/{MaxPosture:F1}, authoritative={HasAuthoritativePosture})";

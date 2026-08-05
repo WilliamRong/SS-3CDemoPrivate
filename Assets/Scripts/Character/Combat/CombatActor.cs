@@ -43,6 +43,7 @@ namespace Character.Combat
         private readonly Dictionary<AttackMoveId, AttackDefinition> _fallbackDefinitions = new();
 
         private bool _trackingAttack;
+        private bool _suppressCurrentAttackUntilStateExit;
         private AttackMoveId _trackedAttackId;
         private float _trackedAttackElapsed;
         private int _trackedAttackInstanceId;
@@ -285,6 +286,19 @@ namespace Character.Combat
                 return false;
             }
 
+            if (GetCurrentParryPhase() == ParryPhase.Active)
+            {
+                LastHitResult = new CombatHitResult
+                {
+                    Applied = true,
+                    AppliedHealthDamage = 0f,
+                    AppliedPostureDamage = 0f,
+                    WasParried = true,
+                    FinalReaction = CombatReactionType.Parry
+                };
+                return true;
+            }
+
             InitializePosture(forceNotify: false);
 
             bool wasPostureBroken = IsPostureBroken();
@@ -444,6 +458,13 @@ namespace Character.Combat
             if (!TryReadActiveAttackId(out AttackMoveId attackId))
             {
                 StopTrackingAttack();
+                _suppressCurrentAttackUntilStateExit = false;
+                return;
+            }
+
+            if (_suppressCurrentAttackUntilStateExit)
+            {
+                StopTrackingAttack();
                 return;
             }
 
@@ -477,6 +498,23 @@ namespace Character.Combat
             _trackedAttackId = AttackMoveId.None;
             _trackedAttackElapsed = 0f;
             _trackedAttackDefinition = null;
+        }
+
+        public void CancelCurrentAttack()
+        {
+            _suppressCurrentAttackUntilStateExit = true;
+            StopTrackingAttack();
+        }
+
+        public bool TryEnterParriedReaction()
+        {
+            if (_playerController != null)
+                return _playerController.TryEnterParried();
+
+            if (_npcDriver == null)
+                return false;
+
+            return _npcDriver.ServerTryEnterParried();
         }
 
         /// <summary>
@@ -711,6 +749,37 @@ namespace Character.Combat
             return !NetworkClient.active;
         }
 
+        public ParryPhase GetCurrentParryPhase()
+        {
+            if (_npcDriver != null)
+            {
+                return _npcDriver.TryGetActiveParryState(out NpcParryState npcParry)
+                    ? npcParry.CurrentPhase
+                    : ParryPhase.None;
+            }
+
+            bool isRemotePlayerOnServer =
+                _playerController != null &&
+                NetworkServer.active &&
+                _networkIdentity != null &&
+                !_networkIdentity.isLocalPlayer;
+
+            if (_playerController != null && !isRemotePlayerOnServer)
+            {
+                return _playerController.TryGetActiveParryState(out ParryState playerParry)
+                    ? playerParry.CurrentPhase
+                    : ParryPhase.None;
+            }
+
+            if (_remoteInterpolator != null)
+            {
+                StateSnapshot snapshot = _remoteInterpolator.LastAppliedSnapshot;
+                if (snapshot.Tick > 0 && snapshot.StateId == CharacterStateId.Parry)
+                    return snapshot.GetParryPhaseOrDefault();
+            }
+
+            return ParryPhase.None;
+        }
 
         private bool IsPostureBroken()
         {

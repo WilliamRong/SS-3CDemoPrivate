@@ -41,6 +41,7 @@ namespace AI
             if (UnityEngine.Input.GetKeyDown(KeyCode.Keypad6)) TriggerDead();
             if (UnityEngine.Input.GetKeyDown(KeyCode.Keypad7)) TriggerSprint();
             if (UnityEngine.Input.GetKeyDown(KeyCode.Keypad8)) TriggerRevive();
+            if (UnityEngine.Input.GetKeyDown(KeyCode.Keypad9)) TriggerParry();
         }
 
         // ============ 调试命令 ============
@@ -106,6 +107,13 @@ namespace AI
         {
             if (!IsServerAuthority()) return;
             _driver.ServerTryRevive();
+        }
+
+        [ContextMenu("Combat/Parry")]
+        public void TriggerParry()
+        {
+            if (!IsServerAuthority()) return;
+            _driver.ServerTryEnterParry();
         }
 
         // ============ 权威检查 ============

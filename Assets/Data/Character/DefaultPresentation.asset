@@ -29,11 +29,13 @@ MonoBehaviour:
   turnTriggerAngle: 20
   turnStepAngle: 180
   turnAnimationAngle: 90
-  turnSpeedMultiplierMax: 1.3
-  turnSpeedMultiplierMin: 1
+  turnSpeedMultiplierMax: 2.6
+  turnSpeedMultiplierMin: 2
   turnCooldown: 0.2
   turnAngleTolerance: 3
   idleTurnDuration: 0.5
   logIdleTurnPresentation: 0
   attackCrossFadeDuration: 0.1
   postureBrokenCrossFadeDuration: 0.08
+  parryCrossFadeDuration: 0.08
+  parriedCrossFadeDuration: 0.08

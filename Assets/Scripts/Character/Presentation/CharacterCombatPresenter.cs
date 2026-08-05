@@ -46,6 +46,15 @@ namespace Character.Presentation
 
             switch (stateId)
             {
+                case CharacterStateId.Parried:
+                    ResetActiveCombatLayers(animator);
+                    PlayReaction(
+                        animator,
+                        AnimatorParams.StateParried,
+                        _config.parriedCrossFadeDuration,
+                        forceRestart);
+                    _lastCombatState = stateId;
+                    return true;
                 case CharacterStateId.PostureBroken:
                     ResetActiveCombatLayers(animator);
                     PlayReaction(
@@ -63,6 +72,12 @@ namespace Character.Presentation
                 case CharacterStateId.Dead:
                     ResetActiveCombatLayers(animator);
                     PlayReaction(animator, AnimatorParams.StateDeath, _config.GetDeathCrossFadeDuration(), forceRestart);
+                    _lastCombatState = stateId;
+                    return true;
+                case CharacterStateId.Parry:
+                    ResetReactionLayers(animator);
+                    ResetGuardLayers(animator);
+                    TickParry(animator);
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Dodge:
@@ -90,7 +105,7 @@ namespace Character.Presentation
         {
             if (animator == null) return;
             animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 0f);
-            if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead or CharacterStateId.PostureBroken)
+            if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead or CharacterStateId.PostureBroken or CharacterStateId.Parried)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;
@@ -104,7 +119,7 @@ namespace Character.Presentation
             animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
             _lastDodgeMode = DodgeMode.None;
             ResetGuardCache();
-            if (_lastCombatState is CharacterStateId.Dodge or CharacterStateId.Guard or CharacterStateId.Attack)
+            if (_lastCombatState is CharacterStateId.Dodge or CharacterStateId.Guard or CharacterStateId.Attack or CharacterStateId.Parry)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;
@@ -181,6 +196,25 @@ namespace Character.Presentation
         }
 
         // ============ 攻击表现 ============
+
+        private void TickParry(Animator animator)
+        {
+            animator.SetLayerWeight(AnimatorParams.UpperBodyLayerIndex, 0f);
+            animator.SetLayerWeight(AnimatorParams.CombatLayerIndex, 1f);
+
+            if (_lastCombatState == CharacterStateId.Parry &&
+                _lastHash == AnimatorParams.StateParry)
+            {
+                return;
+            }
+
+            _lastHash = AnimatorParams.StateParry;
+            animator.CrossFade(
+                AnimatorParams.StateParry,
+                _config.parryCrossFadeDuration,
+                AnimatorParams.CombatLayerIndex,
+                0f);
+        }
 
         private void TickAttack(Animator animator, byte comboStep)
         {

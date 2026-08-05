@@ -27,6 +27,8 @@ namespace Character.Sync
         public int LastHitParam { get; private set; }
         public int LastHitSeqId { get; private set; }
         public int LastPostureBreakSeqId { get; private set; }
+        public int LastParrySeqId { get; private set; }
+        public int LastParriedSeqId { get; private set; }
         public GuardReactionType LastGuardReaction { get; private set; } = GuardReactionType.None;
         public int LastGuardReactionSeqId { get; private set; }
 
@@ -34,6 +36,10 @@ namespace Character.Sync
         private int _lastServerCombatSeqId;
         private bool _postureBreakAwaitingSnapshot;
         private bool _postureBreakSnapshotObserved;
+        private bool _parryAwaitingSnapshot;
+        private bool _parrySnapshotObserved;
+        private bool _parriedAwaitingSnapshot;
+        private bool _parriedSnapshotObserved;
 
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
@@ -65,6 +71,12 @@ namespace Character.Sync
             bool isServerCombatResult =
                 evt.SeqId >= ServerCombatSeqBase &&
                 evt.HasHealthResult != 0;
+
+            if (evt.SeqId >= ServerCombatSeqBase && evt.Type == ActionType.Parried)
+            {
+                ApplyServerParried(evt);
+                return;
+            }
 
             if (isServerCombatResult)
             {
@@ -107,13 +119,25 @@ namespace Character.Sync
                     CurrentRemoteAction = ActionType.PostureBreak;
                     RegisterPostureBreakEdge(evt.SeqId);
                     break;
+                case ActionType.ParryStart:
+                    CurrentRemoteAction = ActionType.ParryStart;
+                    RegisterParryEdge(evt.SeqId);
+                    break;
+                case ActionType.Parried:
+                    CurrentRemoteAction = ActionType.Parried;
+                    RegisterParriedEdge(evt.SeqId);
+                    break;
                 case ActionType.Dead:
                     CurrentRemoteAction = ActionType.Dead;
                     ClearPostureBreakTracking();
+                    ClearParryTracking();
+                    ClearParriedTracking();
                     break;
                 case ActionType.Revive:
                     CurrentRemoteAction = ActionType.Revive;
                     ClearPostureBreakTracking();
+                    ClearParryTracking();
+                    ClearParriedTracking();
                     break;
                 default:
                     CurrentRemoteAction = ActionType.None;
@@ -222,13 +246,52 @@ namespace Character.Sync
         /// <summary>
         /// 崩防动作可能先于快照到达，在观察到对应快照前锁存状态，避免中间普通快照让动画提前退出。
         /// </summary>
+        private void ApplyServerParried(ActionEvent evt)
+        {
+            if (evt.SeqId <= _lastServerCombatSeqId)
+                return;
+
+            _lastServerCombatSeqId = evt.SeqId;
+            LastAppliedTick = evt.Tick;
+            CurrentRemoteAction = ActionType.Parried;
+            RegisterParriedEdge(evt.SeqId);
+
+            // The server event is authoritative for an owned Player as well.  Enter
+            // the local FSM immediately so stale Attack input/snapshots cannot win.
+            _combatActor?.CancelCurrentAttack();
+
+            if (_playerController != null &&
+                _networkIdentity != null &&
+                _networkIdentity.isLocalPlayer &&
+                _playerController.CurrentStateId != CharacterStateId.Parried)
+            {
+                _playerController.TryEnterParried();
+            }
+        }
+
         public CharacterStateId ResolveSnapshotState(CharacterStateId snapshotState)
         {
             if (snapshotState == CharacterStateId.Dead)
             {
                 ClearPostureBreakTracking();
+                ClearParryTracking();
+                ClearParriedTracking();
                 return CharacterStateId.Dead;
             }
+
+            if (snapshotState == CharacterStateId.Parried)
+            {
+                ClearParryTracking();
+                _parriedAwaitingSnapshot = false;
+                _parriedSnapshotObserved = true;
+                return CharacterStateId.Parried;
+            }
+
+            if (_parriedAwaitingSnapshot && !_parriedSnapshotObserved)
+                return CharacterStateId.Parried;
+
+            if (_parriedSnapshotObserved)
+                ClearParriedTracking();
 
             if (snapshotState == CharacterStateId.PostureBroken)
             {
@@ -242,6 +305,19 @@ namespace Character.Sync
 
             if (_postureBreakSnapshotObserved)
                 ClearPostureBreakTracking();
+
+            if (snapshotState == CharacterStateId.Parry)
+            {
+                _parryAwaitingSnapshot = false;
+                _parrySnapshotObserved = true;
+                return CharacterStateId.Parry;
+            }
+
+            if (_parryAwaitingSnapshot && !_parrySnapshotObserved)
+                return CharacterStateId.Parry;
+
+            if (_parrySnapshotObserved)
+                ClearParryTracking();
 
             return snapshotState;
         }
@@ -297,12 +373,18 @@ namespace Character.Sync
             LastHitParam = 0;
             LastHitSeqId = 0;
             LastPostureBreakSeqId = 0;
+            LastParrySeqId = 0;
+            LastParriedSeqId = 0;
             LastGuardReaction = GuardReactionType.None;
             LastGuardReactionSeqId = 0;
             _consumedGuardReactionSeqId = 0;
             _lastServerCombatSeqId = 0;
             _postureBreakAwaitingSnapshot = false;
             _postureBreakSnapshotObserved = false;
+            _parryAwaitingSnapshot = false;
+            _parrySnapshotObserved = false;
+            _parriedAwaitingSnapshot = false;
+            _parriedSnapshotObserved = false;
         }
 
         private void RegisterPostureBreakEdge(int seqId)
@@ -320,6 +402,38 @@ namespace Character.Sync
         {
             _postureBreakAwaitingSnapshot = false;
             _postureBreakSnapshotObserved = false;
+        }
+
+        private void RegisterParryEdge(int seqId)
+        {
+            if (seqId <= LastParrySeqId)
+                return;
+
+            LastParrySeqId = seqId;
+            _parryAwaitingSnapshot = true;
+            _parrySnapshotObserved = false;
+        }
+
+        private void ClearParryTracking()
+        {
+            _parryAwaitingSnapshot = false;
+            _parrySnapshotObserved = false;
+        }
+
+        private void RegisterParriedEdge(int seqId)
+        {
+            if (seqId <= LastParriedSeqId)
+                return;
+
+            LastParriedSeqId = seqId;
+            _parriedAwaitingSnapshot = true;
+            _parriedSnapshotObserved = false;
+        }
+
+        private void ClearParriedTracking()
+        {
+            _parriedAwaitingSnapshot = false;
+            _parriedSnapshotObserved = false;
         }
 
         private static GuardReactionType ToGuardReaction(int param)
