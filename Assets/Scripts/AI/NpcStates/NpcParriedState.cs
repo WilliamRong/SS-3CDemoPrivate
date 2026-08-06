@@ -1,9 +1,10 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
 
     public sealed class NpcParriedState : ICharacterState

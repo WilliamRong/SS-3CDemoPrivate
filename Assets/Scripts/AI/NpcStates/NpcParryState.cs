@@ -1,9 +1,10 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.StateMachine;
 using Character.StateMachine.States;
 
-namespace AI
+namespace AI.NpcStates
 {
     public sealed class NpcParryState : ICharacterState
     {
@@ -46,7 +47,7 @@ namespace AI
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
-            // NPC Parry 期间忽略全部 AI 意图。
+            // NPC Parry 期间忽略全部 AI 意图�?
             _motor?.Stop();
             _elapsed += deltaTime;
 

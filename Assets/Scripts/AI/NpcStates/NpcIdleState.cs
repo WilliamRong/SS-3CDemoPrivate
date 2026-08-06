@@ -1,15 +1,15 @@
 using Character.Intent;
+using AI;
 using Character.Config;
 using Character.Presentation;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 在待机态仲裁移动与离散转身，避免行为树、Motor 和表现层分别抢写角色朝向。
-    /// </summary>
+    /// 在待机态仲裁移动与离散转身，避免行为树、Motor 和表现层分别抢写角色朝向�?    /// </summary>
     public sealed class NpcIdleState : ICharacterState
     {
 
@@ -46,7 +46,7 @@ namespace AI
             _presentationConfig = presentationConfig;
         }
 
-        // ============ 状态生命周期 ============
+        // ============ 状态生命周�?============
 
         public void Enter()
         {
@@ -61,8 +61,7 @@ namespace AI
         }
 
         /// <summary>
-        /// 导航转换优先于自动转身，避免已有世界移动目标时 NPC 仍被原地朝向动画阻塞。
-        /// </summary>
+        /// 导航转换优先于自动转身，避免已有世界移动目标�?NPC 仍被原地朝向动画阻塞�?        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             if (_intentSource == null || _motor == null) return;
@@ -138,8 +137,7 @@ namespace AI
         }
 
         /// <summary>
-        /// 角速度和超时双重结束转身，既让逻辑朝向跟随动画，也避免异常配置导致状态无法退出。
-        /// </summary>
+        /// 角速度和超时双重结束转身，既让逻辑朝向跟随动画，也避免异常配置导致状态无法退出�?        /// </summary>
         private void TickTurn(float deltaTime)
         {
             _motor.Stop();

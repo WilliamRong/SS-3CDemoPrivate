@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AI;
+using AI.NpcStates;
 using Character.Config;
 using Character.Controller;
 using Character.StateMachine;

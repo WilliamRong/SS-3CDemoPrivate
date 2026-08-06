@@ -1,13 +1,13 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 破势期间只允许权威超时或死亡打断，阻断 AI 移动意图对硬直状态的干扰。
-    /// </summary>
+    /// 破势期间只允许权威超时或死亡打断，阻�?AI 移动意图对硬直状态的干扰�?    /// </summary>
     public sealed class NpcPostureBrokenState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;

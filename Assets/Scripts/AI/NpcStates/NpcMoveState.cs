@@ -1,12 +1,12 @@
 using Character.Intent;
+using AI;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 让移动状态只桥接世界目标与 NavMesh，抵达判定统一由 NpcMotor 提供。
-    /// </summary>
+    /// 让移动状态只桥接世界目标�?NavMesh，抵达判定统一�?NpcMotor 提供�?    /// </summary>
     public sealed class NpcMoveState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;

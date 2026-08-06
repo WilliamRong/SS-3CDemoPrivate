@@ -1,13 +1,13 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 将受击强度和动画变体在进入前固化，避免一次受击过程中被后续网络值改写。
-    /// </summary>
+    /// 将受击强度和动画变体在进入前固化，避免一次受击过程中被后续网络值改写�?    /// </summary>
     public sealed class NpcHitState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -45,7 +45,7 @@ namespace AI
             _duration = isHeavy ? _combatConfig.heavyHitDuration : _combatConfig.lightHitDuration;
         }
 
-        // ============ 状态生命周期 ============
+        // ============ 状态生命周�?============
 
         public void Enter()
         {

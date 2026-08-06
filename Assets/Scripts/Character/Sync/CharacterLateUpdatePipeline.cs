@@ -1,4 +1,5 @@
 using AI;
+using AI.NpcStates;
 using Character.Combat;
 using Character.Config;
 using Character.Controller;

@@ -1,12 +1,12 @@
-using Character.Intent;
+﻿using Character.Intent;
+using AI;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 死亡态不自行退出，复活必须由服务器显式发起，避免计时或 AI 意图意外复活角色。
-    /// </summary>
+    /// 姝讳骸鎬佷笉鑷閫€鍑猴紝澶嶆椿蹇呴』鐢辨湇鍔″櫒鏄惧紡鍙戣捣锛岄伩鍏嶈鏃舵垨 AI 鎰忓浘鎰忓澶嶆椿瑙掕壊銆?    /// </summary>
     public sealed class NpcDeadState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -30,7 +30,7 @@ namespace AI
 
         public void Tick(CharacterIntent intent, float deltaTime)
         {
-            // 有意留空：死亡只接受外部 Revive 转换。
+            // Dead only accepts an external revive transition.
         }
 
         public void Exit()

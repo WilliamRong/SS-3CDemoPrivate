@@ -1,14 +1,14 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 用显式阶段同步 NPC 冲刺表现，使远端不必从速度反推 Start/Loop/Brake。
-    /// </summary>
+    /// 用显式阶段同�?NPC 冲刺表现，使远端不必从速度反推 Start/Loop/Brake�?    /// </summary>
     public sealed class NpcSprintState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -37,7 +37,7 @@ namespace AI
 
         public void Prepare(float holdDuration = 1.5f) => _sprintHoldDuration = Mathf.Max(0.2f, holdDuration);
 
-        // ============ 状态生命周期 ============
+        // ============ 状态生命周�?============
 
         public void Enter()
         {
@@ -45,8 +45,7 @@ namespace AI
         }
         
         /// <summary>
-        /// NPC 冲刺沿用 Player 的阶段枚举，使同一套网络快照和 Presenter 无需区分控制来源。
-        /// </summary>
+        /// NPC 冲刺沿用 Player 的阶段枚举，使同一套网络快照和 Presenter 无需区分控制来源�?        /// </summary>
         public void Tick(CharacterIntent intent, float deltaTime)
         {
             switch (CurrentPhase)
@@ -73,7 +72,7 @@ namespace AI
         private void TickStart(float deltaTime)
         {
             _phaseTimer += deltaTime;
-            if (_phaseTimer >= 0.75f) // 对齐 SprintPhaseConfig.startDuration 默认值
+            if (_phaseTimer >= 0.75f) // 对齐 SprintPhaseConfig.startDuration 默认�?
                 SetPhase(SprintState.SprintPhase.Loop);
         }
         

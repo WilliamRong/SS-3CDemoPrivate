@@ -1,11 +1,14 @@
+using Character.StateMachine;
+using Mirror;
 using Opsive.BehaviorDesigner.Runtime.Tasks;
 using Opsive.BehaviorDesigner.Runtime.Tasks.Actions;
 using Opsive.Shared.Utility;
+using UnityEngine;
 
 namespace AI
 {
     [Category("NPC")]
-    public sealed class BD_Parry : Action
+    public sealed class BD_AlwaysParry : Action
     {
         private NpcCharacterDriver _driver;
 
@@ -17,9 +20,13 @@ namespace AI
 
         public override TaskStatus OnUpdate()
         {
-            return _driver != null && _driver.ServerTryEnterParry()
-                ? TaskStatus.Success
-                : TaskStatus.Failure;
+            if (_driver == null || !NetworkServer.active || !_driver.isServer)
+                return TaskStatus.Failure;
+
+            if (_driver.CurrentStateId != CharacterStateId.Parry)
+                _driver.ServerTryEnterParry();
+
+            return TaskStatus.Running;
         }
     }
 }

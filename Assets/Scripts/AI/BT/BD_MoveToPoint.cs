@@ -1,24 +1,24 @@
-using Opsive.BehaviorDesigner.Runtime.Tasks;
+﻿using Opsive.BehaviorDesigner.Runtime.Tasks;
+using AI;
 using Opsive.BehaviorDesigner.Runtime.Tasks.Actions;
 using Opsive.GraphDesigner.Runtime.Variables;
 using Opsive.Shared.Utility;
 using UnityEngine;
 
-namespace AI
+namespace AI.BT
 {
     /// <summary>
-    /// 让行为树只决定移动是否完成，具体寻路目标和 NavMesh 控制继续由 Motor/黑板持有。
-    /// </summary>
+    /// 璁╄涓烘爲鍙喅瀹氱Щ鍔ㄦ槸鍚﹀畬鎴愶紝鍏蜂綋瀵昏矾鐩爣鍜?NavMesh 鎺у埗缁х画鐢?Motor/榛戞澘鎸佹湁銆?    /// </summary>
     [Category("NPC")]
     public class BD_MoveToPoint : Action
     {
-        [Tooltip("世界空间目标点")]
+        [Tooltip("World-space destination point.")]
         [UnityEngine.Serialization.FormerlySerializedAs("m_Destination")]
         [SerializeField] protected SharedVariable<Vector3> _destination;
 
         private NpcMotor _motor;
 
-        // ============ 行为树生命周期 ============
+        // ============ 琛屼负鏍戠敓鍛藉懆鏈?============
 
         public override void OnAwake()
         {

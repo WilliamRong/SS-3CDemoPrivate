@@ -1,14 +1,14 @@
 using Character.Config;
+using AI;
 using Character.Combat;
 using Character.Intent;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 由服务器计时结束 NPC 攻击，避免 Animator 播放长度成为权威状态退出条件。
-    /// </summary>
+    /// 由服务器计时结束 NPC 攻击，避�?Animator 播放长度成为权威状态退出条件�?    /// </summary>
     public sealed class NpcAttackState : ICharacterState
     {
         private readonly CharacterStateMachine _fsm;
@@ -36,14 +36,24 @@ namespace AI
         public void Prepare(byte comboStep) => _attackId = AttackMoveIdExtensions.FromByte(comboStep);
 
         public void Prepare(AttackMoveId attackId) => _attackId = attackId.ClampOrDefault();
+
+        public bool TryAdvanceCombo()
+        {
+            if (!_attackId.CanAdvanceCombo()) return false;
+
+            float duration = _combatConfig.GetAttackDuration(_attackId);
+            if (_timer < duration * _combatConfig.attackComboCancelStartRatio) return false;
+
+            BeginAttack(_attackId.NextCombo());
+            return true;
+        }
         
         
-        // ============ 状态生命周期 ============
+        // ============ 状态生命周�?============
 
         public void Enter()
         {
-            _timer = 0f;
-            _motor?.Stop();
+            BeginAttack(_attackId);
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
@@ -58,6 +68,13 @@ namespace AI
         {
             _timer = 0f;
             _attackId = AttackMoveId.Combo1;
+        }
+
+        private void BeginAttack(AttackMoveId attackId)
+        {
+            _attackId = attackId.ClampOrDefault();
+            _timer = 0f;
+            _motor?.Stop();
         }
     }
 }

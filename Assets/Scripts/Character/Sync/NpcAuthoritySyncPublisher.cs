@@ -1,4 +1,5 @@
 using AI;
+using AI.NpcStates;
 using Character.Config;
 using Character.Presentation;
 using Character.StateMachine;

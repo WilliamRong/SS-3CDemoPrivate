@@ -4,6 +4,7 @@ using Character.Controller;
 using Character.Intent;
 using Character.Presentation;
 using Character.StateMachine;
+using AI.NpcStates;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -230,6 +231,17 @@ namespace AI
         {
             if (!isServer || _attack == null) return false;
             _attack.Prepare(attackId);
+            return _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
+        }
+
+        public bool ServerRequestComboAttack()
+        {
+            if (!isServer || _fsm == null || _registry == null || _attack == null) return false;
+
+            if (CurrentStateId == CharacterStateId.Attack)
+                return _attack.TryAdvanceCombo();
+
+            _attack.Prepare(AttackMoveId.Combo1);
             return _fsm.TryTransition(CharacterStateId.Attack, _registry, TransitionReason.InputAttack);
         }
 

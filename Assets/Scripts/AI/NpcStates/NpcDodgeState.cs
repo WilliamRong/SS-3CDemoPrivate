@@ -1,14 +1,14 @@
 using Character.Config;
+using AI;
 using Character.Intent;
 using Character.Presentation;
 using Character.StateMachine;
 using UnityEngine;
 
-namespace AI
+namespace AI.NpcStates
 {
     /// <summary>
-    /// 在进入状态前冻结闪避表现上下文，使服务器计时和远端动画读取同一组方向与时长。
-    /// </summary>
+    /// 在进入状态前冻结闪避表现上下文，使服务器计时和远端动画读取同一组方向与时长�?    /// </summary>
     public sealed class NpcDodgeState : ICharacterState
     {
 
@@ -49,7 +49,7 @@ namespace AI
             _duration = duration;
         }
 
-        // ============ 状态生命周期 ============
+        // ============ 状态生命周�?============
 
         public void Enter()
         {
