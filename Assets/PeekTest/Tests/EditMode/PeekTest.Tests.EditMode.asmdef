@@ -1,0 +1,21 @@
+{
+  "name": "PeekTest.Tests.EditMode",
+  "rootNamespace": "PeekTest.Tests",
+  "references": [
+    "PeekTest.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}
