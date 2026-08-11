@@ -78,6 +78,28 @@ namespace Character.Config
         public float parryCrossFadeDuration = 0.08f;
         public float parriedCrossFadeDuration = 0.08f;
 
+        [Header("Execution Animator")]
+        [Min(0f)]
+        public float executingCrossFadeDuration = 0.08f;
+
+        [Min(0f)]
+        public float executedCrossFadeDuration = 0.08f;
+
+        [Min(0f)]
+        public float executedDeathCrossFadeDuration = 0.08f;
+
+        [Tooltip("Source rig_Execute clip duration used for playback calibration.")]
+        [Min(0.01f)]
+        public float executeClipDuration = 2.7f;
+
+        [Tooltip("Source rig_Executed clip duration used for playback calibration.")]
+        [Min(0.01f)]
+        public float executedClipDuration = 3.516667f;
+
+        [Tooltip("Source rig_Executed_Death clip duration used for playback calibration.")]
+        [Min(0.01f)]
+        public float executedDeathClipDuration = 2.5333335f;
+
         // ============ 表现时长查询 ============
 
         public float GetHitCrossFadeDuration(bool heavyHit)
@@ -86,5 +108,36 @@ namespace Character.Config
         }
 
         public float GetDeathCrossFadeDuration() => deathCrossFadeDuration;
+
+        private void OnValidate()
+        {
+            executingCrossFadeDuration =
+                NonNegativeFinite(executingCrossFadeDuration, 0.08f);
+            executedCrossFadeDuration =
+                NonNegativeFinite(executedCrossFadeDuration, 0.08f);
+            executedDeathCrossFadeDuration =
+                NonNegativeFinite(executedDeathCrossFadeDuration, 0.08f);
+
+            executeClipDuration = PositiveFinite(executeClipDuration, 2.7f);
+            executedClipDuration = PositiveFinite(executedClipDuration, 3.516667f);
+            executedDeathClipDuration =
+                PositiveFinite(executedDeathClipDuration, 2.5333335f);
+        }
+
+        private static float NonNegativeFinite(float value, float fallback)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                value = fallback;
+
+            return Mathf.Max(0f, value);
+        }
+
+        private static float PositiveFinite(float value, float fallback)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                value = fallback;
+
+            return Mathf.Max(0.01f, value);
+        }
     }
 }

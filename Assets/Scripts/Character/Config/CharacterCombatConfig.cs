@@ -106,6 +106,54 @@ namespace Character.Config
         [Min(0.01f)]
         public float postureBreakDuration = 1.067f;
 
+        [Header("Execution Eligibility")]
+        [Min(0f)]
+        public float executionMaxDistance = 0.75f;
+
+        [Range(0f, 180f)]
+        public float executionFrontHalfAngle = 45f;
+
+        [Min(0f)]
+        public float executionMaxHeightDifference = 0.5f;
+
+        [Tooltip("Layers considered by the execution line-of-sight check.")]
+        public LayerMask executionLineOfSightMask = Physics.DefaultRaycastLayers;
+
+        [Tooltip("Layers considered when validating the path to the execution anchor.")]
+        public LayerMask executionPathObstructionMask = Physics.DefaultRaycastLayers;
+
+        [Header("Execution Anchor")]
+        [Tooltip("Executor anchor in the target's local space.")]
+        public Vector3 executorAnchorOffset = new Vector3(0f, 0f, 0.6f);
+
+        [Min(0f)]
+        public float executionMaxWarpTranslation = 0.5f;
+
+        [Range(0f, 180f)]
+        public float executionMaxWarpYaw = 60f;
+
+        [Header("Execution Warp Window")]
+        [Range(0f, 1f)]
+        public float executionWarpWindowStartNormalized = 0f;
+
+        [Range(0f, 1f)]
+        public float executionWarpWindowEndNormalized = 0.45f;
+
+        public AnimationCurve executionWarpCurve =
+            AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
+        [Header("Execution Logic Timing")]
+        [Min(0.01f)]
+        public float executingDuration = 2.7f;
+
+        [Min(0.01f)]
+        public float executedDuration = 3.516667f;
+
+        [Tooltip("Authoritative kill-result time relative to the session start.")]
+        [Min(0f)]
+        public float executionResultTime = 2.7f;
+
+
         [Header("Hit Interrupt Windows")]
         public float hitPreHitEnd = 0.1f;
         public float hitActiveEnd = 0.2f;
@@ -201,6 +249,102 @@ namespace Character.Config
                 parryActiveStartFrame + 1,
                 parryTotalFrames);
             parriedDuration = Mathf.Max(0.01f, parriedDuration);
+
+            executionMaxDistance = NonNegativeFinite(executionMaxDistance, 0.75f);
+            executionFrontHalfAngle = Mathf.Clamp(
+                FiniteOr(executionFrontHalfAngle, 45f),
+                0f,
+                180f);
+            executionMaxHeightDifference =
+                NonNegativeFinite(executionMaxHeightDifference, 0.5f);
+
+            executorAnchorOffset = new Vector3(
+                FiniteOr(executorAnchorOffset.x, 0f),
+                FiniteOr(executorAnchorOffset.y, 0f),
+                FiniteOr(executorAnchorOffset.z, 0.6f));
+
+            executionMaxWarpTranslation =
+                NonNegativeFinite(executionMaxWarpTranslation, 0.5f);
+            executionMaxWarpYaw = Mathf.Clamp(
+                FiniteOr(executionMaxWarpYaw, 60f),
+                0f,
+                180f);
+
+            executionWarpWindowStartNormalized = Mathf.Clamp01(
+                FiniteOr(executionWarpWindowStartNormalized, 0f));
+            executionWarpWindowEndNormalized = Mathf.Clamp(
+                FiniteOr(executionWarpWindowEndNormalized, 0.45f),
+                executionWarpWindowStartNormalized,
+                1f);
+
+            if (!IsValidExecutionWarpCurve(executionWarpCurve))
+            {
+                executionWarpCurve =
+                    AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+            }
+
+            executingDuration = PositiveFinite(executingDuration, 2.7f);
+            executedDuration = PositiveFinite(executedDuration, 3.516667f);
+            executionResultTime = Mathf.Clamp(
+                NonNegativeFinite(executionResultTime, 2.7f),
+                0f,
+                executedDuration);
+        }
+
+        private static float FiniteOr(float value, float fallback)
+        {
+            return float.IsNaN(value) || float.IsInfinity(value)
+                ? fallback
+                : value;
+        }
+
+        private static float NonNegativeFinite(float value, float fallback)
+        {
+            return Mathf.Max(0f, FiniteOr(value, fallback));
+        }
+
+        private static float PositiveFinite(float value, float fallback)
+        {
+            return Mathf.Max(0.01f, FiniteOr(value, fallback));
+        }
+
+        private static bool IsValidExecutionWarpCurve(AnimationCurve curve)
+        {
+            if (curve == null || curve.length < 2)
+                return false;
+
+            Keyframe[] keys = curve.keys;
+            float previousTime = float.NegativeInfinity;
+            float previousValue = float.NegativeInfinity;
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                float time = keys[i].time;
+                float value = keys[i].value;
+
+                if (float.IsNaN(time) || float.IsInfinity(time) ||
+                    float.IsNaN(value) || float.IsInfinity(value))
+                {
+                    return false;
+                }
+
+                if (time < 0f || time > 1f ||
+                    value < 0f || value > 1f ||
+                    time < previousTime ||
+                    value < previousValue)
+                {
+                    return false;
+                }
+
+                previousTime = time;
+                previousValue = value;
+            }
+
+            int lastIndex = keys.Length - 1;
+            return Mathf.Approximately(keys[0].time, 0f) &&
+                   Mathf.Approximately(keys[0].value, 0f) &&
+                   Mathf.Approximately(keys[lastIndex].time, 1f) &&
+                   Mathf.Approximately(keys[lastIndex].value, 1f);
         }
     }
 }

@@ -2,6 +2,7 @@ using Character.Combat;
 using Character.Config;
 using Character.Controller;
 using Character.Intent;
+using Character.Execution;
 using Character.Presentation;
 using Character.StateMachine;
 using AI.NpcStates;
@@ -34,6 +35,7 @@ namespace AI
         private NpcGuardState _guard;
         private NpcParryState _parry;
         private NpcParriedState _parried;
+        private NpcExecutedState _executed;
         private NpcPostureBrokenState _postureBroken;
         private NpcHitState _hit;
         private NpcDeadState _dead;
@@ -81,6 +83,7 @@ namespace AI
             _guard = new NpcGuardState(_fsm, _registry, _motor, combatConfig, presentationConfig, _intentSource);
             _parry = new NpcParryState(_fsm, _registry, _motor, combatConfig);
             _parried = new NpcParriedState(_fsm, _registry, _motor, combatConfig);
+            _executed = new NpcExecutedState(_motor, combatConfig);
             _postureBroken = new NpcPostureBrokenState(_fsm, _registry, _motor, combatConfig);
             _hit = new NpcHitState(_fsm, _registry, _motor, combatConfig);
             _dead = new NpcDeadState(_fsm, _registry, _motor);
@@ -94,6 +97,7 @@ namespace AI
             _registry.Register(_parry);
             _registry.Register(_parried);
             _registry.Register(_postureBroken);
+            _registry.Register(_executed);
             _registry.Register(_hit);
             _registry.Register(_dead);
 
@@ -110,6 +114,23 @@ namespace AI
             CharacterIntent intent = _intentSource != null ? _intentSource.BuildIntent() : default;
 
             _fsm.Tick(intent, Time.deltaTime);
+        }
+
+
+        public bool CanEnterExecuted()
+        {
+            return isServer &&
+                   _fsm != null &&
+                   _registry != null &&
+                   _combatActor != null &&
+                   _executed != null &&
+                   CurrentStateId is
+                       CharacterStateId.Parried or
+                       CharacterStateId.PostureBroken &&
+                   _fsm.CanTransition(
+                       CharacterStateId.Executed,
+                       _registry,
+                       TransitionReason.ExecutionAccepted);
         }
 
         // ============ 活跃状态查询 ============
@@ -225,6 +246,20 @@ namespace AI
         }
         public void SetLastPreparedDodgeMode(byte mode) => LastPreparedDodgeMode = mode;
 
+
+        public bool TryGetActiveExecutedState(
+    out NpcExecutedState executedState)
+        {
+            if (_fsm?.CurrentState is NpcExecutedState active)
+            {
+                executedState = active;
+                return true;
+            }
+
+            executedState = null;
+            return false;
+        }
+
         // ============ 服务器状态转换 ============
 
         public bool ServerTryEnterAttack(AttackMoveId attackId = AttackMoveId.Combo1)
@@ -314,6 +349,51 @@ namespace AI
             return true;
         }
 
+
+        public bool ServerTryEnterExecuted(
+            in ExecutionSession session)
+        {
+            if (!CanEnterExecuted() ||
+                session.TargetActorId != _combatActor.ActorId ||
+                !_executed.TryPrepare(
+                    session,
+                    _combatActor.ActorId))
+            {
+                return false;
+            }
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Executed,
+                    _registry,
+                    TransitionReason.ExecutionAccepted))
+            {
+                return true;
+            }
+
+            _executed.CancelPreparation(session.ExecutionId);
+            return false;
+        }
+
+
+        public bool ServerTryRollbackExecutionStart(
+            ulong executionId,
+            CharacterStateId previousState)
+        {
+            if (!isServer ||
+                CurrentStateId != CharacterStateId.Executed ||
+                !_executed.IsBoundTo(executionId) ||
+                previousState is not (
+                    CharacterStateId.Parried or
+                    CharacterStateId.PostureBroken))
+            {
+                return false;
+            }
+
+            return _fsm.TryTransition(
+                previousState,
+                _registry,
+                TransitionReason.ExecutionCancelled);
+        }
 
         public bool ServerTryEnterPostureBroken()
         {

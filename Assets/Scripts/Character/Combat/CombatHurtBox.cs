@@ -17,6 +17,7 @@ namespace Character.Combat
         public CombatActor Owner => _owner;
         public string PartName => _partName;
         public float DamageMultiplier => _damageMultiplier <= 0f ? 1f : _damageMultiplier;
+        public bool IsCombatEnabled => _hurtCollider != null && _hurtCollider.enabled;
 
         // ============ Unity 生命周期 ============
 
@@ -28,6 +29,14 @@ namespace Character.Combat
         private void Awake()
         {
             EnsureReferences();
+        }
+
+        public void SetCombatEnabled(bool enabled)
+        {
+            EnsureReferences();
+
+            if (_hurtCollider != null)
+                _hurtCollider.enabled = enabled;
         }
 
         // ============ 所有权查询 ============

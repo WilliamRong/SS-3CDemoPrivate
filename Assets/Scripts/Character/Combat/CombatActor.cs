@@ -4,6 +4,7 @@ using AI;
 using AI.NpcStates;
 using Character.Config;
 using Character.Controller;
+using Character.Execution;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using Character.Sync;
@@ -94,7 +95,39 @@ namespace Character.Combat
             }
         }
 
-        public bool IsInvincible => _playerController != null && _playerController.IsInvincible;
+        public bool IsPlayerActor
+        {
+            get
+            {
+                EnsureReferences();
+                return _playerController != null &&
+                       _npcDriver == null;
+            }
+        }
+
+        public CharacterStateId CurrentStateId
+        {
+            get
+            {
+                EnsureReferences();
+                return ResolveCurrentStateId();
+            }
+        }
+
+        private readonly InvulnerabilityRuntime _invulnerability = new();
+        private readonly AttackSuppressionRuntime _attackSuppression = new();
+
+        private CombatHurtBox[] _hurtBoxes = Array.Empty<CombatHurtBox>();
+
+        public bool IsInvincible => _invulnerability.IsActive;
+
+        public int InvulnerabilityOwnerCount => _invulnerability.ActiveOwnerCount;
+
+        public bool IsAttackSuppressed => _attackSuppression.IsActive;
+
+        public int AttackSuppressionOwnerCount => _attackSuppression.ActiveOwnerCount;
+
+        public bool CanProduceCombatHit => !IsDead && !IsAttackSuppressed;
 
         public bool CanReceiveHit => _canReceiveHit && !IsDead && !IsInvincible;
 
@@ -133,6 +166,83 @@ namespace Character.Combat
             }
         }
 
+        public bool AcquireInvulnerability(InvulnerabilitySource source, ulong ownerId)
+        {
+            return _invulnerability.Acquire(source, ownerId);
+        }
+
+        public bool ReleaseInvulnerability(InvulnerabilitySource source, ulong ownerId)
+        {
+            return _invulnerability.Release(source, ownerId);
+        }
+
+
+        public bool AcquireAttackSuppression(ulong executionId)
+        {
+            if (executionId == 0) return false;
+
+            CancelCurrentAttack();
+
+            return _attackSuppression.Acquire(executionId);
+        }
+
+        public bool ReleaseAttackSuppression(ulong executionId)
+        {
+            return _attackSuppression.Release(executionId);
+        }
+
+        public bool BeginExecutionCombatSuppression(ulong executionId)
+        {
+            if (executionId == 0) return false;
+
+            bool attackAcquired = AcquireAttackSuppression(executionId);
+
+            bool invulnerabilityAcquired = AcquireInvulnerability(InvulnerabilitySource.Execution, executionId);
+
+            if (attackAcquired && invulnerabilityAcquired) return true;
+
+            if (invulnerabilityAcquired)
+                ReleaseInvulnerability(InvulnerabilitySource.Execution, executionId);
+
+            if (attackAcquired)
+                ReleaseAttackSuppression(executionId);
+
+            return false;
+        }
+
+        public bool EndExecutionCombatSuppression(ulong executionId)
+        {
+            if (executionId == 0) return false;
+
+            // Keep attacks suppressed while HurtBoxes are being restored.
+            bool invulnerabilityReleased = ReleaseInvulnerability(
+                InvulnerabilitySource.Execution,
+                executionId);
+            bool attackSuppressionReleased =
+                ReleaseAttackSuppression(executionId);
+
+            return invulnerabilityReleased ||
+                   attackSuppressionReleased;
+        }
+
+
+        private void HandleInvulnerabilityChanged(bool isInvincible)
+        {
+            bool hurtBoxEnabled = !isInvincible;
+
+            for (int i = 0; i < _hurtBoxes.Length; i++)
+            {
+                CombatHurtBox hurtBox = _hurtBoxes[i];
+                if (hurtBox != null)
+                    hurtBox.SetCombatEnabled(hurtBoxEnabled);
+            }
+        }
+
+        private void OnDestroy()
+        {
+            _invulnerability.Changed -= HandleInvulnerabilityChanged;
+        }
+
         // ============ Unity 生命周期 ============
 
         private void Reset()
@@ -145,6 +255,12 @@ namespace Character.Combat
         private void Awake()
         {
             EnsureReferences();
+            _hurtBoxes = GetComponentsInChildren<CombatHurtBox>(includeInactive: true);
+
+            _invulnerability.Changed += HandleInvulnerabilityChanged;
+            HandleInvulnerabilityChanged(_invulnerability.IsActive);
+
+
             InitializeHealth(force: true);
             InitializePosture(forceNotify: true);
             _wasDead = IsDead;
@@ -439,7 +555,7 @@ namespace Character.Combat
         {
             attack = default;
 
-            if (!_trackingAttack || _trackedAttackDefinition == null) return false;
+            if (!CanProduceCombatHit || !_trackingAttack || _trackedAttackDefinition == null) return false;
 
             attack = new AttackRuntimeInfo(
                 this,
@@ -740,6 +856,61 @@ namespace Character.Combat
         // ============ 权威与状态查询 ============
 
         /// <summary>
+        /// Player 的普通动作读取所属端快照；Server 强制反应和处决状态
+        /// 由本地状态机优先，避免旧快照覆盖权威状态。
+        /// </summary>
+        private CharacterStateId ResolveCurrentStateId()
+        {
+            if (_npcDriver != null)
+                return _npcDriver.CurrentStateId;
+
+            CharacterStateId controllerState =
+                _playerController != null
+                    ? _playerController.CurrentStateId
+                    : CharacterStateId.None;
+
+            // Server 强制进入的非 locomotion 状态优先于远端快照。
+            if (_playerController != null &&
+                controllerState is not (
+                    CharacterStateId.None or
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move))
+            {
+                return controllerState;
+            }
+
+            if (TryGetRemoteSnapshotState(out CharacterStateId remoteState))
+                return remoteState;
+
+            return controllerState;
+        }
+
+        private bool TryGetRemoteSnapshotState(
+            out CharacterStateId stateId)
+        {
+            stateId = CharacterStateId.None;
+
+            if (_remoteInterpolator == null)
+                return false;
+
+            // 所属 Player 始终以自己的状态机为准。
+            if (_networkIdentity != null &&
+                _networkIdentity.isLocalPlayer)
+            {
+                return false;
+            }
+
+            StateSnapshot snapshot =
+                _remoteInterpolator.LastAppliedSnapshot;
+
+            if (snapshot.Tick == 0)
+                return false;
+
+            stateId = snapshot.StateId;
+            return true;
+        }
+
+        /// <summary>
         /// 在线模式只允许服务器推进架势，离线模式则由本地实例接管，避免客户端预测与权威恢复同时写入。
         /// </summary>
         private bool HasPostureSimulationAuthority()
@@ -946,6 +1117,70 @@ namespace Character.Combat
             {
                 _networkIdentity = GetComponent<NetworkIdentity>();
             }
+        }
+
+
+        // ============== 状态路由 ============
+
+        public bool CanEnterExecutionAsExecutor()
+        {
+            EnsureReferences();
+
+            return _playerController != null &&
+                   _npcDriver == null &&
+                   _playerController.CanEnterExecuting();
+        }
+
+        public bool CanEnterExecutionAsTarget()
+        {
+            EnsureReferences();
+
+            if (_playerController != null)
+                return _playerController.CanEnterExecuted();
+
+            return _npcDriver != null &&
+                   _npcDriver.CanEnterExecuted();
+        }
+
+        public bool TryEnterExecuting(
+            in ExecutionSession session)
+        {
+            EnsureReferences();
+
+            return _playerController != null &&
+                   _npcDriver == null &&
+                   _playerController.TryEnterExecuting(session);
+        }
+
+        public bool TryEnterExecuted(
+            in ExecutionSession session)
+        {
+            EnsureReferences();
+
+            if (_playerController != null)
+                return _playerController.TryEnterExecuted(session);
+
+            return _npcDriver != null &&
+                   _npcDriver.ServerTryEnterExecuted(session);
+        }
+
+        public bool TryRollbackExecutionStart(
+            ulong executionId,
+            CharacterStateId previousState)
+        {
+            EnsureReferences();
+
+            if (_playerController != null)
+            {
+                return _playerController.TryRollbackExecutionStart(
+                    executionId,
+                    previousState);
+            }
+
+            return _npcDriver != null &&
+                   _npcDriver.ServerTryRollbackExecutionStart(
+                       executionId,
+                       previousState);
         }
     }
 }

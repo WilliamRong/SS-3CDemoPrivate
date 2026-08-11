@@ -2,6 +2,8 @@ using System;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
+using Character.Combat;
+using Character.Execution;
 using Character.Presentation;
 using Character.StateMachine;
 using Character.StateMachine.States;
@@ -35,8 +37,12 @@ namespace Character.Controller
         private ParryState _parryState;
         private ParriedState _parriedState;
         private PostureBrokenState _postureBrokenState;
+        private ExecutingState _executingState;
+        private ExecutedState _executedState;
         private HitState _hitState;
         private DeadState _deadState;
+
+        private CombatActor _combatActor;
 
         public Vector2 LastMoveInput { get; private set; }
 
@@ -48,7 +54,7 @@ namespace Character.Controller
         public float CurrentHp => _context?.CurrentHp ?? 0f;
         public float MaxHp => _context?.MaxHp ?? 1f;
 
-        public bool IsInvincible => _context?.IsInvincible ?? false;
+        public bool IsInvincible => _combatActor != null && _combatActor.IsInvincible;
 
         public event Action<float, float> HealthChanged;
 
@@ -70,6 +76,7 @@ namespace Character.Controller
         private void Awake()
         {
             _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
+            _combatActor = GetComponent<CombatActor>();
         }
 
         /// <summary>
@@ -110,11 +117,13 @@ namespace Character.Controller
             _sprintState = new SprintState(_fsm, _motor, _context, _stateRegistry, def.sprint);
 
             _attackState = new AttackState(_fsm, _motor, _stateRegistry, def.combat);
-            _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat);
+            _dodgeState = new DodgeState(_fsm, _motor, _context, _stateRegistry, def.combat, _combatActor);
             _guardState = new GuardState(_fsm, _motor, _stateRegistry, def.combat, def.presentation, _lockOnQuery);
             _parryState = new ParryState(_fsm, _stateRegistry, _motor, def.combat);
             _parriedState = new ParriedState(_fsm, _stateRegistry, _motor, def.combat);
             _postureBrokenState = new PostureBrokenState(_fsm, _stateRegistry, _motor, def.combat);
+            _executingState = new ExecutingState(_motor, def.combat);
+            _executedState = new ExecutedState(_motor, def.combat);
             _hitState = new HitState(_fsm, _motor, _stateRegistry, def.combat);
             _deadState = new DeadState(_motor);
 
@@ -127,6 +136,8 @@ namespace Character.Controller
             _stateRegistry.Register(_parryState);
             _stateRegistry.Register(_parriedState);
             _stateRegistry.Register(_postureBrokenState);
+            _stateRegistry.Register(_executingState);
+            _stateRegistry.Register(_executedState);
             _stateRegistry.Register(_hitState);
             _stateRegistry.Register(_deadState);
 
@@ -146,7 +157,11 @@ namespace Character.Controller
                 CurrentStateId == CharacterStateId.PostureBroken;
             bool shouldTickServerForcedReaction =
                 NetworkServer.active &&
-                (CurrentStateId == CharacterStateId.Parried || CurrentStateId == CharacterStateId.Parry);
+                CurrentStateId is
+                    CharacterStateId.Parried or
+                    CharacterStateId.Parry or
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed;
 
             if (!canProcessLocalInput && _forcedGuardTimer <= 0f &&
                 !shouldTickServerPostureBreak && !shouldTickServerForcedReaction) return;
@@ -186,7 +201,15 @@ namespace Character.Controller
                 intent.IsParryPressed = false;
             }
 
-            if (intent.IsDodgePressed && CanPrepareDodgeFromCurrentState())
+
+            if (CurrentStateId is
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed)
+            {
+                // Look 不在 CharacterIntent 中，因此镜头输入仍然保留。
+                intent = default;
+            }
+            else if (intent.IsDodgePressed && CanPrepareDodgeFromCurrentState())
             {
                 intent.IsJumpPressed = false;
                 bool lockOn = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
@@ -223,6 +246,130 @@ namespace Character.Controller
         }
 
         // ============ 权威状态入口 ============
+
+
+        public bool CanEnterExecuting()
+        {
+            return _context != null &&
+                   !_context.IsDead &&
+                   _combatActor != null &&
+                   _executingState != null &&
+                   CurrentStateId is
+                       CharacterStateId.Idle or
+                       CharacterStateId.Move &&
+                   _fsm.CanTransition(
+                       CharacterStateId.Executing,
+                       _stateRegistry,
+                       TransitionReason.ExecutionAccepted);
+        }
+
+        public bool CanEnterExecuted()
+        {
+            return _context != null &&
+                   !_context.IsDead &&
+                   _combatActor != null &&
+                   _executedState != null &&
+                   CurrentStateId is
+                       CharacterStateId.Parried or
+                       CharacterStateId.PostureBroken &&
+                   _fsm.CanTransition(
+                       CharacterStateId.Executed,
+                       _stateRegistry,
+                       TransitionReason.ExecutionAccepted);
+        }
+
+        public bool TryEnterExecuting(in ExecutionSession session)
+        {
+            if (!CanEnterExecuting() ||
+                session.ExecutorActorId != _combatActor.ActorId ||
+                !_executingState.TryPrepare(
+                    session,
+                    _combatActor.ActorId))
+            {
+                return false;
+            }
+
+            _forcedGuardTimer = 0f;
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Executing,
+                    _stateRegistry,
+                    TransitionReason.ExecutionAccepted))
+            {
+                return true;
+            }
+
+            _executingState.CancelPreparation(session.ExecutionId);
+            return false;
+        }
+
+        public bool TryEnterExecuted(in ExecutionSession session)
+        {
+            if (!CanEnterExecuted() ||
+                session.TargetActorId != _combatActor.ActorId ||
+                !_executedState.TryPrepare(
+                    session,
+                    _combatActor.ActorId))
+            {
+                return false;
+            }
+
+            _forcedGuardTimer = 0f;
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Executed,
+                    _stateRegistry,
+                    TransitionReason.ExecutionAccepted))
+            {
+                return true;
+            }
+
+            _executedState.CancelPreparation(session.ExecutionId);
+            return false;
+        }
+
+        public bool TryRollbackExecutionStart(
+            ulong executionId,
+            CharacterStateId previousState)
+        {
+            if (_fsm == null || _stateRegistry == null)
+                return false;
+
+            if (CurrentStateId == CharacterStateId.Executing)
+            {
+                if (!_executingState.IsBoundTo(executionId) ||
+                    previousState is not (
+                        CharacterStateId.Idle or
+                        CharacterStateId.Move))
+                {
+                    return false;
+                }
+
+                return _fsm.TryTransition(
+                    previousState,
+                    _stateRegistry,
+                    TransitionReason.ExecutionCancelled);
+            }
+
+            if (CurrentStateId == CharacterStateId.Executed)
+            {
+                if (!_executedState.IsBoundTo(executionId) ||
+                    previousState is not (
+                        CharacterStateId.Parried or
+                        CharacterStateId.PostureBroken))
+                {
+                    return false;
+                }
+
+                return _fsm.TryTransition(
+                    previousState,
+                    _stateRegistry,
+                    TransitionReason.ExecutionCancelled);
+            }
+
+            return false;
+        }
+
 
         public bool TryEnterPostureBroken()
         {
@@ -283,7 +430,7 @@ namespace Character.Controller
         {
             if (_context == null ||
                 _context.IsDead ||
-                _context.IsInvincible)
+                IsInvincible)
             {
                 return 0f;
             }
@@ -307,7 +454,7 @@ namespace Character.Controller
         {
             if (_context == null ||
                _context.IsDead ||
-               _context.IsInvincible)
+              IsInvincible)
             {
                 return;
             }
@@ -327,7 +474,7 @@ namespace Character.Controller
         {
             if (_context == null ||
               _context.IsDead ||
-              _context.IsInvincible)
+              IsInvincible)
             {
                 return;
             }
@@ -437,6 +584,8 @@ namespace Character.Controller
                 or CharacterStateId.Hit
                 or CharacterStateId.Parry
                 or CharacterStateId.Parried
+                or CharacterStateId.Executing
+                or CharacterStateId.Executed
                 or CharacterStateId.Dead;
         }
 
@@ -531,6 +680,31 @@ namespace Character.Controller
             return false;
         }
 
+
+        public bool TryGetActiveExecutingState(out ExecutingState executingState)
+        {
+            if (_fsm?.CurrentState is ExecutingState active)
+            {
+                executingState = active;
+                return true;
+            }
+
+            executingState = null;
+            return false;
+        }
+
+        public bool TryGetActiveExecutedState(out ExecutedState executedState)
+        {
+            if (_fsm?.CurrentState is ExecutedState active)
+            {
+                executedState = active;
+                return true;
+            }
+
+            executedState = null;
+            return false;
+        }
+
         public bool TryGetActiveGuardState(out GuardState guardState)
         {
             if (_fsm?.CurrentState is GuardState active)
@@ -562,13 +736,18 @@ namespace Character.Controller
         /// </summary>
         public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
         {
-            if (!CanProcessLocalInput()) return;
+
+            bool canConsumeExecutionRootMotion = CurrentStateId == CharacterStateId.Executing && NetworkServer.active;
+
+
+            if (!CanProcessLocalInput() && !canConsumeExecutionRootMotion) return;
             if (_motor == null) return;
 
             if (CurrentStateId is not (
                     CharacterStateId.Attack
                     or CharacterStateId.Hit
-                    or CharacterStateId.Dead))
+                    or CharacterStateId.Dead
+                    or CharacterStateId.Executing))
                 return;
 
             _motor.SetAttackRootMotionDelta(deltaPosition, deltaRotation);

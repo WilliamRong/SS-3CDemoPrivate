@@ -30,6 +30,9 @@ namespace Character.StateMachine
         PostureBreak = 11,
         InputParry = 12,
         Parried = 13,
+        ExecutionAccepted = 14,
+        ExecutionCompleted = 15,
+        ExecutionCancelled = 16,
     }
 
 

@@ -42,6 +42,57 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.PostureBroken, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
 
             
+            //处决
+            // 处决只能由已接受的权威会话进入。
+            new CharacterInterruptRule(CharacterStateId.Idle, CharacterStateId.Executing,
+                StateWindowType.Always, TransitionReason.ExecutionAccepted, true),
+            new CharacterInterruptRule(CharacterStateId.Idle, CharacterStateId.Executing,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Move, CharacterStateId.Executing,
+                StateWindowType.Always, TransitionReason.ExecutionAccepted, true),
+            new CharacterInterruptRule(CharacterStateId.Move, CharacterStateId.Executing,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Parried, CharacterStateId.Executed,
+                StateWindowType.Always, TransitionReason.ExecutionAccepted, true),
+            new CharacterInterruptRule(CharacterStateId.Parried, CharacterStateId.Executed,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.PostureBroken, CharacterStateId.Executed,
+                StateWindowType.Always, TransitionReason.ExecutionAccepted, true),
+            new CharacterInterruptRule(CharacterStateId.PostureBroken, CharacterStateId.Executed,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            // 正常结束或启动失败回滚。
+            new CharacterInterruptRule(CharacterStateId.Executing, CharacterStateId.Idle,
+                StateWindowType.Always, TransitionReason.ExecutionCompleted, true),
+            new CharacterInterruptRule(CharacterStateId.Executing, CharacterStateId.Idle,
+                StateWindowType.Always, TransitionReason.ExecutionCancelled, true),
+            new CharacterInterruptRule(CharacterStateId.Executing, CharacterStateId.Idle,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Executing, CharacterStateId.Move,
+                StateWindowType.Always, TransitionReason.ExecutionCancelled, true),
+            new CharacterInterruptRule(CharacterStateId.Executing, CharacterStateId.Move,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Dead,
+                StateWindowType.Always, TransitionReason.ExecutionCompleted, true),
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Dead,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Parried,
+                StateWindowType.Always, TransitionReason.ExecutionCancelled, true),
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Parried,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.PostureBroken,
+                StateWindowType.Always, TransitionReason.ExecutionCancelled, true),
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.PostureBroken,
+                StateWindowType.Always, TransitionReason.Any, false),
+
+
             // 死亡永远可抢占
             new CharacterInterruptRule(CharacterStateId.Attack, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
             new CharacterInterruptRule(CharacterStateId.Dodge, CharacterStateId.Dead, StateWindowType.Always, TransitionReason.Death, true),
@@ -69,18 +120,49 @@ namespace Character.StateMachine
 
         // ============ 状态转换 ============
 
+
+        public bool CanTransition(
+            CharacterStateId targetId,
+            CharacterStateRegistry registry,
+            TransitionReason reason = TransitionReason.Any)
+        {
+            if (registry == null || CurrentState == null)
+                return false;
+
+            if (targetId == CurrentId &&
+                !CanReenterCurrentState(targetId, reason))
+            {
+                return false;
+            }
+
+            if (!CharacterTransitionMap.CanTransition(CurrentId, targetId))
+                return false;
+
+            if (!CanInterrupt(
+                    CurrentId,
+                    targetId,
+                    _runtime.GetCurrentWindowType(),
+                    reason))
+            {
+                return false;
+            }
+
+            return registry.Get(targetId) != null;
+        }
+
+
         /// <summary>
         /// 先完成全部资格检查再退出旧状态，保证失败转换不会产生半执行生命周期。
         /// </summary>
-        public bool TryTransition(CharacterStateId targetId, CharacterStateRegistry registry, TransitionReason reason = TransitionReason.Any)
+        public bool TryTransition(
+            CharacterStateId targetId,
+            CharacterStateRegistry registry,
+            TransitionReason reason = TransitionReason.Any)
         {
-            if (targetId == CurrentId && !CanReenterCurrentState(targetId, reason)) return false;
-            if (!CharacterTransitionMap.CanTransition(CurrentId, targetId)) return false;
-            if (!CanInterrupt(CurrentId, targetId, _runtime.GetCurrentWindowType(), reason)) return false;
+            if (!CanTransition(targetId, registry, reason))
+                return false;
 
-            var target = registry.Get(targetId);
-            if (target == null) return false;
-
+            ICharacterState target = registry.Get(targetId);
             ChangeState(target, targetId);
             return true;
         }

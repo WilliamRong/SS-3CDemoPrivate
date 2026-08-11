@@ -1,4 +1,5 @@
 using Character.Config;
+using Character.Combat;
 using Character.Core;
 using Character.Intent;
 using Character.Motor;
@@ -17,9 +18,12 @@ namespace Character.StateMachine.States
         private readonly CharacterContext _context;
         private readonly CharacterStateRegistry _registry;
         private readonly CharacterCombatConfig _combat;
+        private readonly CombatActor _combatActor;
 
         private float _timer;
         private float _duration;
+        private ulong _dodgeVersion;
+        private bool _ownsInvulnerability;
         private DodgePresentationContext _presentationContext;
         
         public CharacterStateId Id { get; } = CharacterStateId.Dodge;
@@ -30,13 +34,15 @@ namespace Character.StateMachine.States
             CharacterMotor motor,
             CharacterContext context,
             CharacterStateRegistry registry,
-            CharacterCombatConfig combat)
+            CharacterCombatConfig combat,
+            CombatActor combatActor)
         {
             _fsm = fsm;
             _motor = motor;
             _context = context;
             _registry = registry;
             _combat = combat;
+            _combatActor = combatActor;
         }
 
         public void Prepare(CharacterIntent intent, CharacterStateId fromStateId, bool isLockOn)
@@ -54,7 +60,14 @@ namespace Character.StateMachine.States
         {
             _timer = 0f;
             _motor.SetSprintActive(false);
-            _context.IsInvincible = false;
+            SetInvulnerability(false);
+            unchecked
+            {
+                _dodgeVersion++;
+                if (_dodgeVersion == 0)
+                    _dodgeVersion = 1;
+            }
+
             if (!_presentationContext.IsValid)
                 _duration = _combat.dodgeEvadeDuration;
 
@@ -84,7 +97,11 @@ namespace Character.StateMachine.States
             }
 
             intent.IsAttackPressed = false;
-            _context.IsInvincible = _timer >= _combat.dodgeInvincibleStart && _timer <= _combat.dodgeInvincibleEnd;
+            bool insideInvulnerabilityWindow =
+                _timer >= _combat.dodgeInvincibleStart &&
+                _timer <= _combat.dodgeInvincibleEnd;
+            SetInvulnerability(insideInvulnerabilityWindow);
+
             _motor.Tick(intent, deltaTime);
 
             if (_timer < _duration)
@@ -102,8 +119,8 @@ namespace Character.StateMachine.States
 
         public void Exit()
         {
+            SetInvulnerability(false);
             _motor.EndDodge();
-            _context.IsInvincible = false;
             _presentationContext = default;
         }
 
@@ -113,6 +130,26 @@ namespace Character.StateMachine.States
         {
             float duration = _duration > 0.0001f ? _duration : _combat.dodgeEvadeDuration;
             return _timer >= duration * _combat.dodgeAttackCancelStartRatio;
+        }
+
+        private void SetInvulnerability(bool enabled)
+        {
+            if (_combatActor == null || enabled == _ownsInvulnerability)
+                return;
+
+            if (enabled)
+            {
+                _combatActor.AcquireInvulnerability(
+                    InvulnerabilitySource.Dodge,
+                    _dodgeVersion);
+                _ownsInvulnerability = true;
+                return;
+            }
+
+            _combatActor.ReleaseInvulnerability(
+                InvulnerabilitySource.Dodge,
+                _dodgeVersion);
+            _ownsInvulnerability = false;
         }
     }
 }

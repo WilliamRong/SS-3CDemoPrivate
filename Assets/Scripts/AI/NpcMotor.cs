@@ -109,5 +109,16 @@ namespace AI
         {
             return _agent != null && _agent.enabled && _agent.isOnNavMesh;
         }
+
+
+        public void HoldPose(Vector3 position, Quaternion rotation)
+        {
+            transform.SetPositionAndRotation(position, rotation);
+
+            if (!CanControlAgent()) return;
+
+            _agent.isStopped = true;
+            _agent.nextPosition = position;
+        }
     }
 }

@@ -16,7 +16,7 @@
 - **THEN** 新处决请求被拒绝且双方状态不变
 
 #### Scenario: 处决者状态不允许
-- **WHEN** Player 处于 Attack、Dodge、Hit、Parry、Parried、PostureBroken、Executing、Executed 或 Dead 时按下左键
+- **WHEN** Player 处于 Guard、Attack、Dodge、Hit、Parry、Parried、PostureBroken、Executing、Executed 或 Dead 时按下左键
 - **THEN** 该输入不能发起处决
 
 ### Requirement: 处决空间校验
@@ -43,11 +43,15 @@
 - **THEN** 处决请求被拒绝而不是使用大幅瞬移修正
 
 ### Requirement: 左键处决优先级
-本地 Player 的左键 Attack 脉冲必须（SHALL）在普通攻击状态转换之前解析处决候选；合法候选存在时必须（SHALL）只提交一次处决请求，没有合法候选时必须（SHALL）保持现有普通 Attack 行为。
+处于 `Idle` / `Move` 的本地 Player 左键 Attack 脉冲必须（SHALL）在普通攻击状态转换之前解析处决候选；合法候选存在时必须（SHALL）只提交一次处决请求，没有合法候选时必须（SHALL）保持现有普通 Attack 行为。`Guard` Player 必须（SHALL）跳过处决解析并保持既有普通 Attack 行为。
 
 #### Scenario: 合法目标存在
-- **WHEN** Idle、Move 或 Guard Player 按下左键且存在合法处决候选
+- **WHEN** Idle 或 Move Player 按下左键且存在合法处决候选
 - **THEN** 本次脉冲提交一次处决请求，不同时进入普通 Attack
+
+#### Scenario: Guard 左键不处决
+- **WHEN** Guard Player 面前存在满足目标与空间条件的 Player/NPC 并按下左键
+- **THEN** 系统不解析或提交处决请求，本次脉冲继续按既有规则进入普通 Attack
 
 #### Scenario: 没有合法目标
 - **WHEN** Player 按下左键但所有候选均不合法
@@ -100,7 +104,7 @@
 - **THEN** 位移继续通过 CharacterController 或权威 Motor 处理，不绕过环境碰撞
 
 ### Requirement: 配对处决动画
-处决者与被处决者必须（SHALL）从同一权威开始时间分别播放全身 `rig_Execute` 和 `rig_Executed`，并使用独立配置时长；Animator 状态不得（MUST NOT）决定处决资格、致死结果或状态结束的权威时刻。
+处决者与被处决者必须（SHALL）从同一权威开始时间分别播放全身 `rig_Execute` 和 `rig_Executed`，并使用独立配置时长；目标从处决完成进入 `Dead` 时必须（SHALL）使用 `rig_Executed_Death`，普通死亡必须（SHALL）保持既有死亡动画。Animator 状态不得（MUST NOT）决定处决资格、致死结果或状态结束的权威时刻。
 
 #### Scenario: 会话表现开始
 - **WHEN** 本地或远端观察者接受新的处决会话边沿
@@ -114,8 +118,39 @@
 - **WHEN** 远端 CrossFade、低帧率或消息延迟导致动画时间落后于权威会话
 - **THEN** 权威结果时间不被延后，表现按会话开始时间追赶而不重新提交玩法结果
 
-### Requirement: 处决战斗抑制与无敌
-`Executing` 和 `Executed` Actor 必须（SHALL）在各自处决动画结束前退出所有普通 HitBox/HurtBox 战斗判定，不能产生或接收普通命中，同时必须（SHALL）保留 CharacterController、NavMesh、地面和墙体碰撞。
+#### Scenario: 处决目标进入死亡
+- **WHEN** `rig_Executed` 的配置时长结束且权威致死结果已经锁存
+- **THEN** 目标以 `DeathPresentationVariant.Executed` 进入 `Dead` 并播放 `rig_Executed_Death`，处决会话不等待该死亡 clip 播完
+
+#### Scenario: 普通死亡不使用处决变体
+- **WHEN** Actor 在没有完成处决会话的情况下进入 `Dead`
+- **THEN** 其死亡表现使用默认变体和既有死亡动画，不播放 `rig_Executed_Death`
+
+### Requirement: 可复用无敌语义
+系统必须（SHALL）以来源和所有者标识管理可叠加、幂等的 Actor 无敌令牌；只要任一令牌有效，Actor 就不得（MUST NOT）接收普通命中，所有 `CombatHurtBox` 必须（SHALL）关闭，同时 CharacterController、NavMesh、地面、墙体和其他环境碰撞必须（SHALL）保持启用。无敌不得（MUST NOT）隐式禁止 Actor 产生命中。
+
+#### Scenario: 首个无敌令牌生效
+- **WHEN** 无敌 Actor 当前没有活跃令牌并首次取得有效来源/所有者令牌
+- **THEN** `IsInvincible` 和 `CanReceiveHit` 立即反映无敌，全部 `CombatHurtBox` Collider 统一关闭
+
+#### Scenario: 多来源无敌叠加
+- **WHEN** Actor 同时持有闪避、处决或其他不同来源的多个无敌令牌，并释放其中一个
+- **THEN** 剩余令牌继续保持无敌和 HurtBox 关闭，不发生提前恢复
+
+#### Scenario: 最后一个令牌释放
+- **WHEN** Actor 幂等释放最后一个有效无敌令牌
+- **THEN** 无敌语义结束并统一恢复 HurtBox；重复释放同一令牌不改变计数或再次触发边沿
+
+#### Scenario: 闪避复用无敌
+- **WHEN** Player 进入或退出配置的闪避无敌窗口
+- **THEN** Dodge 使用自身稳定所有者标识申请或释放同一无敌运行时，不再维护独立无敌 bool
+
+#### Scenario: 无敌期间仍可表达攻击能力
+- **WHEN** Actor 只持有无敌令牌而没有攻击抑制令牌
+- **THEN** 无敌系统不改变 `CanProduceCombatHit`，是否能攻击继续由状态和独立攻击抑制决定
+
+### Requirement: 处决攻击抑制
+`Executing` 和 `Executed` Actor 必须（SHALL）在各自处决动画结束前持有与 `executionId` 绑定的攻击抑制，不能产生普通命中；双方还必须（SHALL）分别取得可复用无敌令牌以关闭 HurtBox 并拒绝普通受击。处决致死结果必须（SHALL）绕过普通 HitBox/HurtBox 入口。
 
 #### Scenario: 开始处决时存在攻击实例
 - **WHEN** 任一方进入处决会话时仍有当前攻击实例或有效命中窗口
@@ -123,15 +158,15 @@
 
 #### Scenario: 第三方攻击处决双方
 - **WHEN** 第三方普通攻击 HitBox 在处决动画期间重叠任一方 HurtBox
-- **THEN** `CombatResolver` 拒绝该命中，双方 HP、架势和状态不变
+- **THEN** HurtBox 物理查询和 `CombatActor.CanReceiveHit` 均拒绝该命中，双方 HP、架势和状态不变
 
 #### Scenario: 处决者动画完成
 - **WHEN** 处决者的配置动画时长结束
-- **THEN** 处决者的战斗抑制幂等释放，并可在下一逻辑帧重新产生和接收普通命中
+- **THEN** 处决者的无敌和攻击抑制幂等释放，并可在下一逻辑帧重新产生和接收普通命中
 
 #### Scenario: 被处决者动画完成
 - **WHEN** 被处决者的配置动画时长结束
-- **THEN** 其处决抑制完成清理并由 `Dead` 状态继续保持不可受击，不恢复为存活 HurtBox 目标
+- **THEN** 其处决无敌和攻击抑制完成清理，并以处决死亡变体进入 `Dead`，由死亡状态继续拒绝普通命中
 
 ### Requirement: 角色控制锁定与镜头保留
 `Executing` / `Executed` 期间必须（SHALL）忽略移动、冲刺、跳跃、攻击、闪避、格挡、弹反和锁定切换且不得缓冲输入，但本地 Player 必须（SHALL）仍可使用 `Look` 旋转镜头。
@@ -165,14 +200,14 @@
 
 #### Scenario: 目标动画结束
 - **WHEN** `Executed` 配置时长结束且致死结果已经锁存
-- **THEN** 目标进入 `Dead`，处决会话在双方均完成后释放
+- **THEN** 目标以 `DeathPresentationVariant.Executed` 进入 `Dead`，处决会话在双方均完成后释放，随后播放 `rig_Executed_Death`
 
 #### Scenario: 生命周期异常清理
 - **WHEN** 场景卸载、Actor 销毁或网络断开终止活跃会话
 - **THEN** 权威端幂等清理会话、Warp 和战斗抑制，不留下可攻击锁死或重复占用的 Actor
 
 ### Requirement: 处决网络同步
-网络协议必须（SHALL）同步足以重建处决会话的双方 ActorId、`executionId`、固定目标姿态、锚点、开始时间、结果状态和完成边沿，并在消息乱序、迟到或 Host 回环时保持唯一权威结果。
+网络协议必须（SHALL）同步足以重建处决会话的双方 ActorId、`executionId`、固定目标姿态、锚点、开始时间、结果状态、完成边沿和 `DeathPresentationVariant`，并在消息乱序、迟到或 Host 回环时保持唯一权威结果。
 
 #### Scenario: 旧动作快照迟到
 - **WHEN** Server 或观察端已锁存处决会话后收到更早的 Attack、Parried 或 PostureBroken 快照
@@ -181,6 +216,10 @@
 #### Scenario: 远端晚收到会话
 - **WHEN** 观察端在权威开始时间之后才收到处决开始消息
 - **THEN** 它使用会话绝对姿态和经过时间追赶配对表现，而不是从动画零帧延后整个结果
+
+#### Scenario: 晚加入者看到已完成处决
+- **WHEN** 观察者在目标已经由处决进入 `Dead` 后加入或重新绑定
+- **THEN** 权威快照携带 `DeathPresentationVariant.Executed`，观察者选择 `rig_Executed_Death` 或其最终姿态，而不是普通死亡动画
 
 #### Scenario: Host 回环
 - **WHEN** Host 已在 Server 侧应用会话后收到本地回环边沿
@@ -191,14 +230,14 @@
 - **THEN** 观察端保持完成状态并拒绝重新进入处决
 
 ### Requirement: 数据驱动处决配置
-处决距离、正面半角、高度差、视线/路径层、锚点偏移、Warp 平移/Yaw 预算、Warp Window/曲线、双方动画时长、CrossFade 和结果时间必须（SHALL）在项目战斗或表现数据中可配置并经过有效性校验。
+处决距离、正面半角、高度差、视线/路径层、锚点偏移、Warp 平移/Yaw 预算、Warp Window/曲线、双方处决动画时长、`rig_Execute` / `rig_Executed` / `rig_Executed_Death` CrossFade/校准参数和结果时间必须（SHALL）在项目战斗或表现数据中可配置并经过有效性校验。
 
 #### Scenario: 配置值非法
 - **WHEN** 距离/时长为负、角度非有限值、Warp Window 无序或结果时间超出会话范围
 - **THEN** 配置校验钳制或报告错误，使运行时条件保持有限、有序且可确定
 
 #### Scenario: 动画资产重新校准
-- **WHEN** `rig_Execute` / `rig_Executed` 或角色比例改变
+- **WHEN** `rig_Execute` / `rig_Executed` / `rig_Executed_Death` 或角色比例改变
 - **THEN** 开发者可以只调整锚点、Warp 和时间配置，而不改变处决资格与网络协议语义
 
 ### Requirement: 处决诊断与验证
@@ -214,4 +253,4 @@
 
 #### Scenario: 更新验证矩阵
 - **WHEN** 处决实现完成
-- **THEN** 项目文档包含 Parried/PostureBroken、正反面、距离/高度/墙体、输入优先级、Warp、双方无敌、镜头、Player/NPC 目标及 Offline/Host/Client 乱序用例，且没有证据的项目保持未验证
+- **THEN** 项目文档包含 Parried/PostureBroken、Guard 禁止处决、正反面、距离/高度/墙体、输入优先级、Warp、无敌叠加/HurtBox 开关、攻击抑制、处决死亡变体、镜头、Player/NPC 目标及 Offline/Host/Client 乱序用例，且没有证据的项目保持未验证

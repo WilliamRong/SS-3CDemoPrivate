@@ -17,6 +17,8 @@ namespace Character.Sync
         HealthResult = 9,
         ParryStart = 10,
         Parried = 11,
+        Executing = 12,
+        Executed = 13,
     }
 
     /// <summary>
@@ -40,6 +42,8 @@ namespace Character.Sync
                 ActionType.HealthResult => "HealthResult",
                 ActionType.ParryStart => "ParryStart",
                 ActionType.Parried => "Parried",
+                ActionType.Executing => "Executing",
+                ActionType.Executed => "Executed",
                 _ => $"Unknown({(byte)type})"
             };
         }

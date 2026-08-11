@@ -13,7 +13,6 @@ namespace Character.Core
         public Vector3 Velocity;
         public float MaxHp { get; private set; } = 100f;
         public float CurrentHp { get; private set; } = 100f;
-        public bool IsInvincible { get; set; }
         public bool IsDead => CurrentHp <= 0f;
         public bool IsGrounded => Controller != null && Controller.isGrounded;
 
@@ -42,14 +41,13 @@ namespace Character.Core
 
         public void ApplyDamage(float damage)
         {
-            if (IsDead || IsInvincible) return;
+            if (IsDead) return;
             CurrentHp = Mathf.Max(0f, CurrentHp - Mathf.Max(0f, damage));
         }
 
         public void Revive(float hp)
         {
             CurrentHp = Mathf.Clamp(hp, 1f, MaxHp);
-            IsInvincible = false;
         }
 
         // ============ 相机坐标基 ============

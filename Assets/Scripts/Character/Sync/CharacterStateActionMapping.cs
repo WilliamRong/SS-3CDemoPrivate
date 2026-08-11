@@ -18,6 +18,8 @@ namespace Character.Sync
                 CharacterStateId.PostureBroken => ActionType.PostureBreak,
                 CharacterStateId.Parry => ActionType.ParryStart,
                 CharacterStateId.Parried => ActionType.Parried,
+                CharacterStateId.Executing => ActionType.Executing,
+                CharacterStateId.Executed => ActionType.Executed,
                 _ => ActionType.None
             };
         }

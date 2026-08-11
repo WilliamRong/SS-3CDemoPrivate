@@ -75,7 +75,7 @@ namespace Character.Combat
                 if (hitBox == null || !hitBox.IsConfigured()) continue;
 
                 CombatActor attacker = hitBox.Owner;
-                if (attacker == null || !attacker.TryGetCurrentAttack(out var attack)) continue;
+                if (attacker == null || !attacker.CanProduceCombatHit || !attacker.TryGetCurrentAttack(out var attack)) continue;
 
                 var attackKey = new AttackInstanceKey(
                     attacker.ActorId,
@@ -138,6 +138,12 @@ namespace Character.Combat
 
             if (attacker == null || target == null) return;
 
+            if (!attacker.CanProduceCombatHit ||
+                !target.CanReceiveHit)
+            {
+                return;
+            }
+
             var attackKey = new AttackInstanceKey(
                 attacker.ActorId,
                 attack.attackInstanceId);
@@ -146,8 +152,6 @@ namespace Character.Combat
             if (attacker == target) return;
 
             if (attacker.TeamId != 0 && attacker.TeamId == target.TeamId) return;
-
-            if (!target.CanReceiveHit) return;
 
             int hitWindowKey = attack.definition.hitSameTargetOnce ? -1 : windowIndex;
             var key = new HitKey(attacker.ActorId, attack.attackInstanceId, target.ActorId, hitWindowKey);

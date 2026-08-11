@@ -17,5 +17,7 @@ namespace Character.StateMachine
         PostureBroken = 9,
         Parry =10,
         Parried = 11,
+        Executing = 12,
+        Executed = 13,
     }
 }
