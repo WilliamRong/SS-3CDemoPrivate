@@ -237,6 +237,8 @@ namespace Character.Sync
                 actionParams,
                 dodgeCtx: dodgeCtx,
                 attackComboStep: frame.AttackComboStep,
+                 deathPresentationVariant:
+        ResolveDeathPresentationVariant(frame.StateId),
                 forceRestart: frame.EnteredState);
         }
 
@@ -513,7 +515,9 @@ namespace Character.Sync
                 or CharacterStateId.Attack
                 or CharacterStateId.Dodge
                 or CharacterStateId.Parry
-                or CharacterStateId.Parried;
+                or CharacterStateId.Parried
+                or CharacterStateId.Executing
+or CharacterStateId.Executed;
         }
 
         // ============ Presenter 组装 ============
@@ -928,8 +932,34 @@ namespace Character.Sync
                     or CharacterStateId.Dodge
                     or CharacterStateId.Guard
                     or CharacterStateId.Parry
-                    or CharacterStateId.Parried;
+                    or CharacterStateId.Parried
+                    or CharacterStateId.Executing
+or CharacterStateId.Executed;
             }
+        }
+
+        private DeathPresentationVariant ResolveDeathPresentationVariant(
+    CharacterStateId stateId)
+        {
+            if (stateId != CharacterStateId.Dead)
+                return DeathPresentationVariant.Default;
+
+            if (_playerController != null &&
+                HasLocalPresentationAuthority())
+            {
+                return _playerController.CurrentDeathPresentationVariant;
+            }
+
+            if (_npcDriver != null &&
+                _networkIdentity != null &&
+                _networkIdentity.isServer &&
+                NetworkServer.active)
+            {
+                return _npcDriver.CurrentDeathPresentationVariant;
+            }
+
+            // 远端死亡变体留到处决网络协议阶段同步。
+            return DeathPresentationVariant.Default;
         }
     }
 }

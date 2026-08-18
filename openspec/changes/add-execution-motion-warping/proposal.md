@@ -9,6 +9,7 @@
 - 要求处决者位于目标正面、水平距离约半个身位以内，并通过配置化距离、角度、高度差、视线和路径检查确定资格。
 - 新增成对的 `Executing` / `Executed` 逻辑状态，分别播放 `rig_Execute` 与 `rig_Executed`，并以同一权威处决会话绑定双方；目标从处决进入 `Dead` 时使用 `rig_Executed_Death`，普通死亡继续使用既有死亡动画。
 - 固定被处决者的世界位置与朝向，只对处决者相对目标生成的锚点执行有限窗口内的位置和旋转 Motion Warping。
+- 在处决运行时与网络闭环完成后增加 Unity Motion Warping 可视化编辑器，用于选择处决配置和动画、编辑处决者锚点偏移、Warp Window/曲线/预算，并通过时间 Scrub 对比原始 Root Motion、修正后预测轨迹及位置/Yaw 残差。
 - 抽离可由闪避、处决和未来技能复用的可叠加无敌语义；当前表现统一关闭 `CombatHurtBox` 并由 `CanReceiveHit` 提供权威兜底。处决双方各自持有无敌，同时独立抑制普通 HitBox/攻击，保留环境碰撞和本地镜头旋转。
 - 由 Server 校验并提交在线处决资格、会话和致死结果；Offline 模式执行相同的本地权威事务，并同步远端配对表现与绝对结果。
 - 增加处决锚点、Warp 误差、会话、碰撞抑制和结果诊断，以及 Offline、Host、Client、Player 与 NPC 验证用例。
@@ -33,4 +34,5 @@
 - 镜头与锁定：处决期间阻断角色动作和锁定切换，但保留本地 `Look` 输入及可旋转镜头。
 - 网络：处决请求、双方 ActorId、会话序号、锚点、开始时间、状态边沿、死亡表现变体和最终绝对生命结果需要 Server 权威同步与去重。
 - 数据与文档：增加处决距离、角度、高度差、Warp 窗口/误差、三段动画时长/过渡等配置，并更新需求、进度与验证矩阵。
-- 不增加外部包依赖，不要求 Animation Rigging；第一版 Motion Warping 复用现有 Root Motion 消费管线实现。
+- 编辑器工具：新增 Editor-only 的 Motion Warping 配置、预览和诊断窗口，通过正式配置资产写回数据，并与运行时共享 Warp 计算语义；编辑器不参与权威资格、会话、位移或致死判定。
+- 不增加第三方包依赖，不要求 Animation Rigging；第一版 Motion Warping 复用现有 Root Motion 消费管线实现，编辑器工具不增加运行时依赖。

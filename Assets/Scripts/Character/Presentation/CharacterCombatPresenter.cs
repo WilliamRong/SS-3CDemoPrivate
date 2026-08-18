@@ -40,6 +40,8 @@ namespace Character.Presentation
             GuardState.GuardPhase guardPhase = GuardState.GuardPhase.Start,
             bool guardHasMove = false,
             byte attackComboStep = 1,
+            DeathPresentationVariant deathPresentationVariant =
+        DeathPresentationVariant.Default,
             bool forceRestart = false)
         {
             if (animator == null) return false;
@@ -69,9 +71,37 @@ namespace Character.Presentation
                     PlayReaction(animator, HitVariantToHash(actionParams), _config.lightHitCrossFadeDuration, forceRestart);
                     _lastCombatState = stateId;
                     return true;
+                case CharacterStateId.Executing:
+                    ResetActiveCombatLayers(animator);
+                    PlayReaction(
+                        animator,
+                        AnimatorParams.StateExecuting,
+                        _config.executingCrossFadeDuration,
+                        forceRestart);
+                    _lastCombatState = stateId;
+                    return true;
+                case CharacterStateId.Executed:
+                    ResetActiveCombatLayers(animator);
+                    PlayReaction(
+                        animator,
+                        AnimatorParams.StateExecuted,
+                        _config.executedCrossFadeDuration,
+                        forceRestart);
+                    _lastCombatState = stateId;
+                    return true;
                 case CharacterStateId.Dead:
                     ResetActiveCombatLayers(animator);
-                    PlayReaction(animator, AnimatorParams.StateDeath, _config.GetDeathCrossFadeDuration(), forceRestart);
+                    bool executedDeath =
+                        deathPresentationVariant == DeathPresentationVariant.Executed;
+                    PlayReaction(
+                        animator,
+                        executedDeath
+                            ? AnimatorParams.StateExecutedDeath
+                            : AnimatorParams.StateDeath,
+                        executedDeath
+                            ? _config.executedDeathCrossFadeDuration
+                            : _config.GetDeathCrossFadeDuration(),
+                        forceRestart);
                     _lastCombatState = stateId;
                     return true;
                 case CharacterStateId.Parry:
@@ -105,7 +135,12 @@ namespace Character.Presentation
         {
             if (animator == null) return;
             animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 0f);
-            if (_lastCombatState is CharacterStateId.Hit or CharacterStateId.Dead or CharacterStateId.PostureBroken or CharacterStateId.Parried)
+            if (_lastCombatState is CharacterStateId.Hit
+            or CharacterStateId.Dead
+            or CharacterStateId.PostureBroken
+            or CharacterStateId.Parried
+            or CharacterStateId.Executing
+            or CharacterStateId.Executed)
             {
                 _lastCombatState = CharacterStateId.None;
                 _lastHash = 0;

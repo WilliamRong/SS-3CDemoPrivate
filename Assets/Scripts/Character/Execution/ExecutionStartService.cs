@@ -17,6 +17,8 @@ namespace Character.Execution
         TargetStateRejected = 5,
         ExecutorStateRejected = 6,
         RollbackFailed = 7,
+        LifecycleRegistrationRejected = 8,
+        AuthorityUnavailable = 9,
     }
 
 
@@ -27,14 +29,18 @@ namespace Character.Execution
     public sealed class ExecutionStartService
     {
         private readonly ExecutionSessionCoordinator _coordinator;
+        private readonly ExecutionLifecycleService _lifecycle;
 
         public ExecutionSessionCoordinator Coordinator => _coordinator;
+        public ExecutionLifecycleService Lifecycle => _lifecycle;
 
         public ExecutionStartService(
-     ExecutionSessionCoordinator coordinator)
+            ExecutionLifecycleService lifecycle)
         {
-            _coordinator = coordinator ??
-                throw new ArgumentNullException(nameof(coordinator));
+            _lifecycle = lifecycle ??
+                throw new ArgumentNullException(nameof(lifecycle));
+
+            _coordinator = lifecycle.Coordinator;
         }
 
         public bool TryStart(
@@ -51,6 +57,11 @@ namespace Character.Execution
             eligibility = default;
             createFailure = ExecutionSessionCreateFailure.None;
             startFailure = ExecutionStartFailure.None;
+
+            CharacterStateId executorPreviousState =
+                executor != null
+                    ? executor.CurrentStateId
+                    : CharacterStateId.None;
 
             CharacterStateId targetPreviousState =
                 target != null
@@ -142,6 +153,38 @@ namespace Character.Execution
                 startFailure = restored
                     ? ExecutionStartFailure.ExecutorStateRejected
                     : ExecutionStartFailure.RollbackFailed;
+
+                return false;
+            }
+
+            if (!_lifecycle.TryRegister(
+                    created,
+                    executor,
+                    target,
+                    executorPreviousState,
+                    targetPreviousState))
+            {
+                bool executorRestored =
+                    executor.TryRollbackExecutionStart(
+                        created.ExecutionId,
+                        executorPreviousState);
+
+                bool targetRestored =
+                    target.TryRollbackExecutionStart(
+                        created.ExecutionId,
+                        targetPreviousState);
+
+                CleanupFailedStart(
+                    created,
+                    executor,
+                    target,
+                    executorSuppressed,
+                    targetSuppressed);
+
+                startFailure =
+                    executorRestored && targetRestored
+                        ? ExecutionStartFailure.LifecycleRegistrationRejected
+                        : ExecutionStartFailure.RollbackFailed;
 
                 return false;
             }

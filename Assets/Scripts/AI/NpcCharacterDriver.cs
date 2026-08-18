@@ -8,6 +8,7 @@ using Character.StateMachine;
 using AI.NpcStates;
 using Core;
 using Mirror;
+using Opsive.BehaviorDesigner.Runtime;
 using UnityEngine;
 
 namespace AI
@@ -22,6 +23,7 @@ namespace AI
         [SerializeField] private NpcAiIntentSource _intentSource;
         [SerializeField] private NpcMotor _motor;
         [SerializeField] private Animator _animator;
+        [SerializeField] private BehaviorTree _behaviorTree;
 
         private CharacterStateMachine _fsm;
         private CharacterStateRegistry _registry;
@@ -40,6 +42,18 @@ namespace AI
         private NpcHitState _hit;
         private NpcDeadState _dead;
 
+        private bool _gmGuardOverrideActive;
+        private bool _gmFacingOverrideActive;
+        private float _gmGuardHoldDuration = 30f;
+        private bool _gmPausedBehaviorTree;
+        private bool _behaviorTreeEnabledBeforeGmPause;
+
+        public DeathPresentationVariant CurrentDeathPresentationVariant
+        {
+            get;
+            private set;
+        } = DeathPresentationVariant.Default;
+
         private CharacterCombatConfig combatConfig => GameDataManager.Instance.Npc.combat;
         private CharacterPresentationConfig presentationConfig => GameDataManager.Instance.Npc.presentation;
 
@@ -55,6 +69,7 @@ namespace AI
             if (_intentSource == null) _intentSource = GetComponent<NpcAiIntentSource>();
             if (_motor == null) _motor = GetComponent<NpcMotor>();
             if (_animator == null) _animator = GetComponentInChildren<Animator>();
+            if (_behaviorTree == null) _behaviorTree = GetComponent<BehaviorTree>();
             if (_combatActor == null) _combatActor = GetComponent<CombatActor>();
 
             if (_animator != null)
@@ -104,12 +119,24 @@ namespace AI
             _fsm.Initialize(_idle);
         }
 
+        public override void OnStopServer()
+        {
+            _gmGuardOverrideActive = false;
+            _gmFacingOverrideActive = false;
+            _intentSource?.ClearGmFacingTarget();
+            RestoreBehaviorTreeAfterGmOverride();
+            base.OnStopServer();
+        }
+
         /// <summary>
         /// 放在 LateUpdate，确保行为树先写完本帧黑板意图，再由状态机消费稳定快照。
         /// </summary>
         private void LateUpdate()
         {
             if (!isServer || _fsm == null) return;
+
+            RefreshExpiredGmFacingOverride();
+            TryApplyPendingGmGuard();
 
             CharacterIntent intent = _intentSource != null ? _intentSource.BuildIntent() : default;
 
@@ -395,6 +422,36 @@ namespace AI
                 TransitionReason.ExecutionCancelled);
         }
 
+        public bool ServerTryCompleteExecuted(
+    ulong executionId)
+        {
+            if (!isServer ||
+                _combatActor == null ||
+                !_combatActor.IsDead ||
+                CurrentStateId != CharacterStateId.Executed ||
+                !_executed.IsBoundTo(executionId))
+            {
+                return false;
+            }
+
+            DeathPresentationVariant previousVariant =
+                CurrentDeathPresentationVariant;
+
+            CurrentDeathPresentationVariant =
+                DeathPresentationVariant.Executed;
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Dead,
+                    _registry,
+                    TransitionReason.ExecutionCompleted))
+            {
+                return true;
+            }
+
+            CurrentDeathPresentationVariant = previousVariant;
+            return false;
+        }
+
         public bool ServerTryEnterPostureBroken()
         {
             if (!isServer || _fsm == null || _registry == null ||
@@ -409,8 +466,28 @@ namespace AI
 
         public bool ServerTryEnterDead()
         {
-            if (!isServer) return false;
-            return _fsm.TryTransition(CharacterStateId.Dead, _registry, TransitionReason.Death);
+            if (!isServer)
+                return false;
+
+            if (CurrentStateId == CharacterStateId.Dead)
+                return true;
+
+            DeathPresentationVariant previousVariant =
+                CurrentDeathPresentationVariant;
+
+            CurrentDeathPresentationVariant =
+                DeathPresentationVariant.Default;
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Dead,
+                    _registry,
+                    TransitionReason.Death))
+            {
+                return true;
+            }
+
+            CurrentDeathPresentationVariant = previousVariant;
+            return false;
         }
         public bool ServerTryEnterSprint(float holdDuration = 1.5f)
         {
@@ -440,7 +517,13 @@ namespace AI
                 return false;
             }
 
-            return _combatActor.RestoreFullHealthForRevive();
+            if (!_combatActor.RestoreFullHealthForRevive())
+                return false;
+
+            CurrentDeathPresentationVariant =
+                DeathPresentationVariant.Default;
+
+            return true;
         }
 
         // ============ 根位移 ============
@@ -464,6 +547,29 @@ namespace AI
 
         // ============ 强制调试控制 ============
 
+        /// <summary>
+        /// GM 防御是持续覆盖：当前动作不可被 Guard 打断时先锁存，回到可转换状态后再进入 Guard。
+        /// </summary>
+        public bool SetGmGuardOverride(bool active, float loopHoldDuration = 30f)
+        {
+            if (!isServer || _fsm == null || _registry == null || _guard == null)
+                return false;
+
+            if (active)
+            {
+                _gmGuardOverrideActive = true;
+                _gmGuardHoldDuration = Mathf.Max(0.1f, loopHoldDuration);
+                RefreshBehaviorTreeForGmOverride();
+                TryApplyPendingGmGuard();
+                return true;
+            }
+
+            _gmGuardOverrideActive = false;
+            bool exited = CurrentStateId != CharacterStateId.Guard || ForceExitGuardToIdle();
+            RefreshBehaviorTreeForGmOverride();
+            return exited;
+        }
+
         public bool ForceEnterGuard(float loopHoldDuration = 2f)
         {
             if (_guard == null || _fsm == null || _registry == null) return false;
@@ -481,12 +587,101 @@ namespace AI
 
         public void SetGmFacingTarget(Transform target)
         {
-            _intentSource?.SetGmFacingTarget(target);
+            _gmFacingOverrideActive = _intentSource != null && target != null;
+
+            if (_gmFacingOverrideActive)
+            {
+                _intentSource.SetGmFacingTarget(target);
+                RefreshBehaviorTreeForGmOverride();
+
+                _motor?.Stop();
+                _motor?.ResetPath();
+
+                if (CurrentStateId == CharacterStateId.Move)
+                {
+                    _fsm?.TryTransition(
+                        CharacterStateId.Idle,
+                        _registry,
+                        TransitionReason.Timeout);
+                }
+
+                return;
+            }
+
+            ClearGmFacingTarget();
         }
 
         public void ClearGmFacingTarget()
         {
             _intentSource?.ClearGmFacingTarget();
+            _gmFacingOverrideActive = false;
+            RefreshBehaviorTreeForGmOverride();
+        }
+
+        private void TryApplyPendingGmGuard()
+        {
+            if (!_gmGuardOverrideActive ||
+                CurrentStateId is CharacterStateId.Guard or CharacterStateId.Dead)
+            {
+                return;
+            }
+
+            if (CurrentStateId is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move or
+                    CharacterStateId.Sprint))
+            {
+                return;
+            }
+
+            ForceEnterGuard(_gmGuardHoldDuration);
+        }
+
+        private void RefreshExpiredGmFacingOverride()
+        {
+            if (!_gmFacingOverrideActive ||
+                (_intentSource != null && _intentSource.HasGmFacingTarget))
+            {
+                return;
+            }
+
+            _gmFacingOverrideActive = false;
+            RefreshBehaviorTreeForGmOverride();
+        }
+
+        /// <summary>
+        /// 防御与朝向覆盖独立持有暂停原因，只有最后一个 GM 覆盖释放后才恢复行为树。
+        /// </summary>
+        private void RefreshBehaviorTreeForGmOverride()
+        {
+            if (_behaviorTree == null)
+                return;
+
+            bool shouldPause = _gmGuardOverrideActive || _gmFacingOverrideActive;
+            if (shouldPause)
+            {
+                if (!_gmPausedBehaviorTree)
+                {
+                    _behaviorTreeEnabledBeforeGmPause = _behaviorTree.enabled;
+                    _gmPausedBehaviorTree = true;
+                }
+
+                _behaviorTree.enabled = false;
+                return;
+            }
+
+            RestoreBehaviorTreeAfterGmOverride();
+        }
+
+        private void RestoreBehaviorTreeAfterGmOverride()
+        {
+            if (!_gmPausedBehaviorTree)
+                return;
+
+            if (_behaviorTree != null)
+                _behaviorTree.enabled = _behaviorTreeEnabledBeforeGmPause;
+
+            _gmPausedBehaviorTree = false;
         }
     }
 }

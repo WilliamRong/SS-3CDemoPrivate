@@ -240,6 +240,37 @@
 - **WHEN** `rig_Execute` / `rig_Executed` / `rig_Executed_Death` 或角色比例改变
 - **THEN** 开发者可以只调整锚点、Warp 和时间配置，而不改变处决资格与网络协议语义
 
+### Requirement: Motion Warping 可视化编辑器
+处决运行时、Offline 和网络闭环完成后，项目必须（SHALL）提供 Editor-only 的 Motion Warping 可视化编辑器。编辑器必须（SHALL）能够选择正式处决配置和相关动画，编辑锚点、Warp Window、曲线及位置/Yaw 预算，可视化原始 Root Motion、修正后预测轨迹和残差，并把修改写回正式配置。编辑器预览必须（SHALL）与运行时使用相同的 Warp 计算语义，必须（SHALL）支持 Undo/Redo 和资产持久化，且不得（MUST NOT）参与运行时资格、会话、权威位移或致死判定。
+
+#### Scenario: 调整 Warp Window 和曲线
+- **WHEN** 开发者在时间轴上调整 Warp Window 或编辑 `executionWarpCurve`
+- **THEN** 窗口立即更新 Warp 区间、修正后预测轨迹及位置/Yaw 残差，并将有效修改写回所选正式配置
+
+#### Scenario: 在 Scene View 调整锚点
+- **WHEN** 开发者拖动相对被处决者姿态显示的处决者锚点 Handle
+- **THEN** `executorAnchorOffset` 通过序列化属性更新，Undo/Redo 可恢复修改前后的值，且当前场景对象不被永久改变
+
+#### Scenario: Scrub 对比轨迹
+- **WHEN** 开发者 Scrub `rig_Execute` 的预览时间
+- **THEN** 编辑器显示该时间的原始 Root Motion 姿态、Warp 后预测姿态、完整轨迹和剩余位置/Yaw 残差
+
+#### Scenario: 配置持久化
+- **WHEN** 开发者修改配置、执行 Undo/Redo、保存资产并重新打开编辑器
+- **THEN** 正式配置保留最终序列化值，撤销历史按 Unity 编辑器语义工作，且无需手工修改 `.asset` YAML
+
+#### Scenario: 非法配置诊断
+- **WHEN** Warp Window 无序、曲线非单调、预算被预测轨迹超出或所需配置/动画资源缺失
+- **THEN** 编辑器显示明确的失败项并阻止把该预览误报为有效收敛结果
+
+#### Scenario: 编辑器不存在于运行环境
+- **WHEN** 项目构建 Player 或在未打开 Motion Warping 编辑器的情况下运行处决
+- **THEN** 运行时仅从正式配置读取数据并保持完全相同的资格、会话、Warp 和致死行为
+
+#### Scenario: 预览与运行时一致
+- **WHEN** 编辑器预览和运行时 Warp 使用相同配置、原始 Root Motion 采样、起始姿态和锚点
+- **THEN** 两者在相同时间采样点得到一致的修正姿态与位置/Yaw 残差
+
 ### Requirement: 处决诊断与验证
 项目必须（SHALL）公开候选资格、会话、锚点、Warp、战斗抑制和结果诊断，并为 Offline、Host、Client、Player 与 NPC 目标提供分离的确定性验证覆盖。
 

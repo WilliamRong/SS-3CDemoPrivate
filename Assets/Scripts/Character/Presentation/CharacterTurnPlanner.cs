@@ -76,8 +76,10 @@ namespace Character.Presentation
         {
             float stepAngle = Mathf.Min(angleDelta, GetStepAngle(config));
             Quaternion targetRotation;
+            bool hasExactTargetRotation =
+                Quaternion.Dot(exactTargetRotation, exactTargetRotation) > 0.000001f;
 
-            if (angleDelta <= GetStepAngle(config) && exactTargetRotation != default)
+            if (angleDelta <= GetStepAngle(config) && hasExactTargetRotation)
             {
                 stepAngle = angleDelta;
                 targetRotation = exactTargetRotation;

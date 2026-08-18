@@ -42,6 +42,17 @@ namespace Character.Sync
         /// </summary>
         public void TickInterpolation()
         {
+            // Server-owned actors are the transform authority. Host loopback snapshots must
+            // never overwrite movement or rotation calculated by the server this frame.
+            if (NetworkServer.active
+                && _networkIdentity != null
+                && _networkIdentity.isServer
+                && _networkIdentity.connectionToClient == null)
+            {
+                LastPosError = 0f;
+                return;
+            }
+
             if (_buffer == null || _buffer.Count == 0) return;
 
             float targetTime = Time.unscaledTime - Sync.bufferDelaySec;

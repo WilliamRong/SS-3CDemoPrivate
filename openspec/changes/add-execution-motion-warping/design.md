@@ -18,6 +18,7 @@
 - 在双方各自动画结束前阻断角色控制与普通战斗碰撞，同时保留本地镜头旋转；目标进入 `Dead` 时播放处决专用死亡变体。
 - 使用显式玩法计时提交致死结果，不把 Animator 状态或动画事件作为事实源。
 - 支持 Offline、Host/Client、Player/NPC 目标以及乱序/重复网络消息验证。
+- 在处决运行时与网络闭环完成后提供 Motion Warping 可视化编辑器，让开发者能在 Unity 内调节锚点、Warp Window、曲线与预算，并实时检查原始/修正轨迹和残差。
 
 **非目标：**
 
@@ -26,6 +27,7 @@
 - 不使用 Animation Rigging、IK 或 `Animator.MatchTarget` 修正手部/武器接触点。
 - 不允许处决远距离拉拽、穿墙或绕过高度差与路径校验。
 - 不改变普通 Attack、Parry、Posture、Hit、Dead 的既有数值和优先级，处决明确要求的转换除外。
+- Motion Warping 编辑器不决定处决资格、会话、位移权威或致死结果，也不是运行时必需组件；第一版编辑器不承诺通过 IK 修正武器或手部接触。
 
 ## 设计决策
 
@@ -93,6 +95,16 @@ Client 请求只携带目标 ActorId 和本地请求序号。Server 重新解析
 
 诊断显示候选拒绝原因、双方 ActorId、`executionId`、目标来源状态、距离/角度/高度差、锚点、剩余 Warp 误差、抑制令牌、结果是否提交和网络序号。Scene Gizmo 显示目标正面扇区、距离范围和锚点。
 
+### 处决闭环完成后提供 Motion Warping 可视化编辑器
+
+处决运行时、Offline 与网络闭环完成后，增加 Editor-only 的 Unity `EditorWindow`。窗口允许选择 `CharacterCombatConfig`、`CharacterPresentationConfig`、预览用 Animator/Avatar 以及 `rig_Execute`、`rig_Executed`、`rig_Executed_Death` 动画资源；开发者可以在同一工具内编辑 `executorAnchorOffset`、Warp Window、`executionWarpCurve` 和位置/Yaw 预算。时间轴以色块标出 Warp Window，并提供动画时间 Scrub。
+
+编辑器在 Scene View 中绘制并允许拖动处决者锚点 Handle，同时显示原始 Root Motion 轨迹、Warp 后预测轨迹、当前位置残差和 Yaw 残差。配置缺失、窗口无序、曲线非单调、预算超限或动画资源无效时，窗口必须给出明确诊断，而不是生成看似有效的预览。
+
+预览和运行时复用同一套不依赖 `MonoBehaviour` 的纯 Warp 采样/轨迹计算核心，不能在 Editor 程序集中复制另一套修正公式。工具只读动画采样并写回正式配置，不从 Animator 当前状态反推玩法资格、会话或致死结果，也不参与 Play Mode 中的权威位移。
+
+配置写入通过 `SerializedObject` / `SerializedProperty` 完成，所有交互支持 Unity Undo/Redo，并正确标记和保存被修改资产；不得手工编辑 `.asset` YAML。预览对象放入临时 `PreviewScene` 或等价的隔离预览环境，关闭窗口、切换配置或重载域时必须清理，不得污染当前场景、Prefab 或正式资产。编辑器代码位于 Editor-only 程序集或目录，Player 构建和无编辑器环境中的运行时行为保持不变。
+
 ## 风险 / 权衡
 
 - [风险] `rig_Execute` 与 `rig_Executed` 并非严格按当前角色比例配对，根节点对齐后手部或武器仍穿模。-> 缓解：先在统一 Avatar 上校准锚点、Warp Window 和结果时间；第一版不承诺 IK 级接触精度。
@@ -101,6 +113,8 @@ Client 请求只携带目标 ActorId 和本地请求序号。Server 重新解析
 - [风险] 多个系统直接切换 HurtBox 会造成提前恢复。-> 缓解：只允许 `InvulnerabilityRuntime` 的首个申请/最后释放边沿集中切换 `CombatHurtBox`，并以 `CanReceiveHit` 作为权威双重门禁；环境 Collider 始终不变。
 - [风险] Client 延迟让左键处决反馈晚于普通攻击。-> 缓解：本地只在发现候选时消费输入并立即播放非承诺提示；第一版不预测权威位移或致死结果。
 - [风险] 目标已逻辑死亡但 `Executed` 动画尚未结束，旧快照可能切回 `Dead` clip，晚加入者也可能选择普通死亡。-> 缓解：会话锁存的表现优先级覆盖普通 Dead 表现，结束边沿后才携带 `DeathPresentationVariant.Executed` 交给 `Dead`。
+- [风险] 编辑器预览复制运行时公式后随实现演进产生漂移，导致工具中的轨迹与游戏内结果不一致。-> 缓解：抽取共享的纯 Warp 计算核心，并用同一输入采样比较编辑器预测和运行时输出。
+- [风险] 编辑器预览对象或配置写入污染当前场景和正式资产。-> 缓解：使用隔离的临时 `PreviewScene`、`SerializedObject`、Undo/Redo 和显式 Dirty/Save，在窗口关闭与域重载时确定性清理预览对象。
 - [权衡] 处决者动画结束早于目标。-> 处决者按自身 2.7 秒解锁，目标继续完成约 3.517 秒表现；会话保留到双方结束，避免额外冻结处决者约 0.817 秒。
 
 ## 迁移计划
@@ -110,7 +124,8 @@ Client 请求只携带目标 ActorId 和本地请求序号。Server 重新解析
 3. 先完成 Offline Player 对 NPC 的候选、状态、固定目标、Warp、攻击抑制和致死闭环。
 4. 接入 Player 目标与 Server 权威会话协议，验证 Host/Client 去重、乱序、死亡变体和绝对位置。
 5. 接入 Animator Controller、Presenter、镜头模式和数据资产，使用真实 clip 校准锚点与时间。
-6. 更新项目需求、路线与验证矩阵，并在取得运行证据前保持网络项未验证。
+6. 在处决运行时、Offline 和网络闭环完成后制作 Motion Warping 可视化编辑器，并验证预览与运行时计算一致、Undo/Redo 和资产持久化可靠。
+7. 更新项目需求、路线与验证矩阵，并在取得运行证据前保持网络项未验证。
 
 回滚时移除处决输入分流和会话入口即可恢复普通 Attack；新增枚举只追加、不重排，旧网络字段保持兼容。场景、预制体和数据资产回滚必须通过 Unity Editor 保存路径完成。
 

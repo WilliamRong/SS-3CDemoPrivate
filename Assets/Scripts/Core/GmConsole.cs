@@ -202,14 +202,14 @@ namespace Core
         {
             var npcs = FindObjectsByType<NpcCharacterDriver>(FindObjectsSortMode.None);
             foreach (var npc in npcs)
-                npc?.ServerTryEnterGuard(holdDuration);
+                npc?.SetGmGuardOverride(true, holdDuration);
         }
 
         private static void ApplyNpcExitGuardOnServer()
         {
             var npcs = FindObjectsByType<NpcCharacterDriver>(FindObjectsSortMode.None);
             foreach (var npc in npcs)
-                npc?.ForceExitGuardToIdle();
+                npc?.SetGmGuardOverride(false);
         }
 
         // ============ NPC 目标应用 ============

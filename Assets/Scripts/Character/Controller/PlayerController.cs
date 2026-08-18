@@ -5,6 +5,7 @@ using Character.Motor;
 using Character.Combat;
 using Character.Execution;
 using Character.Presentation;
+using Character.LockOn;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using Character.Sync;
@@ -43,6 +44,12 @@ namespace Character.Controller
         private DeadState _deadState;
 
         private CombatActor _combatActor;
+
+        public DeathPresentationVariant CurrentDeathPresentationVariant
+        {
+            get;
+            private set;
+        } = DeathPresentationVariant.Default;
 
         public Vector2 LastMoveInput { get; private set; }
 
@@ -223,6 +230,12 @@ namespace Character.Controller
                     intent.IsAttackPressed = false;
                 intent.IsJumpPressed = false;
             }
+            else if (TryStartExecutionFromAttack(intent))
+            {
+                // 会话已经让状态切换到 Executing。
+                // 清空本帧剩余角色输入，但 Look 仍由相机系统独立读取。
+                intent = default;
+            }
 
             LastMoveInput = intent.Move;
             _fsm.Tick(intent, Time.deltaTime);
@@ -371,6 +384,53 @@ namespace Character.Controller
         }
 
 
+        public bool TryCompleteExecuting(ulong executionId)
+        {
+            if (_fsm == null ||
+                _stateRegistry == null ||
+                CurrentStateId != CharacterStateId.Executing ||
+                !_executingState.IsBoundTo(executionId))
+            {
+                return false;
+            }
+
+            return _fsm.TryTransition(
+                CharacterStateId.Idle,
+                _stateRegistry,
+                TransitionReason.ExecutionCompleted);
+        }
+
+        public bool TryCompleteExecuted(ulong executionId)
+        {
+            if (_context == null ||
+                !_context.IsDead ||
+                _fsm == null ||
+                _stateRegistry == null ||
+                CurrentStateId != CharacterStateId.Executed ||
+                !_executedState.IsBoundTo(executionId))
+            {
+                return false;
+            }
+
+            DeathPresentationVariant previousVariant =
+                CurrentDeathPresentationVariant;
+
+            CurrentDeathPresentationVariant =
+                DeathPresentationVariant.Executed;
+
+            if (_fsm.TryTransition(
+                    CharacterStateId.Dead,
+                    _stateRegistry,
+                    TransitionReason.ExecutionCompleted))
+            {
+                return true;
+            }
+
+            CurrentDeathPresentationVariant = previousVariant;
+            return false;
+        }
+
+
         public bool TryEnterPostureBroken()
         {
             if (_context == null || _context.IsDead ||
@@ -415,10 +475,20 @@ namespace Character.Controller
             if (CurrentStateId == CharacterStateId.Dead)
                 return true;
 
-            return _fsm.TryTransition(
+            DeathPresentationVariant presentationVariant = CurrentDeathPresentationVariant;
+
+            CurrentDeathPresentationVariant = DeathPresentationVariant.Default;
+
+            if (_fsm.TryTransition(
                 CharacterStateId.Dead,
                 _stateRegistry,
-                TransitionReason.Death);
+                TransitionReason.Death))
+            {
+                return true;
+            }
+
+            CurrentDeathPresentationVariant = presentationVariant;
+            return false;
         }
 
         // ============ 生命结算 ============
@@ -528,7 +598,10 @@ namespace Character.Controller
         {
             _context.Revive(hp);
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
-            _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive);
+            if (_fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive))
+            {
+                CurrentDeathPresentationVariant = DeathPresentationVariant.Default;
+            }
         }
 
         public bool ForceEnterGuard(float holdDuration)
@@ -587,6 +660,46 @@ namespace Character.Controller
                 or CharacterStateId.Executing
                 or CharacterStateId.Executed
                 or CharacterStateId.Dead;
+        }
+
+        private bool TryStartExecutionFromAttack(CharacterIntent intent)
+        {
+            if (!intent.IsAttackPressed ||
+    intent.IsParryPressed ||
+    intent.IsDodgePressed ||
+    intent.IsGuardHeld ||
+    CurrentStateId is not (
+        CharacterStateId.Idle or
+        CharacterStateId.Move) ||
+    _combatActor == null)
+            {
+                return false;
+            }
+
+            ExecutionRuntime runtime = ExecutionRuntime.Instance;
+
+            if (runtime == null || !runtime.HasAuthority)
+                return false;
+
+            if (GameDataManager.Instance == null ||
+                GameDataManager.Instance.Player == null ||
+                GameDataManager.Instance.Player.combat == null)
+            {
+                return false;
+            }
+
+            var combatConfig =
+                GameDataManager.Instance.Player.combat;
+
+
+            var lockOn = _lockOnQuery as PlayerLockOnController;
+
+            if (!runtime.CandidateResolver.TrySelect(_combatActor, lockOn, combatConfig, out CombatActor target, out _, runtime.OccupancyQuery))
+            {
+                return false;
+            }
+
+            return runtime.TryStart(_combatActor, target, combatConfig, out _, out _, out _, out _);
         }
 
         // ============ 活跃状态查询 ============
@@ -749,6 +862,17 @@ namespace Character.Controller
                     or CharacterStateId.Dead
                     or CharacterStateId.Executing))
                 return;
+
+            if (CurrentStateId == CharacterStateId.Executing)
+            {
+                if (_executingState == null || !_executingState.TryWarpRootMotion(deltaPosition, deltaRotation, out Vector3 warpedPosition, out Quaternion warpedRotation))
+                {
+                    return;
+                }
+
+                deltaPosition = warpedPosition;
+                deltaRotation = warpedRotation;
+            }
 
             _motor.SetAttackRootMotionDelta(deltaPosition, deltaRotation);
         }

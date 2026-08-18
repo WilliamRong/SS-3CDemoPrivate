@@ -352,6 +352,43 @@ namespace Character.Combat
             return CurrentHp > 0f;
         }
 
+
+        public bool TryCommitExecutionKill(ulong executionId)
+        {
+            EnsureReferences();
+
+            if (!HasPostureSimulationAuthority() || executionId == 0 ||
+                !IsBoundToExecutedSession(executionId))
+            {
+                return false;
+            }
+
+            // 同一会话重复提交不会增加 revision。
+            if (CurrentHp <= 0f)
+                return true;
+
+            float previousHp = CurrentHp;
+
+            if (_playerController != null)
+            {
+                _playerController.ApplyAuthoritativeHealth(
+                    0f,
+                    MaxHp);
+            }
+            else
+            {
+                InitializeHealth(force: false);
+                _currentHp = 0f;
+            }
+
+            CommitHealthChange(previousHp);
+            ResetPosture(forceNotify: true);
+            _wasDead = true;
+
+            HealthChanged?.Invoke(CurrentHp, MaxHp);
+            return CurrentHp <= 0f;
+        }
+
         // ============ 权威架势状态 ============
 
         public float AddPosture(float amount)
@@ -1181,6 +1218,82 @@ namespace Character.Combat
                    _npcDriver.ServerTryRollbackExecutionStart(
                        executionId,
                        previousState);
+        }
+
+        public bool HasExecutionDurationElapsedAsExecutor(
+    ulong executionId)
+        {
+            EnsureReferences();
+
+            return _playerController != null &&
+                   _npcDriver == null &&
+                   _playerController.TryGetActiveExecutingState(
+                       out ExecutingState state) &&
+                   state.IsBoundTo(executionId) &&
+                   state.HasReachedDuration;
+        }
+
+        public bool HasExecutionDurationElapsedAsTarget(
+            ulong executionId)
+        {
+            EnsureReferences();
+
+            if (_playerController != null)
+            {
+                return _playerController.TryGetActiveExecutedState(
+                           out ExecutedState state) &&
+                       state.IsBoundTo(executionId) &&
+                       state.HasReachedDuration;
+            }
+
+            return _npcDriver != null &&
+                   _npcDriver.TryGetActiveExecutedState(
+                       out NpcExecutedState npcState) &&
+                   npcState.IsBoundTo(executionId) &&
+                   npcState.HasReachedDuration;
+        }
+
+        public bool TryCompleteExecutionAsExecutor(
+            ulong executionId)
+        {
+            EnsureReferences();
+
+            return _playerController != null &&
+                   _npcDriver == null &&
+                   _playerController.TryCompleteExecuting(
+                       executionId);
+        }
+
+        public bool TryCompleteExecutionAsTarget(
+            ulong executionId)
+        {
+            EnsureReferences();
+
+            if (_playerController != null)
+            {
+                return _playerController.TryCompleteExecuted(
+                    executionId);
+            }
+
+            return _npcDriver != null &&
+                   _npcDriver.ServerTryCompleteExecuted(
+                       executionId);
+        }
+
+        private bool IsBoundToExecutedSession(
+            ulong executionId)
+        {
+            if (_playerController != null)
+            {
+                return _playerController.TryGetActiveExecutedState(
+                           out ExecutedState state) &&
+                       state.IsBoundTo(executionId);
+            }
+
+            return _npcDriver != null &&
+                   _npcDriver.TryGetActiveExecutedState(
+                       out NpcExecutedState npcState) &&
+                   npcState.IsBoundTo(executionId);
         }
     }
 }

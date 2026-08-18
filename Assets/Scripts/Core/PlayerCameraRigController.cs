@@ -1,3 +1,6 @@
+using Character.Combat;
+using Character.LockOn;
+using Character.StateMachine;
 using Character.Presentation;
 using Cinemachine;
 using UnityEngine;
@@ -22,6 +25,10 @@ namespace Core
         private Transform _playerFollowTp;
         private Transform _playerFollowLockOn;
         private Transform _playerLookAt;
+        private CombatActor _ownerActor;
+        private PlayerLockOnController _playerLockOn;
+        private bool _wasExecutionCameraActive;
+
 
         private Quaternion _pivotYaw = Quaternion.identity;
         private bool _pivotYawInitialized;
@@ -54,6 +61,8 @@ namespace Core
             _playerFollowLockOn = playerFollowLockOn ?? playerFollowTp ?? playerLookAt;
             _playerLookAt = playerLookAt ?? _playerFollowTp;
             _lockOnQuery = GetComponent<ILockOnLocomotionQuery>();
+            _ownerActor = GetComponent<CombatActor>();
+            _playerLockOn = GetComponent<PlayerLockOnController>();
 
             var freeLookGo = FindSceneObject(config.freeLookPath);
             var lockOnGo = FindSceneObject(config.lockOnPath);
@@ -79,12 +88,31 @@ namespace Core
             _lockOnVcam.LookAt = _lockTargetGroup.transform;
             _lockOnVcam.Priority = config.lockOnInactivePriority;
 
-            _wasLockOnActive = _lockOnQuery != null && _lockOnQuery.IsLockOnActive;
-            Transform initialTarget = _wasLockOnActive ? _lockOnQuery.CurrentTarget : null;
-            if (_wasLockOnActive && initialTarget != null)
+            bool executionCameraActive = IsExecutionCameraActive();
+
+            _wasExecutionCameraActive = executionCameraActive;
+            _wasLockOnActive =
+                !executionCameraActive &&
+                _lockOnQuery != null &&
+                _lockOnQuery.IsLockOnActive;
+
+            Transform initialTarget =
+                _wasLockOnActive
+                    ? _lockOnQuery.CurrentTarget
+                    : null;
+
+            if (executionCameraActive)
+            {
+                ApplyExecutionCameraState(config);
+            }
+            else if (_wasLockOnActive && initialTarget != null)
+            {
                 ApplyLockOnState(initialTarget, config);
+            }
             else
+            {
                 ApplyLockOffState(config);
+            }
 
             _initialized = true;
             return true;
@@ -172,20 +200,47 @@ namespace Core
         /// </summary>
         private void LateUpdate()
         {
-            if (!_initialized || _lockOnQuery == null)
+            if (!_initialized)
                 return;
 
             var config = ResolveConfig();
             if (config == null)
                 return;
 
+            bool executionCameraActive = IsExecutionCameraActive();
+
+            if (executionCameraActive)
+            {
+                if (!_wasExecutionCameraActive)
+                {
+                    ApplyExecutionCameraState(config);
+                    _wasExecutionCameraActive = true;
+                }
+
+                _wasLockOnActive = false;
+                return;
+            }
+
+            if (_wasExecutionCameraActive)
+            {
+                ApplyLockOffState(config);
+                _wasExecutionCameraActive = false;
+                _wasLockOnActive = false;
+            }
+
+            if (_lockOnQuery == null)
+                return;
+
             bool active = _lockOnQuery.IsLockOnActive;
-            Transform target = active ? _lockOnQuery.CurrentTarget : null;
+            Transform target = active
+                ? _lockOnQuery.CurrentTarget
+                : null;
+
             active = active && target != null;
 
             if (active != _wasLockOnActive)
             {
-                if (active && target != null)
+                if (active)
                     ApplyLockOnState(target, config);
                 else
                     ApplyLockOffState(config);
@@ -193,7 +248,7 @@ namespace Core
                 _wasLockOnActive = active;
             }
 
-            if (active && target != null)
+            if (active)
             {
                 UpdateLockTargetGroup(target, config);
                 UpdateLockPivot(target, config);
@@ -216,6 +271,21 @@ namespace Core
         {
             ClearLockTargetGroup();
             _lockOnVcam.Priority = config.lockOnInactivePriority;
+            SetFreeLookInputEnabled(true);
+        }
+
+        private void ApplyExecutionCameraState(
+    PlayerCameraRigConfig config)
+        {
+            if (_playerLockOn != null)
+                _playerLockOn.ClearLockOn();
+
+            ClearLockTargetGroup();
+
+            _lockOnVcam.Priority =
+                config.lockOnInactivePriority;
+
+            // 恢复 FreeLook 的 X/Y Look 输入。
             SetFreeLookInputEnabled(true);
         }
 
@@ -260,6 +330,14 @@ namespace Core
             return Quaternion.LookRotation(toTarget.normalized, Vector3.up);
         }
 
+
+        private bool IsExecutionCameraActive()
+        {
+            return _ownerActor != null &&
+                   _ownerActor.CurrentStateId is
+                       CharacterStateId.Executing or
+                       CharacterStateId.Executed;
+        }
         // ============ 目标组取景 ============
 
         /// <summary>

@@ -277,7 +277,7 @@ namespace Character.Config
                 executionWarpWindowStartNormalized,
                 1f);
 
-            if (!IsValidExecutionWarpCurve(executionWarpCurve))
+            if (!IsExecutionWarpCurveValid(executionWarpCurve))
             {
                 executionWarpCurve =
                     AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
@@ -308,7 +308,7 @@ namespace Character.Config
             return Mathf.Max(0.01f, FiniteOr(value, fallback));
         }
 
-        private static bool IsValidExecutionWarpCurve(AnimationCurve curve)
+        public static bool IsExecutionWarpCurveValid(AnimationCurve curve)
         {
             if (curve == null || curve.length < 2)
                 return false;

@@ -1,7 +1,9 @@
+using System.Threading;
 using Character.Config;
 using Character.Execution;
 using Character.Intent;
 using Character.Motor;
+using Opsive.BehaviorDesigner.Runtime.Tasks.Decorators;
 using UnityEngine;
 
 namespace Character.StateMachine.States
@@ -20,6 +22,13 @@ namespace Character.StateMachine.States
         public ExecutionSession Session => _session;
         public float ElapsedTime { get; private set; }
 
+        private readonly CharacterCombatConfig _combat;
+        private ExecutionWarpContext _warpContext;
+
+        public ExecutionWarpContext WarpContext => _warpContext;
+
+        public float NormalizedTime => Mathf.Clamp01(ElapsedTime / _duration);
+
         public bool HasReachedDuration =>
                     _isActive && ElapsedTime >= _duration;
 
@@ -29,6 +38,8 @@ namespace Character.StateMachine.States
                   CharacterCombatConfig combat)
         {
             _motor = motor;
+            _combat = combat;
+
             _duration = Mathf.Max(
                 0.01f,
                 combat != null ? combat.executingDuration : 0.01f);
@@ -37,14 +48,53 @@ namespace Character.StateMachine.States
         public bool TryPrepare(in ExecutionSession session,
             int ownerActorId)
         {
-            if (!session.TryValidate(out _) || !session.IsActive || session.ExecutorActorId != ownerActorId || _isActive) return false;
+            if (!session.TryValidate(out _) || !session.IsActive || session.ExecutorActorId != ownerActorId || _isActive || _motor == null || _motor.Root == null) return false;
 
-            if (_hasSession) return _session.ExecutionId == session.ExecutionId;
+            if (_hasSession) return _session.ExecutionId == session.ExecutionId && _warpContext != null && _warpContext.IsActive;
+
+            var initialPose = new ExecutionPose(_motor.Root.position, _motor.Root.eulerAngles.y);
+
+            if (!ExecutionWarpContext.TryCreate(session, ownerActorId, _combat, initialPose, out ExecutionWarpContext warpContext))
+            {
+                return false;
+            }
 
             _session = session;
+            _warpContext = warpContext;
             _hasSession = true;
             return true;
         }
+
+
+        public bool TryWarpRootMotion(Vector3 originalDeltaPosition, Quaternion originialDeltaRotation, out Vector3 correctedDeltaPosition, out Quaternion correctedDeltaRotation)
+        {
+            correctedDeltaPosition = originalDeltaPosition;
+            correctedDeltaRotation = originialDeltaRotation;
+
+            if (!_isActive ||
+        !_hasSession ||
+        _warpContext == null ||
+        !_warpContext.IsActive ||
+        _motor == null ||
+        _motor.Root == null)
+            {
+                return false;
+            }
+
+            var currentPose = new ExecutionPose(_motor.Root.position, _motor.Root.eulerAngles.y);
+
+            float originalDeltaYaw = Mathf.DeltaAngle(0f, originialDeltaRotation.eulerAngles.y);
+
+            if (!_warpContext.TryWarp(currentPose, originalDeltaPosition, originalDeltaYaw, NormalizedTime, out correctedDeltaPosition, out float correctedDeltaYaw))
+            {
+                return false;
+            }
+
+            correctedDeltaRotation = Quaternion.Euler(0f, correctedDeltaYaw, 0f);
+
+            return true;
+        }
+
 
         public bool IsBoundTo(ulong executionId)
         {
@@ -58,6 +108,13 @@ namespace Character.StateMachine.States
 
         private void ClearBinding()
         {
+            if (_warpContext != null)
+            {
+                _warpContext.TryEnd(_warpContext.ExecutionId);
+            }
+
+
+            _warpContext = null;
             _session = default;
             _hasSession = false;
         }
@@ -95,6 +152,24 @@ namespace Character.StateMachine.States
             ElapsedTime += Mathf.Max(0f, deltaTime);
 
             _motor.Tick(default, deltaTime);
+
+            // CharacterController.Move 已经执行，现在读取碰撞后的真实残差。
+            RefreshWarpResidual();
+        }
+
+        private void RefreshWarpResidual()
+        {
+            if (_warpContext == null ||
+      !_warpContext.IsActive ||
+      _motor == null ||
+      _motor.Root == null)
+            {
+                return;
+            }
+
+            var acutalPose = new ExecutionPose(_motor.Root.position, _motor.Root.eulerAngles.y);
+
+            _warpContext.RefreshRemainingError(acutalPose);
         }
 
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Character.Combat;
 using Character.Presentation;
+using Character.StateMachine;
 using Input;
 using UnityEngine;
 
@@ -78,6 +79,12 @@ namespace Character.LockOn
                 return;
             }
 
+            if (IsExecutionControlLocked())
+            {
+                ClearLockOn();
+                return;
+            }
+
             if (_input != null && _input.LockOnTriggered)
                 ToggleLockOn();
 
@@ -89,6 +96,17 @@ namespace Character.LockOn
 
             if (_showLockOnDebug && _debugScanEveryFrame)
                 RefreshDebugScan();
+
+
+        }
+
+
+        private bool IsExecutionControlLocked()
+        {
+            return _ownerActor != null &&
+                   _ownerActor.CurrentStateId is
+                       CharacterStateId.Executing or
+                       CharacterStateId.Executed;
         }
 
         // ============ 调试可视化 ============
@@ -213,7 +231,7 @@ namespace Character.LockOn
         {
             bestTarget = null;
             float bestScore = float.PositiveInfinity;
-            
+
             int count = Physics.OverlapSphereNonAlloc(
                 transform.position,
                 _lockRadius,

@@ -14,6 +14,8 @@ namespace AI
 
         private SharedVariable<Transform> _target;
         private Transform _gmFacingTarget;
+
+        public bool HasGmFacingTarget => _gmFacingTarget != null;
         
         private void Awake()
         {
@@ -79,7 +81,7 @@ namespace AI
         public bool TryGetMoveDestination(out Vector3 worldPos)
         {
             worldPos = default;
-            if (_destination == null) return false;
+            if (_gmFacingTarget != null || _destination == null) return false;
 
             worldPos = _destination.Value;
             return true;

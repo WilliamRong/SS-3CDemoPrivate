@@ -58,12 +58,21 @@
 - [ ] 7.5 按 `executionId` 和请求序号处理 Host 回环、重复开始/结果/完成、完成先到与迟到开始，保证动画、Warp、时长和致死结果只应用一次。
 - [ ] 7.6 为晚加入或会话中重绑定观察者应用当前绝对会话、固定目标姿态、处决者位置、结果状态和死亡表现变体，不从 Animator 当前帧反推玩法。
 
-## 8. 增加测试、验收与文档证据
+## 8. 制作 Motion Warping 可视化编辑器
 
-- [ ] 8.1 增加 EditMode 测试覆盖正面角、距离/高度、确定性候选排序、Warp 累计权重/边界、配置钳制、会话预占、无敌多令牌/重复释放、攻击抑制隔离和死亡变体选择。
-- [ ] 8.2 增加可行的 PlayMode 或调试 harness，覆盖 Parried/PostureBroken 进入、Idle/Move 左键优先级、Guard 禁止处决、固定目标、Warp 收敛、第三方命中抑制、结果时刻、双方独立动画结束和 `rig_Executed_Death`。
-- [ ] 8.3 运行 Offline Player 对 NPC 与 Player 目标的正面/背面、距离/高度、墙体、锁定优先、Guard/无候选普通攻击、无敌/HurtBox、处决死亡变体、镜头和异常清理验收。
-- [ ] 8.4 运行 Host/Client 双向 Player 处决、Player 处决 Server NPC、并发目标、迟到/重复/乱序消息、死亡变体、绝对 Transform 和 HP/revision 收敛验收。
-- [ ] 8.5 通过 Unity MCP 退出 Play Mode、重新编译并检查 Console/编译错误，运行项目测试、`git diff --check` 和 `openspec validate add-execution-motion-warping --strict`。
-- [ ] 8.6 更新 `docs/REQUIREMENTS.md`、`docs/ROADMAP_AND_PROGRESS.md`、`docs/VERIFICATION_MATRIX.md` 及相关架构说明，纳入 Guard 禁止处决、可复用无敌和处决死亡变体，只把取得运行证据的环境标为 `Verified`。
-- [ ] 8.7 审计变更范围与 Unity 资产保存路径，确认未手工编辑 `.unity`、`.prefab`、`.asset`，且既有无关工作树变更保持独立可追溯。
+- [ ] 8.1 抽取运行时与编辑器共享、不依赖 `MonoBehaviour` 的纯 Warp 采样/轨迹计算核心，统一窗口累计权重、位置/Yaw 修正和残差语义。
+- [ ] 8.2 创建 Editor-only `EditorWindow`，支持选择正式战斗/表现配置、预览 Animator/Avatar 和 `rig_Execute` / `rig_Executed` / `rig_Executed_Death` 动画资源。
+- [ ] 8.3 实现带 Warp Window 色块的时间轴、`executionWarpCurve` 编辑和动画时间 Scrub，并即时刷新原始及修正姿态。
+- [ ] 8.4 实现 Scene View 处决者锚点 Handle、原始/修正 Root Motion 轨迹、位置/Yaw 残差及缺失资源、非法窗口、非单调曲线和预算超限诊断。
+- [ ] 8.5 使用 `SerializedObject` / `SerializedProperty`、Undo/Redo、Dirty/Save 写回正式配置，并在隔离 `PreviewScene` 中创建和确定性清理临时预览对象。
+- [ ] 8.6 增加 EditMode 测试，验证编辑器 Undo/Redo、资产持久化、非法配置诊断、预览对象清理，以及相同采样输入下编辑器预测与运行时 Warp 输出一致。
+
+## 9. 增加测试、验收与文档证据
+
+- [ ] 9.1 增加 EditMode 测试覆盖正面角、距离/高度、确定性候选排序、Warp 累计权重/边界、配置钳制、会话预占、无敌多令牌/重复释放、攻击抑制隔离和死亡变体选择。
+- [ ] 9.2 增加可行的 PlayMode 或调试 harness，覆盖 Parried/PostureBroken 进入、Idle/Move 左键优先级、Guard 禁止处决、固定目标、Warp 收敛、第三方命中抑制、结果时刻、双方独立动画结束和 `rig_Executed_Death`。
+- [ ] 9.3 运行 Offline Player 对 NPC 与 Player 目标的正面/背面、距离/高度、墙体、锁定优先、Guard/无候选普通攻击、无敌/HurtBox、处决死亡变体、镜头和异常清理验收，并在 Motion Warping 编辑器中验证锚点、轨迹、残差与运行时结果一致。
+- [ ] 9.4 运行 Host/Client 双向 Player 处决、Player 处决 Server NPC、并发目标、迟到/重复/乱序消息、死亡变体、绝对 Transform 和 HP/revision 收敛验收。
+- [ ] 9.5 通过 Unity MCP 退出 Play Mode、重新编译并检查 Console/编译错误，运行项目测试、`git diff --check` 和 `openspec validate add-execution-motion-warping --strict`。
+- [ ] 9.6 更新 `docs/REQUIREMENTS.md`、`docs/ROADMAP_AND_PROGRESS.md`、`docs/VERIFICATION_MATRIX.md` 及相关架构说明，纳入 Guard 禁止处决、可复用无敌、处决死亡变体和 Motion Warping 编辑器，只把取得运行证据的环境标为 `Verified`。
+- [ ] 9.7 审计变更范围与 Unity 资产保存路径，确认未手工编辑 `.unity`、`.prefab`、`.asset`，且既有无关工作树变更保持独立可追溯。

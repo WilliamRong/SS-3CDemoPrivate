@@ -1,5 +1,6 @@
 using Character.Controller;
 using Character.Combat;
+using Character.Execution;
 using Character.StateMachine;
 using Character.StateMachine.States;
 using Character.Sync;
@@ -101,8 +102,14 @@ namespace Character.Diagnostics
             string curText = FormatState(current);
             string prevText = FormatState(_previous);
 
-            float w = 420f;
-            float h = 128f;
+            bool hasExecutingState =
+                _player.TryGetActiveExecutingState(out ExecutingState executingState);
+            ExecutionWarpContext warp = hasExecutingState
+                ? executingState.WarpContext
+                : null;
+
+            float w = warp != null ? 720f : 420f;
+            float h = warp != null ? 352f : 128f;
             float x = scaledScreenWidth - w - _screenOffset.x;
             float y = _screenOffset.y + _buttonSize.y + _buttonToPanelGap;
             var rect = new Rect(x, y, w, h);
@@ -112,6 +119,50 @@ namespace Character.Diagnostics
             GUILayout.Label($"<b>Previous</b>: {prevText}", box);
             GUILayout.Label($"<b>Sprint Phase</b>: {FormatSprintPhase()}", box);
             GUILayout.Label($"<b>Guard Phase</b>:  {FormatGuardPhase()}", box);
+
+            if (warp != null)
+            {
+                GUILayout.Label(
+                    $"<b>Execution Warp</b>: #{warp.ExecutionId}  " +
+                    $"time={executingState.NormalizedTime:F3}  " +
+                    $"window=[{warp.WindowStartNormalized:F3}, {warp.WindowEndNormalized:F3}]",
+                    box);
+                GUILayout.Label(
+                    $"<b>Weight</b>: {warp.LastCumulativeWeight:F3}  " +
+                    $"windowComplete={warp.IsWarpWindowComplete}",
+                    box);
+                GUILayout.Label(
+                    $"<b>Root Delta Pos</b>: {FormatVector(warp.LastOriginalDeltaPosition)}" +
+                    $" -> {FormatVector(warp.LastCorrectedDeltaPosition)}",
+                    box);
+                GUILayout.Label(
+                    $"<b>Root Delta Yaw</b>: {warp.LastOriginalDeltaYaw:F2} deg" +
+                    $" -> {warp.LastCorrectedDeltaYaw:F2} deg",
+                    box);
+                GUILayout.Label(
+                    $"<b>Requested Correction</b>: " +
+                    $"pos={FormatVector(warp.RequestedTranslationCorrection)}  " +
+                    $"yaw={warp.RequestedYawCorrection:F2} deg",
+                    box);
+                GUILayout.Label(
+                    $"<b>Position Residual</b>: " +
+                    $"pred={FormatVector(warp.PredictedRemainingPositionError)}  " +
+                    $"actual={FormatVector(warp.ActualRemainingPositionError)}",
+                    box);
+                GUILayout.Label(
+                    $"<b>Yaw Residual</b>: " +
+                    $"pred={warp.PredictedRemainingYawError:F2} deg  " +
+                    $"actual={warp.ActualRemainingYawError:F2} deg",
+                    box);
+                GUILayout.Label(
+                    warp.HasMotorApplicationSample
+                        ? $"<b>Motor Shortfall</b>: " +
+                          $"pos={FormatVector(warp.LastMotorPositionShortfall)}  " +
+                          $"yaw={warp.LastMotorYawShortfall:F2} deg"
+                        : "<b>Motor Shortfall</b>: waiting for first applied delta",
+                    box);
+            }
+
             GUILayout.EndArea();
 
             GUI.matrix = oldMatrix;
@@ -172,6 +223,11 @@ namespace Character.Diagnostics
             if (!_showNumericId)
                 return name;
             return $"{name}  <color=#888888>({(byte)id})</color>";
+        }
+
+        private static string FormatVector(Vector3 value)
+        {
+            return $"({value.x:F3}, {value.y:F3}, {value.z:F3})";
         }
     }
 }
