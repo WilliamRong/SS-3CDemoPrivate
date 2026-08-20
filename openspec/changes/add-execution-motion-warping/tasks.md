@@ -23,6 +23,7 @@
 - [ ] 3.5 让 `Parried` 与 `PostureBroken` 在会话接受时退出到 `Executed`，同时保留会话接受前的既有超时、普通 HP 伤害和 `Dead` 优先级。
 - [ ] 3.6 在配置 `executionResultTime` 只提交一次权威致死 HP/revision，锁存结果且不让普通 `Dead` 表现在 `Executed` 动画完成前覆盖配对表现；完成后只提交一次处决死亡变体。
 - [ ] 3.7 处理 Actor 销毁、场景卸载、网络断开和重复退出，幂等清理双方占用、Warp、无敌和攻击抑制，不留下锁死 Actor。
+- [x] 3.8 修正处决结果：使用配置处决伤害并锁存致死分支；非致死目标播放 `rig_Executed` 后回到 `Idle`，致死目标只播放一次 `rig_Executed_Death` 并在完成后进入 `Dead`。
 
 ## 4. 实现可复用无敌与处决攻击抑制
 

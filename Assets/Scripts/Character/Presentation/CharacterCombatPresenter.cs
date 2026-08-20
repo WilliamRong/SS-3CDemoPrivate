@@ -12,6 +12,7 @@ namespace Character.Presentation
     public sealed class CharacterCombatPresenter
     {
         private readonly CharacterPresentationConfig _config;
+        private readonly CharacterCombatConfig _combatConfig;
         private CharacterStateId _lastCombatState = CharacterStateId.None;
         private int _lastHash;
         private DodgeMode _lastDodgeMode = DodgeMode.None;
@@ -22,9 +23,12 @@ namespace Character.Presentation
         private float _guardReactionTimer;
         private GuardReactionType _activeGuardReaction = GuardReactionType.None;
 
-        public CharacterCombatPresenter(CharacterPresentationConfig config)
+        public CharacterCombatPresenter(
+            CharacterPresentationConfig config,
+            CharacterCombatConfig combatConfig)
         {
             _config = config;
+            _combatConfig = combatConfig;
         }
 
         // ============ 战斗状态分派 ============
@@ -82,10 +86,17 @@ namespace Character.Presentation
                     return true;
                 case CharacterStateId.Executed:
                     ResetActiveCombatLayers(animator);
+                    bool lethalExecution =
+                        deathPresentationVariant == DeathPresentationVariant.Executed;
+                    ConfigureExecutedPlaybackSpeed(animator, lethalExecution);
                     PlayReaction(
                         animator,
-                        AnimatorParams.StateExecuted,
-                        _config.executedCrossFadeDuration,
+                        lethalExecution
+                            ? AnimatorParams.StateExecutedDeath
+                            : AnimatorParams.StateExecuted,
+                        lethalExecution
+                            ? _config.executedDeathCrossFadeDuration
+                            : _config.executedCrossFadeDuration,
                         forceRestart);
                     _lastCombatState = stateId;
                     return true;
@@ -93,6 +104,21 @@ namespace Character.Presentation
                     ResetActiveCombatLayers(animator);
                     bool executedDeath =
                         deathPresentationVariant == DeathPresentationVariant.Executed;
+
+                    if (executedDeath)
+                        ConfigureExecutedPlaybackSpeed(animator, lethal: true);
+
+                    // The lethal clip already played while the gameplay state was Executed.
+                    // Entering Dead keeps its final pose instead of restarting the clip.
+                    if (executedDeath &&
+                        _lastCombatState == CharacterStateId.Executed &&
+                        _lastHash == AnimatorParams.StateExecutedDeath)
+                    {
+                        animator.SetLayerWeight(AnimatorParams.ReactionLayerIndex, 1f);
+                        _lastCombatState = CharacterStateId.Dead;
+                        return true;
+                    }
+
                     PlayReaction(
                         animator,
                         executedDeath
@@ -363,6 +389,34 @@ namespace Character.Presentation
                 return;
             _lastHash = stateHash;
             animator.CrossFade(stateHash, crossFadeDuration, AnimatorParams.ReactionLayerIndex, 0f);
+        }
+
+        /// <summary>
+        /// Converts the source clip length into a playback multiplier so the animation and
+        /// the Inspector-configured gameplay duration finish on the same frame.
+        /// </summary>
+        private void ConfigureExecutedPlaybackSpeed(
+            Animator animator,
+            bool lethal)
+        {
+            if (animator == null || _config == null || _combatConfig == null)
+                return;
+
+            float sourceDuration = lethal
+                ? _config.executedDeathClipDuration
+                : _config.executedClipDuration;
+            float targetDuration = lethal
+                ? _combatConfig.executedDeathDuration
+                : _combatConfig.executedDuration;
+            float playbackSpeed =
+                Mathf.Max(0.01f, sourceDuration) /
+                Mathf.Max(0.01f, targetDuration);
+
+            animator.SetFloat(
+                lethal
+                    ? AnimatorParams.ExecutedDeathSpeed
+                    : AnimatorParams.ExecutedSpeed,
+                playbackSpeed);
         }
 
         // ============ Animator 状态映射 ============

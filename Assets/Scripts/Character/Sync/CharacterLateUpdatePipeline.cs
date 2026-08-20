@@ -237,8 +237,8 @@ namespace Character.Sync
                 actionParams,
                 dodgeCtx: dodgeCtx,
                 attackComboStep: frame.AttackComboStep,
-                 deathPresentationVariant:
-        ResolveDeathPresentationVariant(frame.StateId),
+                deathPresentationVariant:
+                    ResolveExecutionPresentationVariant(frame.StateId),
                 forceRestart: frame.EnteredState);
         }
 
@@ -528,7 +528,9 @@ or CharacterStateId.Executed;
             _locomotionPresenter ??= new CharacterLocomotionPresenter(presentation);
             _turnPresenter ??= new CharacterTurnPresenter(presentation);
             _sprintPresenter ??= new CharacterSprintPresenter(presentation);
-            _combatPresenter ??= new CharacterCombatPresenter(presentation);
+            _combatPresenter ??= new CharacterCombatPresenter(
+                presentation,
+                ResolveCombatConfig());
         }
 
         private CharacterPresentationConfig ResolvePresentationConfig()
@@ -938,11 +940,15 @@ or CharacterStateId.Executed;
             }
         }
 
-        private DeathPresentationVariant ResolveDeathPresentationVariant(
-    CharacterStateId stateId)
+        private DeathPresentationVariant ResolveExecutionPresentationVariant(
+            CharacterStateId stateId)
         {
-            if (stateId != CharacterStateId.Dead)
+            if (stateId is not (
+                    CharacterStateId.Executed or
+                    CharacterStateId.Dead))
+            {
                 return DeathPresentationVariant.Default;
+            }
 
             if (_playerController != null &&
                 HasLocalPresentationAuthority())
@@ -958,7 +964,7 @@ or CharacterStateId.Executed;
                 return _npcDriver.CurrentDeathPresentationVariant;
             }
 
-            // 远端死亡变体留到处决网络协议阶段同步。
+            // Remote execution variants are populated by the execution protocol later.
             return DeathPresentationVariant.Default;
         }
     }

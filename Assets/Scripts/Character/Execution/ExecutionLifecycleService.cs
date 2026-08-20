@@ -185,7 +185,11 @@ namespace Character.Execution
             if (!session.IsResultCommitted &&
                 authorityNowSec >= session.ResultTimeSec)
             {
-                if (!active.Target.TryCommitExecutionKill(executionId) ||
+                if (!active.Target.TryCommitExecutionDamage(
+                        executionId,
+                        session.ExecutionDamage,
+                        out bool targetDied) ||
+                    targetDied != session.TargetWillDie ||
                     !_coordinator.TryMarkResultCommitted(
                         executionId,
                         out session))
@@ -304,11 +308,13 @@ namespace Character.Execution
                        right.FixedTargetPose.Yaw) &&
                    left.ExecutorAnchorPose.Position.Equals(
                        right.ExecutorAnchorPose.Position) &&
-                   left.ExecutorAnchorPose.Yaw.Equals(
-                       right.ExecutorAnchorPose.Yaw) &&
-                   left.StartTimeSec.Equals(right.StartTimeSec) &&
-                   left.ResultTimeSec.Equals(right.ResultTimeSec) &&
-                   left.Flags == right.Flags;
+                    left.ExecutorAnchorPose.Yaw.Equals(
+                        right.ExecutorAnchorPose.Yaw) &&
+                    left.StartTimeSec.Equals(right.StartTimeSec) &&
+                    left.ResultTimeSec.Equals(right.ResultTimeSec) &&
+                    left.ExecutionDamage.Equals(right.ExecutionDamage) &&
+                    left.TargetWillDie == right.TargetWillDie &&
+                    left.Flags == right.Flags;
         }
 
         private static bool IsFinite(double value)

@@ -389,6 +389,12 @@ namespace AI
                 return false;
             }
 
+            DeathPresentationVariant previousVariant =
+                CurrentDeathPresentationVariant;
+            CurrentDeathPresentationVariant = session.TargetWillDie
+                ? DeathPresentationVariant.Executed
+                : DeathPresentationVariant.Default;
+
             if (_fsm.TryTransition(
                     CharacterStateId.Executed,
                     _registry,
@@ -397,6 +403,7 @@ namespace AI
                 return true;
             }
 
+            CurrentDeathPresentationVariant = previousVariant;
             _executed.CancelPreparation(session.ExecutionId);
             return false;
         }
@@ -416,10 +423,13 @@ namespace AI
                 return false;
             }
 
-            return _fsm.TryTransition(
+            bool restored = _fsm.TryTransition(
                 previousState,
                 _registry,
                 TransitionReason.ExecutionCancelled);
+            if (restored)
+                CurrentDeathPresentationVariant = DeathPresentationVariant.Default;
+            return restored;
         }
 
         public bool ServerTryCompleteExecuted(
@@ -427,21 +437,27 @@ namespace AI
         {
             if (!isServer ||
                 _combatActor == null ||
-                !_combatActor.IsDead ||
                 CurrentStateId != CharacterStateId.Executed ||
                 !_executed.IsBoundTo(executionId))
             {
                 return false;
             }
 
+            bool targetWillDie = _executed.Session.TargetWillDie;
+            if (_combatActor.IsDead != targetWillDie)
+                return false;
+
             DeathPresentationVariant previousVariant =
                 CurrentDeathPresentationVariant;
 
-            CurrentDeathPresentationVariant =
-                DeathPresentationVariant.Executed;
+            CurrentDeathPresentationVariant = targetWillDie
+                ? DeathPresentationVariant.Executed
+                : DeathPresentationVariant.Default;
 
             if (_fsm.TryTransition(
-                    CharacterStateId.Dead,
+                    targetWillDie
+                        ? CharacterStateId.Dead
+                        : CharacterStateId.Idle,
                     _registry,
                     TransitionReason.ExecutionCompleted))
             {
@@ -501,10 +517,27 @@ namespace AI
         /// </summary>
         public bool ServerTryRevive()
         {
-            if (!isServer ||
-                _fsm == null ||
+            return isServer && TryReviveOnAuthority();
+        }
+
+        /// <summary>
+        /// Allows the GM command to use the same revive transaction on Server and Offline.
+        /// A pure Client never receives authority to mutate NPC state.
+        /// </summary>
+        public bool TryReviveForGm()
+        {
+            bool hasAuthority = isServer ||
+                (!NetworkServer.active && !NetworkClient.active);
+            return hasAuthority && TryReviveOnAuthority();
+        }
+
+        private bool TryReviveOnAuthority()
+        {
+            if (_fsm == null ||
                 _registry == null ||
-                _combatActor == null)
+                _combatActor == null ||
+                CurrentStateId != CharacterStateId.Dead ||
+                !_combatActor.IsDead)
             {
                 return false;
             }

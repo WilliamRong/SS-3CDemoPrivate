@@ -22,7 +22,7 @@ namespace Character.StateMachine
                 { CharacterStateId.Parry,new HashSet<CharacterStateId>{CharacterStateId.Idle,CharacterStateId.Hit,CharacterStateId.Dead, CharacterStateId.PostureBroken}},
                 { CharacterStateId.Parried,new HashSet<CharacterStateId>{CharacterStateId.Idle,CharacterStateId.Hit,CharacterStateId.Dead, CharacterStateId.PostureBroken, CharacterStateId.Executed}},
                 {CharacterStateId.Executing, new HashSet<CharacterStateId>{CharacterStateId.Idle,CharacterStateId.Move,}},
-                {CharacterStateId.Executed,new HashSet<CharacterStateId>{CharacterStateId.Dead,CharacterStateId.Parried,CharacterStateId.PostureBroken,}},
+                {CharacterStateId.Executed,new HashSet<CharacterStateId>{CharacterStateId.Idle,CharacterStateId.Dead,CharacterStateId.Parried,CharacterStateId.PostureBroken,}},
             };
 
         public static bool CanTransition(CharacterStateId from, CharacterStateId to)

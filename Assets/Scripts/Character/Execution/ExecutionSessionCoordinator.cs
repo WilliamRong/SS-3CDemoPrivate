@@ -122,6 +122,11 @@ namespace Character.Execution
                 authorityStartTimeSec +
                 config.executionResultTime;
 
+            float executionDamage = config.executionDamage;
+            bool targetWillDie =
+                executionDamage > 0f &&
+                target.CurrentHp <= executionDamage;
+
             var proposedSession = new ExecutionSession(
                 executionId,
                 executor.ActorId,
@@ -129,7 +134,9 @@ namespace Character.Execution
                 eligibility.FixedTargetPose,
                 eligibility.ExecutorAnchorPose,
                 authorityStartTimeSec,
-                resultTimeSec);
+                resultTimeSec,
+                executionDamage,
+                targetWillDie);
 
             if (!proposedSession.TryValidate(out _))
             {

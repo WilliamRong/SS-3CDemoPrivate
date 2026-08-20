@@ -143,13 +143,22 @@ namespace Character.Config
             AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
         [Header("Execution Logic Timing")]
+        [Tooltip("Authoritative health damage dealt once by an execution.")]
+        [Min(0f)]
+        public float executionDamage = 50f;
+
         [Min(0.01f)]
         public float executingDuration = 2.7f;
 
+        [Tooltip("Duration of the surviving target branch. Also calibrates rig_Executed playback speed.")]
         [Min(0.01f)]
         public float executedDuration = 3.516667f;
 
-        [Tooltip("Authoritative kill-result time relative to the session start.")]
+        [Tooltip("Duration of the lethal target branch. Also calibrates rig_Executed_Death playback speed.")]
+        [Min(0.01f)]
+        public float executedDeathDuration = 2.7f;
+
+        [Tooltip("Authoritative damage time relative to session start. Clamped so it cannot occur after either target branch finishes.")]
         [Min(0f)]
         public float executionResultTime = 2.7f;
 
@@ -283,12 +292,15 @@ namespace Character.Config
                     AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
             }
 
+            executionDamage = NonNegativeFinite(executionDamage, 50f);
             executingDuration = PositiveFinite(executingDuration, 2.7f);
             executedDuration = PositiveFinite(executedDuration, 3.516667f);
+            executedDeathDuration =
+                PositiveFinite(executedDeathDuration, 2.7f);
             executionResultTime = Mathf.Clamp(
                 NonNegativeFinite(executionResultTime, 2.7f),
                 0f,
-                executedDuration);
+                Mathf.Min(executedDuration, executedDeathDuration));
         }
 
         private static float FiniteOr(float value, float fallback)

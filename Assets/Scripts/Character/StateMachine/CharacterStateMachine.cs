@@ -82,6 +82,11 @@ namespace Character.StateMachine
             new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Dead,
                 StateWindowType.Always, TransitionReason.Any, false),
 
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Idle,
+                StateWindowType.Always, TransitionReason.ExecutionCompleted, true),
+            new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Idle,
+                StateWindowType.Always, TransitionReason.Any, false),
+
             new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Parried,
                 StateWindowType.Always, TransitionReason.ExecutionCancelled, true),
             new CharacterInterruptRule(CharacterStateId.Executed, CharacterStateId.Parried,

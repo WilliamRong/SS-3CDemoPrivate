@@ -37,6 +37,11 @@ namespace Core
         public float RecoveryDelay;
     }
 
+    public struct GmReviveAllNpcsMsg : NetworkMessage
+    {
+        public bool Requested;
+    }
+
     /// <summary>
     /// 让同一套调试入口覆盖 Offline、Host 和 Client，同时保持在线状态修改由服务器决定。
     /// </summary>
@@ -76,6 +81,7 @@ namespace Core
             NetworkServer.RegisterHandler<GmForceGuardMsg>(OnServerForceGuard, false);
             NetworkServer.RegisterHandler<GmNpcLockNearestPlayerMsg>(OnServerNpcLockNearestPlayer, false);
             NetworkServer.RegisterHandler<GmSetPostureNearBreakMsg>(OnServerSetPostureNearBreak, false);
+            NetworkServer.RegisterHandler<GmReviveAllNpcsMsg>(OnServerReviveAllNpcs, false);
         }
 
         private void OnDisable()
@@ -84,6 +90,7 @@ namespace Core
             NetworkServer.UnregisterHandler<GmForceGuardMsg>();
             NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
             NetworkServer.UnregisterHandler<GmSetPostureNearBreakMsg>();
+            NetworkServer.UnregisterHandler<GmReviveAllNpcsMsg>();
         }
 
         /// <summary>
@@ -91,7 +98,7 @@ namespace Core
         /// </summary>
         private void OnGUI()
         {
-            float panelHeight = ButtonHeight * 3f + PanelPadding * 4f;
+            float panelHeight = ButtonHeight * 4f + PanelPadding * 5f;
             float x = Mathf.Max(Margin, Screen.width - ButtonWidth - Margin);
             float toggleY = Mathf.Max(Margin, Screen.height - ButtonHeight - Margin);
             float panelY = Mathf.Max(Margin, toggleY - panelHeight);
@@ -121,6 +128,17 @@ namespace Core
                     "NPC/远端架势99%"))
             {
                 RequestSetPostureNearBreak();
+            }
+
+            if (GUI.Button(
+                    new Rect(
+                        x + PanelPadding,
+                        panelY + ButtonHeight * 3f + PanelPadding * 4f,
+                        ButtonWidth - PanelPadding * 2f,
+                        ButtonHeight),
+                    "所有NPC复活"))
+            {
+                RequestReviveAllNpcs();
             }
         }
 
@@ -213,6 +231,26 @@ namespace Core
                 msg.RecoveryDelay);
         }
 
+        private static void RequestReviveAllNpcs()
+        {
+            if (NetworkServer.active)
+            {
+                ApplyReviveAllNpcsOnAuthority();
+                return;
+            }
+
+            if (NetworkClient.active)
+            {
+                NetworkClient.Send(new GmReviveAllNpcsMsg
+                {
+                    Requested = true,
+                });
+                return;
+            }
+
+            ApplyReviveAllNpcsOnAuthority();
+        }
+
         // ============ 网络消息处理 ============
 
         private static void OnServerForceGuard(NetworkConnectionToClient conn, GmForceGuardMsg msg)
@@ -237,6 +275,16 @@ namespace Core
             msg.TargetRatio = Mathf.Clamp(msg.TargetRatio, 0f, 0.999f);
             msg.RecoveryDelay = Mathf.Clamp(msg.RecoveryDelay, 0f, 300f);
             ApplyPostureNearBreakOnServer(msg);
+        }
+
+        private static void OnServerReviveAllNpcs(
+            NetworkConnectionToClient conn,
+            GmReviveAllNpcsMsg msg)
+        {
+            if (conn?.identity == null || !msg.Requested)
+                return;
+
+            ApplyReviveAllNpcsOnAuthority();
         }
 
         private static void OnClientForceGuard(GmForceGuardMsg msg)
@@ -364,6 +412,15 @@ namespace Core
             float clampedRatio = Mathf.Clamp(targetRatio, 0f, 0.999f);
             float targetPosture = maxPosture * clampedRatio;
             actor.RaisePostureTo(targetPosture, recoveryDelay);
+        }
+
+        private static void ApplyReviveAllNpcsOnAuthority()
+        {
+            NpcCharacterDriver[] npcs = FindObjectsByType<NpcCharacterDriver>(
+                FindObjectsSortMode.None);
+
+            foreach (NpcCharacterDriver npc in npcs)
+                npc?.TryReviveForGm();
         }
 
         // ============ NPC 目标应用 ============

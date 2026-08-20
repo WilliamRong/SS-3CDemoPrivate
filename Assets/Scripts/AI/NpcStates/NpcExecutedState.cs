@@ -9,7 +9,8 @@ namespace AI.NpcStates
     public sealed class NpcExecutedState : ICharacterState
     {
         private readonly NpcMotor _motor;
-        private readonly float _duration;
+        private readonly float _survivingDuration;
+        private readonly float _lethalDuration;
 
         private ExecutionSession _session;
         private bool _hasSession;
@@ -20,16 +21,22 @@ namespace AI.NpcStates
         public float ElapsedTime { get; private set; }
 
         public bool HasReachedDuration =>
-            _isActive && ElapsedTime >= _duration;
+            _isActive &&
+            ElapsedTime >= (_session.TargetWillDie
+                ? _lethalDuration
+                : _survivingDuration);
 
         public NpcExecutedState(
             NpcMotor motor,
             CharacterCombatConfig combat)
         {
             _motor = motor;
-            _duration = Mathf.Max(
+            _survivingDuration = Mathf.Max(
                 0.01f,
                 combat != null ? combat.executedDuration : 0.01f);
+            _lethalDuration = Mathf.Max(
+                0.01f,
+                combat != null ? combat.executedDeathDuration : 0.01f);
         }
 
         public bool TryPrepare(

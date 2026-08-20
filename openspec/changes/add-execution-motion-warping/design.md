@@ -16,7 +16,7 @@
 - 固定被处决者世界 Transform，只对处决者的 Root Motion 施加有限、可诊断的平移和旋转 Warp。
 - 抽离可叠加、可复用的无敌语义，以统一 HurtBox 开关和权威受击门禁，并让处决额外独立抑制普通攻击。
 - 在双方各自动画结束前阻断角色控制与普通战斗碰撞，同时保留本地镜头旋转；目标进入 `Dead` 时播放处决专用死亡变体。
-- 使用显式玩法计时提交致死结果，不把 Animator 状态或动画事件作为事实源。
+- 使用显式玩法计时提交一次配置处决伤害及其致死结果，不把 Animator 状态或动画事件作为事实源。
 - 支持 Offline、Host/Client、Player/NPC 目标以及乱序/重复网络消息验证。
 - 在处决运行时与网络闭环完成后提供 Motion Warping 可视化编辑器，让开发者能在 Unity 内调节锚点、Warp Window、曲线与预算，并实时检查原始/修正轨迹和残差。
 
@@ -35,7 +35,7 @@
 
 Server 或 Offline 权威端创建不可重复的 `ExecutionSession`，至少记录 `executionId`、`executorActorId`、`targetActorId`、固定目标姿态、处决锚点、权威开始时间和结果提交时间。处决者进入 `Executing`，目标从 `Parried` 或 `PostureBroken` 进入 `Executed`。
 
-会话接受前，`Dead` 和资格失效优先于处决。会话接受后，普通 Hit、Guard、Parry、PostureBreak 和输入不能打断双方；只有场景卸载、Actor 销毁、网络断开等生命周期事件可以触发确定性清理。目标在配置结果时刻锁存致死结果，但 `Executed` 表现保持到自身动画结束，随后以 `DeathPresentationVariant.Executed` 进入 `Dead` 并播放 `rig_Executed_Death`。
+会话接受前，`Dead` 和资格失效优先于处决。会话接受后，普通 Hit、Guard、Parry、PostureBreak 和输入不能打断双方；只有场景卸载、Actor 销毁、网络断开等生命周期事件可以触发确定性清理。目标在配置结果时刻只提交一次处决伤害并锁存是否致死；存活分支播完 `rig_Executed` 后回到 `Idle`，致死分支播完 `rig_Executed_Death` 后才以 `DeathPresentationVariant.Executed` 进入 `Dead`。
 
 未采用复用 `Attack` / `Dead` 状态，因为普通攻击只有单方所有权，`Dead` 又会立即切换表现，无法表达双方绑定、固定目标、Warp 和动画长度差。
 
@@ -67,15 +67,15 @@ Server 或 Offline 权威端创建不可重复的 `ExecutionSession`，至少记
 
 无敌只表达“不能接收普通命中”，不默认禁止角色攻击。处决会话开始时还要取消双方当前攻击实例，并分别取得带 `executionId` 所有权的攻击抑制令牌；`CombatResolver` 在攻击方 `CanProduceCombatHit` 为假或目标 `CanReceiveHit` 为假时跳过事务。攻击抑制负责普通 HitBox/命中窗口，处决致死则通过独立权威事务提交，不经过 HurtBox。
 
-处决者在 `rig_Execute` 完成时释放自身无敌和攻击抑制；目标在 `rig_Executed` 完成并进入 `Dead` 时释放。目标即使释放无敌，也由 `Dead` 继续拒绝普通命中。场景卸载、Actor 销毁、网络断开和重复完成均可幂等释放，不留下锁死或提前恢复的 Actor。
+处决者在 `rig_Execute` 完成时释放自身无敌和攻击抑制；目标在 `rig_Executed` 或 `rig_Executed_Death` 分支完成并进入后续状态时释放。目标即使释放无敌，也由 `Dead` 继续拒绝普通命中。场景卸载、Actor 销毁、网络断开和重复完成均可幂等释放，不留下锁死或提前恢复的 Actor。
 
 ### 玩法时钟与动画表现分离
 
-双方从同一权威开始时间播放 `rig_Execute` / `rig_Executed`，但使用独立配置时长。处决者在约 2.7 秒动画结束后退出控制锁定并释放自身无敌/攻击抑制；目标保持固定、不可操纵和不可受击到约 3.517 秒动画结束，然后以处决死亡变体进入 `Dead` 并 CrossFade 到约 2.533 秒的 `rig_Executed_Death`。处决会话在双方进入各自完成状态后释放，不等待死亡 clip 播完，因为 `Dead` 已接管输入锁定和不可受击。
+双方从同一权威开始时间播放处决分支，但使用独立配置时长。处决者在约 2.7 秒动画结束后退出控制锁定并释放自身无敌/攻击抑制；目标保持固定、不可操纵和不可受击到所选分支结束。存活分支约 3.517 秒后回到 `Idle`；致死分支约 2.533 秒后进入 `Dead`，不再重新 CrossFade 同一 `rig_Executed_Death`。处决会话在双方进入各自完成状态后释放。
 
 `rig_Executed_Death` 是 `Dead` 的表现变体而不是第三个玩法状态。它沿用现有 Dead Motor/Root Motion 策略，不接受处决 Motion Warping，也不再由处决会话固定目标姿态。普通死亡继续播放既有 `rig_Death`，远端和晚加入者通过同步的 `DeathPresentationVariant` 选择正确 clip。
 
-致死结果在配置 `executionResultTime` 提交，并锁存到会话；Animator 状态、normalizedTime 和动画事件只能驱动表现与诊断，不能决定是否死亡。远端动画延迟或 CrossFade 不得延后权威结果。
+处决伤害和是否致死在配置 `executionResultTime` 提交，并锁存到会话；Animator 状态、normalizedTime 和动画事件只能驱动表现与诊断，不能决定结果。远端动画延迟或 CrossFade 不得延后权威结果。
 
 ### 只锁角色控制并保留镜头域
 
@@ -133,3 +133,12 @@ Client 请求只携带目标 ActorId 和本地请求序号。Server 重新解析
 
 - `executorAnchorOffset`、Warp Window、最大 Yaw 和 `executionResultTime` 的最终默认值需要在 Unity 动画预览与 Offline 双人实测后确定。
 - 是否为合法目标显示处决提示 UI、是否延长约 1.067 秒的资格窗口、是否允许 NPC AI 主动处决，均保留为后续独立 change。
+
+## Latest correction: execution result is a branch
+
+The session locks the configured execution damage and the resulting lethal flag.
+The target uses `rig_Executed` when it survives and returns to `Idle` after the
+surviving branch duration. When the damage is lethal, the target uses
+`rig_Executed_Death` and transitions to `Dead` only after that animation duration;
+the `Dead` presentation keeps the completed lethal pose instead of crossfading the
+same clip a second time.

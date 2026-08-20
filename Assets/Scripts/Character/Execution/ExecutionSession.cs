@@ -53,6 +53,9 @@ namespace Character.Execution
         public double StartTimeSec { get; }
         public double ResultTimeSec { get; }
 
+        public float ExecutionDamage { get; }
+        public bool TargetWillDie { get; }
+
         public ExecutionSessionFlags Flags { get; }
 
         public bool IsResultCommitted =>
@@ -82,6 +85,8 @@ namespace Character.Execution
             ExecutionPose executorAnchorPose,
             double startTimeSec,
             double resultTimeSec,
+            float executionDamage,
+            bool targetWillDie,
             ExecutionSessionFlags flags = ExecutionSessionFlags.None)
         {
             ExecutionId = executionId;
@@ -91,6 +96,8 @@ namespace Character.Execution
             ExecutorAnchorPose = executorAnchorPose;
             StartTimeSec = startTimeSec;
             ResultTimeSec = resultTimeSec;
+            ExecutionDamage = executionDamage;
+            TargetWillDie = targetWillDie;
             Flags = flags;
         }
 
@@ -118,6 +125,9 @@ namespace Character.Execution
                     "Result time must be finite and not precede start time.",
                     out error);
             }
+
+            if (!IsFiniteValue(ExecutionDamage) || ExecutionDamage < 0f)
+                return Fail("Execution damage must be finite and non-negative.", out error);
 
             if ((Flags & ~KnownFlags) != ExecutionSessionFlags.None)
                 return Fail("Session contains unknown flags.", out error);
@@ -157,10 +167,15 @@ namespace Character.Execution
                 ExecutorAnchorPose,
                 StartTimeSec,
                 ResultTimeSec,
+                ExecutionDamage,
+                TargetWillDie,
                 flags);
 
         private static bool IsFiniteValue(double value) =>
             !double.IsNaN(value) && !double.IsInfinity(value);
+
+        private static bool IsFiniteValue(float value) =>
+            !float.IsNaN(value) && !float.IsInfinity(value);
 
         private static bool Fail(string message, out string error)
         {

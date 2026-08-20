@@ -187,20 +187,20 @@
 - **WHEN** 处决开始前本地 Player 正在锁定目标
 - **THEN** 处决期间锁定相机被暂停并允许镜头旋转，已经死亡的目标不会在结束后恢复为锁定目标
 
-### Requirement: 确定性致死与结束
-权威处决会话必须（SHALL）在配置结果时刻只提交一次致死结果，并在目标动画完成后进入 `Dead`；普通战斗反应、重复消息和动画事件不得（MUST NOT）重复伤害、复活或改变该结果。
+### Requirement: 确定性处决伤害与结束
+权威处决会话必须（SHALL）在配置结果时刻只提交一次处决伤害并锁存是否致死；存活目标在 `rig_Executed` 分支结束后回到 `Idle`，致死目标在 `rig_Executed_Death` 分支结束后进入 `Dead`。普通战斗反应、重复消息和动画事件不得（MUST NOT）重复伤害、复活或改变该结果。
 
 #### Scenario: 到达结果时刻
 - **WHEN** 活跃会话首次达到配置 `executionResultTime`
-- **THEN** 权威端把目标生命结果锁存为致死并广播绝对 HP/revision，目标继续播放 `Executed`
+- **THEN** 权威端把配置处决伤害应用一次，锁存目标是否死亡并广播绝对 HP/revision，目标继续播放已选择的 `Executed` 分支
 
 #### Scenario: 重复结果消息
 - **WHEN** Host 或 Client 收到同一 `executionId` 的重复致死/完成边沿
 - **THEN** HP、revision、状态时长和动画不会再次应用或延长
 
 #### Scenario: 目标动画结束
-- **WHEN** `Executed` 配置时长结束且致死结果已经锁存
-- **THEN** 目标以 `DeathPresentationVariant.Executed` 进入 `Dead`，处决会话在双方均完成后释放，随后播放 `rig_Executed_Death`
+- **WHEN** 选中的 `Executed` 分支配置时长结束且处决伤害结果已经锁存
+- **THEN** 存活目标回到 `Idle`；致死目标以 `DeathPresentationVariant.Executed` 进入 `Dead`，处决会话在双方均完成后释放
 
 #### Scenario: 生命周期异常清理
 - **WHEN** 场景卸载、Actor 销毁或网络断开终止活跃会话
@@ -285,3 +285,24 @@
 #### Scenario: 更新验证矩阵
 - **WHEN** 处决实现完成
 - **THEN** 项目文档包含 Parried/PostureBroken、Guard 禁止处决、正反面、距离/高度/墙体、输入优先级、Warp、无敌叠加/HurtBox 开关、攻击抑制、处决死亡变体、镜头、Player/NPC 目标及 Offline/Host/Client 乱序用例，且没有证据的项目保持未验证
+
+### Requirement: Execution damage animation branching
+
+An accepted execution SHALL apply the configured `executionDamage` exactly once.
+The session SHALL lock whether that damage is lethal before the target animation
+starts. A surviving target SHALL play `rig_Executed` and return to `Idle` after its
+configured duration. A lethal target SHALL play `rig_Executed_Death` and enter
+`Dead` only after the lethal branch duration; entering `Dead` MUST NOT restart the
+same lethal clip.
+
+#### Scenario: Non-lethal execution
+
+- **WHEN** the configured execution damage leaves the target above zero HP
+- **THEN** the target plays `rig_Executed`, takes no second execution damage, and
+  returns to `Idle` after the branch completes
+
+#### Scenario: Lethal execution
+
+- **WHEN** the configured execution damage reduces the target to zero HP
+- **THEN** the target plays `rig_Executed_Death` once and transitions to `Dead`
+  after that animation completes

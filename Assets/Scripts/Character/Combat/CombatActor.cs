@@ -56,6 +56,8 @@ namespace Character.Combat
         private bool _healthInitialized;
 
         private bool _hasAppliedHealthRevision;
+        private ulong _lastCommittedExecutionDamageId;
+        private bool _lastExecutionDamageWasLethal;
 
         private PostureRuntime _posture;
         private bool _wasDead;
@@ -138,6 +140,18 @@ namespace Character.Combat
                 if (CurrentHp <= 0f)
                 {
                     return true;
+                }
+
+                // Remote NPCs do not advance their local authoritative FSM. After a GM
+                // revive, the local driver can still be in Dead until the next snapshot
+                // arrives, so the latest remote snapshot must take precedence here.
+                if (!NetworkServer.active &&
+                    _npcDriver != null &&
+                    _remoteInterpolator != null &&
+                    _remoteInterpolator.LastAppliedSnapshot.Tick > 0)
+                {
+                    return _remoteInterpolator.LastAppliedSnapshot.StateId ==
+                           CharacterStateId.Dead;
                 }
 
                 if (_playerController != null && _playerController.CurrentStateId == CharacterStateId.Dead)
@@ -353,40 +367,54 @@ namespace Character.Combat
         }
 
 
-        public bool TryCommitExecutionKill(ulong executionId)
+        /// <summary>
+        /// Applies the execution's authoritative damage without going through HurtBox.
+        /// Repeating the same execution id returns the original result without damaging again.
+        /// </summary>
+        public bool TryCommitExecutionDamage(
+            ulong executionId,
+            float damage,
+            out bool targetDied)
         {
             EnsureReferences();
 
+            targetDied = false;
+
             if (!HasPostureSimulationAuthority() || executionId == 0 ||
+                float.IsNaN(damage) || float.IsInfinity(damage) || damage < 0f ||
                 !IsBoundToExecutedSession(executionId))
             {
                 return false;
             }
 
-            // 同一会话重复提交不会增加 revision。
-            if (CurrentHp <= 0f)
+            if (_lastCommittedExecutionDamageId == executionId)
+            {
+                targetDied = _lastExecutionDamageWasLethal;
                 return true;
+            }
 
             float previousHp = CurrentHp;
-
             if (_playerController != null)
             {
                 _playerController.ApplyAuthoritativeHealth(
-                    0f,
+                    Mathf.Max(0f, previousHp - damage),
                     MaxHp);
             }
             else
             {
-                InitializeHealth(force: false);
-                _currentHp = 0f;
+                ApplyHealthDamage(damage);
             }
 
             CommitHealthChange(previousHp);
             ResetPosture(forceNotify: true);
-            _wasDead = true;
+            targetDied = CurrentHp <= 0f;
+            _wasDead = targetDied;
+
+            _lastCommittedExecutionDamageId = executionId;
+            _lastExecutionDamageWasLethal = targetDied;
 
             HealthChanged?.Invoke(CurrentHp, MaxHp);
-            return CurrentHp <= 0f;
+            return true;
         }
 
         // ============ 权威架势状态 ============

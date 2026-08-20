@@ -44,6 +44,8 @@ namespace Character.Presentation
         public static readonly int StateExecuting = Animator.StringToHash("Executing");
         public static readonly int StateExecuted = Animator.StringToHash("Executed");
         public static readonly int StateExecutedDeath = Animator.StringToHash("ExecutedDeath");
+        public static readonly int ExecutedSpeed = Animator.StringToHash("ExecutedSpeed");
+        public static readonly int ExecutedDeathSpeed = Animator.StringToHash("ExecutedDeathSpeed");
 
         // ============ 闪避 ============
 

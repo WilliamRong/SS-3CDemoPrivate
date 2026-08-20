@@ -59,10 +59,10 @@ MonoBehaviour:
   executionMaxHeightDifference: 0.5
   executionLineOfSightMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 243
   executionPathObstructionMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 243
   executorAnchorOffset: {x: 0, y: 0, z: 0.6}
   executionMaxWarpTranslation: 1.6
   executionMaxWarpYaw: 120
@@ -92,9 +92,11 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  executionDamage: 50
   executingDuration: 2.7
-  executedDuration: 3.516667
-  executionResultTime: 2.7
+  executedDuration: 4.3
+  executedDeathDuration: 3.2
+  executionResultTime: 0.01
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

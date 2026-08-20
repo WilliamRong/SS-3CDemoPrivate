@@ -36,3 +36,11 @@
 - 数据与文档：增加处决距离、角度、高度差、Warp 窗口/误差、三段动画时长/过渡等配置，并更新需求、进度与验证矩阵。
 - 编辑器工具：新增 Editor-only 的 Motion Warping 配置、预览和诊断窗口，通过正式配置资产写回数据，并与运行时共享 Warp 计算语义；编辑器不参与权威资格、会话、位移或致死判定。
 - 不增加第三方包依赖，不要求 Animation Rigging；第一版 Motion Warping 复用现有 Root Motion 消费管线实现，编辑器工具不增加运行时依赖。
+
+## Latest correction: execution damage branches
+
+An accepted execution applies the configured `executionDamage` exactly once; it is
+not implicitly lethal. The target locks its animation branch from that result:
+survivors play `rig_Executed` and return to `Idle` after their configured duration,
+while lethal targets play `rig_Executed_Death` and enter `Dead` only after that
+branch completes. Entering `Dead` must not restart the lethal execution clip.

@@ -328,6 +328,11 @@ namespace Character.Controller
             }
 
             _forcedGuardTimer = 0f;
+            DeathPresentationVariant previousVariant =
+                CurrentDeathPresentationVariant;
+            CurrentDeathPresentationVariant = session.TargetWillDie
+                ? DeathPresentationVariant.Executed
+                : DeathPresentationVariant.Default;
 
             if (_fsm.TryTransition(
                     CharacterStateId.Executed,
@@ -337,6 +342,7 @@ namespace Character.Controller
                 return true;
             }
 
+            CurrentDeathPresentationVariant = previousVariant;
             _executedState.CancelPreparation(session.ExecutionId);
             return false;
         }
@@ -374,10 +380,13 @@ namespace Character.Controller
                     return false;
                 }
 
-                return _fsm.TryTransition(
+                bool restored = _fsm.TryTransition(
                     previousState,
                     _stateRegistry,
                     TransitionReason.ExecutionCancelled);
+                if (restored)
+                    CurrentDeathPresentationVariant = DeathPresentationVariant.Default;
+                return restored;
             }
 
             return false;
@@ -403,7 +412,6 @@ namespace Character.Controller
         public bool TryCompleteExecuted(ulong executionId)
         {
             if (_context == null ||
-                !_context.IsDead ||
                 _fsm == null ||
                 _stateRegistry == null ||
                 CurrentStateId != CharacterStateId.Executed ||
@@ -412,14 +420,21 @@ namespace Character.Controller
                 return false;
             }
 
+            bool targetWillDie = _executedState.Session.TargetWillDie;
+            if (_context.IsDead != targetWillDie)
+                return false;
+
             DeathPresentationVariant previousVariant =
                 CurrentDeathPresentationVariant;
 
-            CurrentDeathPresentationVariant =
-                DeathPresentationVariant.Executed;
+            CurrentDeathPresentationVariant = targetWillDie
+                ? DeathPresentationVariant.Executed
+                : DeathPresentationVariant.Default;
 
             if (_fsm.TryTransition(
-                    CharacterStateId.Dead,
+                    targetWillDie
+                        ? CharacterStateId.Dead
+                        : CharacterStateId.Idle,
                     _stateRegistry,
                     TransitionReason.ExecutionCompleted))
             {
@@ -665,23 +680,21 @@ namespace Character.Controller
         private bool TryStartExecutionFromAttack(CharacterIntent intent)
         {
             if (!intent.IsAttackPressed ||
-    intent.IsParryPressed ||
-    intent.IsDodgePressed ||
-    intent.IsGuardHeld ||
-    CurrentStateId is not (
-        CharacterStateId.Idle or
-        CharacterStateId.Move) ||
-    _combatActor == null)
+                intent.IsParryPressed ||
+                intent.IsDodgePressed ||
+                intent.IsGuardHeld ||
+                CurrentStateId is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move) ||
+                _combatActor == null)
             {
                 return false;
             }
 
             ExecutionRuntime runtime = ExecutionRuntime.Instance;
 
-            if (runtime == null || !runtime.HasAuthority)
-                return false;
-
-            if (GameDataManager.Instance == null ||
+            if (runtime == null ||
+                GameDataManager.Instance == null ||
                 GameDataManager.Instance.Player == null ||
                 GameDataManager.Instance.Player.combat == null)
             {
@@ -698,6 +711,16 @@ namespace Character.Controller
             {
                 return false;
             }
+
+            //Client和Host都走同一个ServerHandler
+            //避免特殊路径
+            if (NetworkClient.active)
+            {
+                return MirrorSyncTransport.TrySendExecutionRequest(target.ActorId, out _);
+            }
+
+            // 没有启动 Mirror 时走原来的 Offline 权威路径。
+            if (!runtime.HasAuthority) return false;
 
             return runtime.TryStart(_combatActor, target, combatConfig, out _, out _, out _, out _);
         }

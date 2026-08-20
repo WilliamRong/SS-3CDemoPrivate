@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using Mirror;
+using Character.Config;
+using Character.Execution;
+using Character.Presentation;
+using Core;
 using Character.Combat;
 using Character.Controller;
 using Character.StateMachine;
@@ -66,6 +70,9 @@ namespace Character.Sync
         [SerializeField] private bool _logReceive;
         [SerializeField] private bool _logRelay;
 
+        private uint _nextExecutionRequestSeq = 1;
+        private readonly Dictionary<NetworkConnectionToClient, uint> _lastExecutionRequestSeqByConnection = new();
+
         public event Action<StateSnapshot> OnSnapshotReceived;
         public event Action<ActionEvent> OnActionEventReceived;
 
@@ -94,6 +101,7 @@ namespace Character.Sync
                 _activeInstance = null;
 
             UnregisterHandlers();
+            _lastExecutionRequestSeqByConnection.Clear();
         }
 
         // ============ Client 发送 ============
@@ -114,6 +122,47 @@ namespace Character.Sync
             NetworkClient.Send(ToMsg(actionEvent));
         }
 
+        public static bool TrySendExecutionRequest(int targetActorId, out uint requestSeq)
+        {
+            requestSeq = 0;
+
+            if (_activeInstance == null || !NetworkClient.active || !NetworkClient.ready || targetActorId <= 0)
+            {
+                return false;
+            }
+
+            requestSeq = _activeInstance.AllocateExecutionRequestSequence();
+
+            NetworkClient.Send(new ExecutionRequestMsg
+            {
+                RequestSeq = requestSeq,
+                TargetActorId = targetActorId,
+            });
+
+            if (_activeInstance._logSend)
+            {
+                Debug.Log(
+             $"[MirrorTransport] SendExecutionRequest " +
+             $"seq={requestSeq} target={targetActorId}");
+            }
+
+            return true;
+        }
+
+        private uint AllocateExecutionRequestSequence()
+        {
+            uint sequence = _nextExecutionRequestSeq;
+
+            unchecked
+            {
+                _nextExecutionRequestSeq++;
+            }
+
+            if (_nextExecutionRequestSeq == 0) _nextExecutionRequestSeq = 1;
+
+            return sequence;
+        }
+
         // ============ Server 广播 ============
 
         public void BroadcastSnapshotFromServer(StateSnapshot snapshot)
@@ -130,6 +179,56 @@ namespace Character.Sync
             NetworkServer.SendToAll(ToMsg(actionEvent));
         }
 
+        private void BroadcastExecutionStart(uint requestSeq, in ExecutionSession session)
+        {
+            if (!NetworkServer.active || requestSeq == 0 || !session.TryValidate(out _))
+            {
+                return;
+            }
+
+            DeathPresentationVariant deathVariant = session.TargetWillDie ? DeathPresentationVariant.Executed : DeathPresentationVariant.Default;
+
+            ExecutionStartMsg message = new ExecutionStartMsg
+            {
+                RequestSeq = requestSeq,
+
+                ExecutionId = session.ExecutionId,
+                ExecutorActorId = session.ExecutorActorId,
+                TargetActorId = session.TargetActorId,
+
+                FixedTargetPx = session.FixedTargetPose.Position.x,
+                FixedTargetPy = session.FixedTargetPose.Position.y,
+                FixedTargetPz = session.FixedTargetPose.Position.z,
+                FixedTargetYaw = session.FixedTargetPose.Yaw,
+
+                ExecutorAnchorPx = session.ExecutorAnchorPose.Position.x,
+                ExecutorAnchorPy = session.ExecutorAnchorPose.Position.y,
+                ExecutorAnchorPz = session.ExecutorAnchorPose.Position.z,
+                ExecutorAnchorYaw = session.ExecutorAnchorPose.Yaw,
+
+                StartTimeSec = session.StartTimeSec,
+                ResultTimeSec = session.ResultTimeSec,
+
+                ExecutionDamage = session.ExecutionDamage,
+                TargetWillDie = session.TargetWillDie ? (byte)1 : (byte)0,
+                DeathVariant = (byte)deathVariant,
+                SessionFlags = (byte)session.Flags,
+            };
+
+            NetworkServer.SendToAll(message);
+
+            if (_logRelay)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] BroadcastExecutionStart " +
+                    $"execution={message.ExecutionId} " +
+                    $"executor={message.ExecutorActorId} " +
+                    $"target={message.TargetActorId} " +
+                    $"start={message.StartTimeSec:F3} " +
+                    $"result={message.ResultTimeSec:F3}");
+            }
+        }
+
         // ============ Mirror Handler 生命周期 ============
 
         /// <summary>
@@ -141,6 +240,7 @@ namespace Character.Sync
 
             NetworkServer.RegisterHandler<SnapshotMsg>(OnServerSnapshot);
             NetworkServer.RegisterHandler<ActionMsg>(OnServerAction);
+            NetworkServer.RegisterHandler<ExecutionRequestMsg>(OnServerExecutionRequest);
             NetworkClient.RegisterHandler<SnapshotMsg>(OnClientSnapshot);
             NetworkClient.RegisterHandler<ActionMsg>(OnClientAction);
             _handlersRegistered = true;
@@ -152,6 +252,7 @@ namespace Character.Sync
 
             NetworkServer.UnregisterHandler<SnapshotMsg>();
             NetworkServer.UnregisterHandler<ActionMsg>();
+            NetworkServer.UnregisterHandler<ExecutionRequestMsg>();
             NetworkClient.UnregisterHandler<SnapshotMsg>();
             NetworkClient.UnregisterHandler<ActionMsg>();
             _handlersRegistered = false;
@@ -302,6 +403,114 @@ namespace Character.Sync
             msg.Vz = 0f;
             msg.MoveInputX = 0f;
             msg.MoveInputY = 0f;
+        }
+
+
+        private static void OnServerExecutionRequest(NetworkConnectionToClient conn, ExecutionRequestMsg msg)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+
+            if (!NetworkServer.active || transport == null || conn?.identity == null || !conn.isReady || msg.RequestSeq == 0 || msg.TargetActorId <= 0)
+            {
+                return;
+            }
+
+            NetworkIdentity executorIdentity = conn.identity;
+
+            // 连接只能代表自己拥有的 Player。
+            if (!NetworkServer.spawned.TryGetValue(executorIdentity.netId, out NetworkIdentity spawnedExecutor) || spawnedExecutor != executorIdentity)
+            {
+                return;
+            }
+
+            int executorActorId = unchecked((int)executorIdentity.netId);
+
+            if (executorActorId <= 0 || executorActorId == msg.TargetActorId) return;
+
+            if (!transport.TryAcceptExecutionRequestSequence(conn, msg.RequestSeq))
+            {
+                return;
+            }
+
+            CombatActor executor = executorIdentity.GetComponent<CombatActor>();
+
+            if (executor == null || !executor.IsPlayerActor || executor.ActorId != executorActorId)
+            {
+                return;
+            }
+
+            uint targetNetId = unchecked((uint)msg.TargetActorId);
+
+            if (!NetworkServer.spawned.TryGetValue(targetNetId, out NetworkIdentity targetIdentity))
+            {
+                return;
+            }
+
+            CombatActor target = targetIdentity.GetComponent<CombatActor>();
+
+            if (target == null || target.ActorId != msg.TargetActorId)
+            {
+                return;
+            }
+
+            GameDataManager data = GameDataManager.Instance;
+
+            CharacterCombatConfig config = data != null && data.Player != null ? data.Player.combat : null;
+
+            ExecutionRuntime runtime = ExecutionRuntime.Instance;
+
+            if (config == null || runtime == null || !runtime.HasAuthority) return;
+
+            if (!runtime.TryStart(executor, target, config,
+                    out ExecutionSession session,
+                    out ExecutionEligibilityResult eligibility,
+                    out ExecutionSessionCreateFailure createFailure,
+                    out ExecutionStartFailure startFailure))
+            {
+                if (transport._logRelay)
+                {
+                    Debug.Log(
+                        $"[MirrorTransport] RejectExecutionRequest " +
+                        $"seq={msg.RequestSeq} " +
+                        $"executor={executorActorId} " +
+                        $"target={msg.TargetActorId} " +
+                        $"eligibility={eligibility.RejectionReason} " +
+                        $"create={createFailure} start={startFailure}");
+                }
+
+                return;
+            }
+
+            if (transport._logRelay)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] AcceptExecutionRequest " +
+                    $"seq={msg.RequestSeq} " +
+                    $"execution={session.ExecutionId} " +
+                    $"executor={session.ExecutorActorId} " +
+                    $"target={session.TargetActorId}");
+            }
+
+            //在这里广播 ExecutionStartMsg
+            transport.BroadcastExecutionStart(
+                msg.RequestSeq,
+                session);
+
+        }
+
+        private bool TryAcceptExecutionRequestSequence(NetworkConnectionToClient conn, uint requestSeq)
+        {
+            if (_lastExecutionRequestSeqByConnection.TryGetValue(conn, out uint previous))
+            {
+                //支持uint回绕，拒绝重复或迟到请求
+                int delta = unchecked((int)(requestSeq - previous));
+
+                if (delta <= 0) return false;
+            }
+
+            _lastExecutionRequestSeqByConnection[conn] = requestSeq;
+
+            return true;
         }
 
         // ============ Client 接收 ============
