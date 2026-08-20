@@ -4,6 +4,25 @@ using UnityEngine;
 
 namespace Character.Execution
 {
+    internal readonly struct ExecutionPhysicsDiagnosticResult
+    {
+        public bool IsEvaluated { get; }
+        public bool HasClearLineOfSight { get; }
+        public bool HasExecutorCollisionShape { get; }
+        public bool HasClearPath { get; }
+
+        public ExecutionPhysicsDiagnosticResult(
+            bool hasClearLineOfSight,
+            bool hasExecutorCollisionShape,
+            bool hasClearPath)
+        {
+            IsEvaluated = true;
+            HasClearLineOfSight = hasClearLineOfSight;
+            HasExecutorCollisionShape = hasExecutorCollisionShape;
+            HasClearPath = hasClearPath;
+        }
+    }
+
     /// <summary>
     /// 检查参与者之间的视线，以及处决者到锚点的环境路径。
     /// 仅允许在 Unity 主线程调用。
@@ -89,6 +108,51 @@ namespace Character.Execution
             }
 
             return precheck;
+        }
+
+        /// <summary>
+        /// 独立采样正式物理条件，供诊断界面同时展示每个条件。
+        /// 不改变 Actor、会话或正式资格判定结果。
+        /// </summary>
+        internal static ExecutionPhysicsDiagnosticResult Inspect(
+            CombatActor executor,
+            CombatActor target,
+            CharacterCombatConfig config,
+            in ExecutionEligibilityResult spatial)
+        {
+            if (executor == null ||
+                target == null ||
+                config == null ||
+                !spatial.HasSpatialSolution)
+            {
+                return default;
+            }
+
+            bool hasClearLineOfSight = HasClearLineOfSight(
+                executor,
+                target,
+                config.executionLineOfSightMask);
+
+            bool hasCollisionShape = TryBuildMovementCapsule(
+                executor,
+                out Vector3 pointA,
+                out Vector3 pointB,
+                out float radius);
+
+            bool hasClearPath = hasCollisionShape &&
+                HasClearPathToAnchor(
+                    executor,
+                    target,
+                    spatial.ExecutorAnchorPose.Position,
+                    pointA,
+                    pointB,
+                    radius,
+                    config.executionPathObstructionMask);
+
+            return new ExecutionPhysicsDiagnosticResult(
+                hasClearLineOfSight,
+                hasCollisionShape,
+                hasClearPath);
         }
 
         private static bool HasClearLineOfSight(

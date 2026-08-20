@@ -1,5 +1,7 @@
 using AI;
+using Character.Combat;
 using Character.Controller;
+using Character.StateMachine;
 using Mirror;
 using UnityEngine;
 
@@ -25,6 +27,17 @@ namespace Core
     }
 
     /// <summary>
+    /// 由服务器把 NPC 与远端 Player 的架势提高到接近崩防，
+    /// 排除发出命令的本地 Player。
+    /// </summary>
+    public struct GmSetPostureNearBreakMsg : NetworkMessage
+    {
+        public uint ExcludedPlayerNetId;
+        public float TargetRatio;
+        public float RecoveryDelay;
+    }
+
+    /// <summary>
     /// 让同一套调试入口覆盖 Offline、Host 和 Client，同时保持在线状态修改由服务器决定。
     /// </summary>
     public sealed class GmConsole : MonoBehaviour
@@ -36,6 +49,10 @@ namespace Core
 
         [SerializeField] private float _playerGuardHoldDuration = 30f;
         [SerializeField] private float _npcGuardHoldDuration = 30f;
+        [SerializeField, Range(0f, 0.999f)]
+        private float _nearBreakPostureRatio = 0.99f;
+        [SerializeField, Min(0f)]
+        private float _nearBreakPostureRecoveryDelay = 30f;
 
         private bool _isOpen;
         private bool _allCharactersGuarded;
@@ -58,6 +75,7 @@ namespace Core
             NetworkClient.RegisterHandler<GmForceGuardMsg>(OnClientForceGuard, false);
             NetworkServer.RegisterHandler<GmForceGuardMsg>(OnServerForceGuard, false);
             NetworkServer.RegisterHandler<GmNpcLockNearestPlayerMsg>(OnServerNpcLockNearestPlayer, false);
+            NetworkServer.RegisterHandler<GmSetPostureNearBreakMsg>(OnServerSetPostureNearBreak, false);
         }
 
         private void OnDisable()
@@ -65,6 +83,7 @@ namespace Core
             NetworkClient.UnregisterHandler<GmForceGuardMsg>();
             NetworkServer.UnregisterHandler<GmForceGuardMsg>();
             NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
+            NetworkServer.UnregisterHandler<GmSetPostureNearBreakMsg>();
         }
 
         /// <summary>
@@ -72,7 +91,7 @@ namespace Core
         /// </summary>
         private void OnGUI()
         {
-            float panelHeight = ButtonHeight * 2f + PanelPadding * 3f;
+            float panelHeight = ButtonHeight * 3f + PanelPadding * 4f;
             float x = Mathf.Max(Margin, Screen.width - ButtonWidth - Margin);
             float toggleY = Mathf.Max(Margin, Screen.height - ButtonHeight - Margin);
             float panelY = Mathf.Max(Margin, toggleY - panelHeight);
@@ -92,6 +111,17 @@ namespace Core
             string npcLockText = _npcLockNearestPlayer ? "NPC解锁玩家" : "NPC锁最近玩家";
             if (GUI.Button(new Rect(x + PanelPadding, panelY + ButtonHeight + PanelPadding * 2f, ButtonWidth - PanelPadding * 2f, ButtonHeight), npcLockText))
                 RequestToggleNpcLockNearestPlayer();
+
+            if (GUI.Button(
+                    new Rect(
+                        x + PanelPadding,
+                        panelY + ButtonHeight * 2f + PanelPadding * 3f,
+                        ButtonWidth - PanelPadding * 2f,
+                        ButtonHeight),
+                    "NPC/远端架势99%"))
+            {
+                RequestSetPostureNearBreak();
+            }
         }
 
         // ============ 本地请求入口 ============
@@ -154,6 +184,35 @@ namespace Core
             ApplyNpcLockNearestPlayer(msg.Locked);
         }
 
+        /// <summary>
+        /// Host 直接走服务器权威，Client 只发送意图；Offline 只处理 NPC。
+        /// </summary>
+        private void RequestSetPostureNearBreak()
+        {
+            var msg = new GmSetPostureNearBreakMsg
+            {
+                ExcludedPlayerNetId = ResolveControlledPlayerNetId(),
+                TargetRatio = _nearBreakPostureRatio,
+                RecoveryDelay = _nearBreakPostureRecoveryDelay,
+            };
+
+            if (NetworkServer.active)
+            {
+                ApplyPostureNearBreakOnServer(msg);
+                return;
+            }
+
+            if (NetworkClient.active)
+            {
+                NetworkClient.Send(msg);
+                return;
+            }
+
+            ApplyNpcPostureNearBreakOffline(
+                msg.TargetRatio,
+                msg.RecoveryDelay);
+        }
+
         // ============ 网络消息处理 ============
 
         private static void OnServerForceGuard(NetworkConnectionToClient conn, GmForceGuardMsg msg)
@@ -165,6 +224,19 @@ namespace Core
         private static void OnServerNpcLockNearestPlayer(NetworkConnectionToClient conn, GmNpcLockNearestPlayerMsg msg)
         {
             ApplyNpcLockNearestPlayerOnServer(msg.Locked);
+        }
+
+        private static void OnServerSetPostureNearBreak(
+            NetworkConnectionToClient conn,
+            GmSetPostureNearBreakMsg msg)
+        {
+            if (conn?.identity == null)
+                return;
+
+            msg.ExcludedPlayerNetId = conn.identity.netId;
+            msg.TargetRatio = Mathf.Clamp(msg.TargetRatio, 0f, 0.999f);
+            msg.RecoveryDelay = Mathf.Clamp(msg.RecoveryDelay, 0f, 300f);
+            ApplyPostureNearBreakOnServer(msg);
         }
 
         private static void OnClientForceGuard(GmForceGuardMsg msg)
@@ -210,6 +282,88 @@ namespace Core
             var npcs = FindObjectsByType<NpcCharacterDriver>(FindObjectsSortMode.None);
             foreach (var npc in npcs)
                 npc?.SetGmGuardOverride(false);
+        }
+
+        // ============ 架势调试应用 ============
+
+        private static void ApplyPostureNearBreakOnServer(
+            GmSetPostureNearBreakMsg msg)
+        {
+            if (!NetworkServer.active)
+                return;
+
+            CombatActor[] actors = FindObjectsByType<CombatActor>(
+                FindObjectsSortMode.None);
+
+            foreach (CombatActor actor in actors)
+            {
+                if (!CanPrimePosture(actor))
+                    continue;
+
+                if (actor.IsPlayerActor)
+                {
+                    NetworkIdentity identity =
+                        actor.GetComponent<NetworkIdentity>();
+
+                    if (identity != null &&
+                        identity.netId == msg.ExcludedPlayerNetId)
+                    {
+                        continue;
+                    }
+                }
+
+                RaisePostureToRatio(
+                    actor,
+                    msg.TargetRatio,
+                    msg.RecoveryDelay);
+            }
+        }
+
+        private static void ApplyNpcPostureNearBreakOffline(
+            float targetRatio,
+            float recoveryDelay)
+        {
+            CombatActor[] actors = FindObjectsByType<CombatActor>(
+                FindObjectsSortMode.None);
+
+            foreach (CombatActor actor in actors)
+            {
+                if (CanPrimePosture(actor) && !actor.IsPlayerActor)
+                {
+                    RaisePostureToRatio(
+                        actor,
+                        targetRatio,
+                        recoveryDelay);
+                }
+            }
+        }
+
+        private static bool CanPrimePosture(CombatActor actor)
+        {
+            return actor != null &&
+                   !actor.IsDead &&
+                   actor.CurrentStateId is not (
+                       CharacterStateId.PostureBroken or
+                       CharacterStateId.Executing or
+                       CharacterStateId.Executed or
+                       CharacterStateId.Dead);
+        }
+
+        /// <summary>
+        /// 只提高不降低架势，并保持未满，确保下一次正常架势伤害触发崩防。
+        /// </summary>
+        private static void RaisePostureToRatio(
+            CombatActor actor,
+            float targetRatio,
+            float recoveryDelay)
+        {
+            float maxPosture = actor.MaxPosture;
+            if (maxPosture <= 0f)
+                return;
+
+            float clampedRatio = Mathf.Clamp(targetRatio, 0f, 0.999f);
+            float targetPosture = maxPosture * clampedRatio;
+            actor.RaisePostureTo(targetPosture, recoveryDelay);
         }
 
         // ============ NPC 目标应用 ============

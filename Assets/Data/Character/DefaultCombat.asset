@@ -53,7 +53,48 @@ MonoBehaviour:
   postureRecoveryDelay: 2
   postureRecoveryPerSecondAtLowHealth: 5
   postureRecoveryPerSecondAtFullHealth: 15
-  postureBreakDuration: 1.067
+  postureBreakDuration: 2.134
+  executionMaxDistance: 1.5
+  executionFrontHalfAngle: 80
+  executionMaxHeightDifference: 0.5
+  executionLineOfSightMask:
+    serializedVersion: 2
+    m_Bits: 4294967291
+  executionPathObstructionMask:
+    serializedVersion: 2
+    m_Bits: 4294967291
+  executorAnchorOffset: {x: 0, y: 0, z: 0.6}
+  executionMaxWarpTranslation: 1.6
+  executionMaxWarpYaw: 120
+  executionWarpWindowStartNormalized: 0
+  executionWarpWindowEndNormalized: 0.45
+  executionWarpCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 1
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  executingDuration: 2.7
+  executedDuration: 3.516667
+  executionResultTime: 2.7
   hitPreHitEnd: 0.1
   hitActiveEnd: 0.2
   hitRecoveryEnd: 0.8166667

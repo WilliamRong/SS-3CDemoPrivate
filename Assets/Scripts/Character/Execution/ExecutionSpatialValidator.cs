@@ -181,7 +181,7 @@ namespace Character.Execution
             return ExecutionRejectionReason.None;
         }
 
-        private static bool IsConfigurationValid(
+        internal static bool IsConfigurationValid(
             CharacterCombatConfig config)
         {
             if (config == null)

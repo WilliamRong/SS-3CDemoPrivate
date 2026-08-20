@@ -403,6 +403,25 @@ namespace Character.Combat
             return _posture.Add(amount, recoveryDelay);
         }
 
+        /// <summary>
+        /// 权威端只把架势提高到目标值，并允许调试或玩法入口指定恢复延迟。
+        /// 不会降低已经更高的架势，也不会直接触发崩防状态。
+        /// </summary>
+        public float RaisePostureTo(
+            float targetPosture,
+            float recoveryDelay)
+        {
+            if (!HasPostureSimulationAuthority())
+                return 0f;
+
+            InitializePosture(forceNotify: false);
+            float amount = targetPosture - _posture.Current;
+
+            return amount > 0f
+                ? _posture.Add(amount, recoveryDelay)
+                : 0f;
+        }
+
         public bool ResetPosture(bool forceNotify = false)
         {
             if (!HasPostureSimulationAuthority())
