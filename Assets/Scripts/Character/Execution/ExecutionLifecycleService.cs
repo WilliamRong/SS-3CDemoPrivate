@@ -45,6 +45,9 @@ namespace Character.Execution
         public ExecutionSessionCoordinator Coordinator => _coordinator;
         public int ActiveExecutionCount => _activeById.Count;
 
+        public event Action<ExecutionSession, CombatActor, double>
+            ResultCommitted;
+
         public ExecutionLifecycleService(ExecutionSessionCoordinator coordinator)
         {
             _coordinator = coordinator ??
@@ -189,14 +192,24 @@ namespace Character.Execution
                         executionId,
                         session.ExecutionDamage,
                         out bool targetDied) ||
-                    targetDied != session.TargetWillDie ||
-                    !_coordinator.TryMarkResultCommitted(
+                    targetDied != session.TargetWillDie)
+                {
+                    CleanupActorsAndSession(active);
+                    return true;
+                }
+
+                if (!_coordinator.TryMarkResultCommitted(
                         executionId,
                         out session))
                 {
                     CleanupActorsAndSession(active);
                     return true;
                 }
+
+                ResultCommitted?.Invoke(
+                    session,
+                    active.Target,
+                    authorityNowSec);
             }
 
             // 处决者按自己的玩法时长独立完成。

@@ -843,6 +843,13 @@ or CharacterStateId.Executed;
             if (stateId == CharacterStateId.Parried)
                 return _remoteActionApplier.LastParriedSeqId;
 
+            if (stateId is
+                CharacterStateId.Executing or
+                CharacterStateId.Executed)
+            {
+                return _remoteActionApplier.ExecutionStartVersion;
+            }
+
             return 0;
         }
 
@@ -964,8 +971,9 @@ or CharacterStateId.Executed;
                 return _npcDriver.CurrentDeathPresentationVariant;
             }
 
-            // Remote execution variants are populated by the execution protocol later.
-            return DeathPresentationVariant.Default;
+            return _remoteActionApplier != null
+                ? _remoteActionApplier.ExecutionDeathVariant
+                : DeathPresentationVariant.Default;
         }
     }
 }

@@ -2,6 +2,8 @@ using Mirror;
 using UnityEngine;
 using Character.Combat;
 using Character.Controller;
+using Character.Execution;
+using Character.Presentation;
 using Character.StateMachine;
 
 namespace Character.Sync
@@ -41,8 +43,25 @@ namespace Character.Sync
         private bool _parriedAwaitingSnapshot;
         private bool _parriedSnapshotObserved;
 
+        private ExecutionSession _executionSession;
+        private bool _hasExecutionSession;
+        private CharacterStateId _executionStateId = CharacterStateId.None;
+        private DeathPresentationVariant _executionDeathVariant =
+            DeathPresentationVariant.Default;
+        private int _executionStartVersion;
+        private ulong _lastExecutionResultId;
+        private uint _lastExecutionResultRevision;
+
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
+
+        public bool HasExecutionSession => _hasExecutionSession;
+        public ExecutionSession ExecutionSession => _executionSession;
+        public int ExecutionStartVersion => _executionStartVersion;
+        public DeathPresentationVariant ExecutionDeathVariant =>
+            _hasExecutionSession
+                ? _executionDeathVariant
+                : DeathPresentationVariant.Default;
 
         // ============ Unity 生命周期 ============
 
@@ -55,6 +74,177 @@ namespace Character.Sync
         }
 
         // ============ 动作入口 ============
+
+        /// <summary>
+        /// Locks this actor to the authoritative paired state until a later
+        /// result or completion edge releases the execution session.
+        /// </summary>
+        public void ApplyExecutionStart(ExecutionStartMsg message)
+        {
+            if (!TryBuildExecutionSession(
+                    message,
+                    out ExecutionSession session,
+                    out DeathPresentationVariant deathVariant))
+            {
+                return;
+            }
+
+            int actorId = ResolveActorId();
+            CharacterStateId stateId;
+            if (actorId == session.ExecutorActorId)
+            {
+                stateId = CharacterStateId.Executing;
+            }
+            else if (actorId == session.TargetActorId)
+            {
+                stateId = CharacterStateId.Executed;
+            }
+            else
+            {
+                return;
+            }
+
+            if (_hasExecutionSession)
+            {
+                if (_executionSession.ExecutionId == session.ExecutionId)
+                    return;
+
+                // A different session cannot replace an actor that is still occupied.
+                return;
+            }
+
+            _executionSession = session;
+            _hasExecutionSession = true;
+            _executionStateId = stateId;
+            _executionDeathVariant = deathVariant;
+            AdvanceExecutionStartVersion();
+
+            CurrentRemoteAction = ActionType.None;
+            ClearPostureBreakTracking();
+            ClearParryTracking();
+            ClearParriedTracking();
+            _combatActor?.CancelCurrentAttack();
+
+            if (!NetworkServer.active)
+            {
+                _combatActor?.BeginExecutionCombatSuppression(
+                    session.ExecutionId);
+
+                if (_networkIdentity != null &&
+                    _networkIdentity.isLocalPlayer &&
+                    _playerController != null)
+                {
+                    bool entered = stateId == CharacterStateId.Executing
+                        ? _playerController.TryEnterExecuting(session)
+                        : _playerController.TryEnterExecuted(session);
+
+                    if (!entered)
+                    {
+                        Debug.LogWarning(
+                            $"[RemoteActionApplier] Local execution state " +
+                            $"entry failed. execution={session.ExecutionId} " +
+                            $"actor={actorId} state={stateId}");
+                    }
+                }
+            }
+
+            if (_logApply)
+            {
+                Debug.Log(
+                    $"[RemoteActionApplier] execution start " +
+                    $"execution={session.ExecutionId} actor={actorId} " +
+                    $"state={stateId} death={deathVariant}");
+            }
+        }
+
+        /// <summary>
+        /// Applies the authoritative execution damage result to the target actor.
+        /// Host records the edge only because Server already applied the damage.
+        /// </summary>
+        public void ApplyExecutionResult(ExecutionResultMsg message)
+        {
+            int actorId = ResolveActorId();
+            if (actorId != message.TargetActorId ||
+                message.ExecutionId == 0 ||
+                message.ExecutorActorId <= 0 ||
+                message.TargetActorId <= 0 ||
+                message.ExecutorActorId == message.TargetActorId ||
+                float.IsNaN(message.CurrentHp) ||
+                float.IsInfinity(message.CurrentHp) ||
+                float.IsNaN(message.MaxHp) ||
+                float.IsInfinity(message.MaxHp) ||
+                message.MaxHp <= 0f ||
+                message.CurrentHp < 0f ||
+                message.CurrentHp > message.MaxHp ||
+                double.IsNaN(message.AuthorityTimeSec) ||
+                double.IsInfinity(message.AuthorityTimeSec) ||
+                message.AuthorityTimeSec < 0d)
+            {
+                return;
+            }
+
+            DeathPresentationVariant variant =
+                (DeathPresentationVariant)message.DeathVariant;
+
+            if (variant is not (
+                    DeathPresentationVariant.Default or
+                    DeathPresentationVariant.Executed))
+            {
+                return;
+            }
+
+            bool lethal =
+                variant == DeathPresentationVariant.Executed;
+
+            if (lethal != (message.CurrentHp <= 0f))
+                return;
+
+            if (_hasExecutionSession &&
+                (_executionSession.ExecutionId != message.ExecutionId ||
+                 _executionSession.ExecutorActorId != message.ExecutorActorId ||
+                 _executionSession.TargetActorId != message.TargetActorId ||
+                 _executionSession.TargetWillDie != lethal))
+            {
+                return;
+            }
+
+            if (_lastExecutionResultId == message.ExecutionId &&
+                message.HealthRevision <= _lastExecutionResultRevision)
+            {
+                return;
+            }
+
+            _lastExecutionResultId = message.ExecutionId;
+            _lastExecutionResultRevision = message.HealthRevision;
+
+            if (_hasExecutionSession)
+            {
+                _executionSession =
+                    _executionSession.MarkResultCommitted();
+                _executionDeathVariant = variant;
+            }
+
+            // Server already applied the authoritative damage before broadcasting.
+            if (!NetworkServer.active)
+            {
+                _combatActor?.ApplyAuthoritativeHealth(
+                    message.CurrentHp,
+                    message.MaxHp,
+                    message.HealthRevision);
+            }
+
+            _healthBarView?.ShowForHit();
+
+            if (_logApply)
+            {
+                Debug.Log(
+                    $"[RemoteActionApplier] execution result " +
+                    $"execution={message.ExecutionId} " +
+                    $"hp={message.CurrentHp:F1}/{message.MaxHp:F1} " +
+                    $"revision={message.HealthRevision} " +
+                    $"death={variant}");
+            }
+        }
 
         /// <summary>
         /// 服务器战斗序列、格挡序列和普通动作序列分别去重，避免不同发布源的编号空间互相吞掉消息。
@@ -271,6 +461,9 @@ namespace Character.Sync
 
         public CharacterStateId ResolveSnapshotState(CharacterStateId snapshotState)
         {
+            if (_hasExecutionSession)
+                return _executionStateId;
+
             if (snapshotState == CharacterStateId.Dead)
             {
                 ClearPostureBreakTracking();
@@ -366,6 +559,12 @@ namespace Character.Sync
         /// </summary>
         public void ResetState()
         {
+            if (_hasExecutionSession)
+            {
+                _combatActor?.EndExecutionCombatSuppression(
+                    _executionSession.ExecutionId);
+            }
+
             LastAppliedSeqId = 0;
             LastAppliedTick = 0;
             CurrentRemoteAction = ActionType.None;
@@ -385,6 +584,84 @@ namespace Character.Sync
             _parrySnapshotObserved = false;
             _parriedAwaitingSnapshot = false;
             _parriedSnapshotObserved = false;
+            _executionSession = default;
+            _hasExecutionSession = false;
+            _executionStateId = CharacterStateId.None;
+            _executionDeathVariant = DeathPresentationVariant.Default;
+            _executionStartVersion = 0;
+            _lastExecutionResultId = 0;
+            _lastExecutionResultRevision = 0;
+        }
+
+        private int ResolveActorId()
+        {
+            if (_networkIdentity != null && _networkIdentity.netId != 0)
+                return unchecked((int)_networkIdentity.netId);
+
+            return _combatActor != null ? _combatActor.ActorId : 0;
+        }
+
+        private void AdvanceExecutionStartVersion()
+        {
+            _executionStartVersion =
+                _executionStartVersion == int.MaxValue
+                    ? 1
+                    : _executionStartVersion + 1;
+        }
+
+        private static bool TryBuildExecutionSession(
+            in ExecutionStartMsg message,
+            out ExecutionSession session,
+            out DeathPresentationVariant deathVariant)
+        {
+            session = default;
+            deathVariant = (DeathPresentationVariant)message.DeathVariant;
+
+            if (message.TargetWillDie > 1 ||
+                deathVariant is not (
+                    DeathPresentationVariant.Default or
+                    DeathPresentationVariant.Executed))
+            {
+                return false;
+            }
+
+            bool targetWillDie = message.TargetWillDie != 0;
+            if (targetWillDie !=
+                (deathVariant == DeathPresentationVariant.Executed))
+            {
+                return false;
+            }
+
+            session = new ExecutionSession(
+                message.ExecutionId,
+                message.ExecutorActorId,
+                message.TargetActorId,
+                new ExecutionPose(
+                    new Vector3(
+                        message.FixedTargetPx,
+                        message.FixedTargetPy,
+                        message.FixedTargetPz),
+                    message.FixedTargetYaw),
+                new ExecutionPose(
+                    new Vector3(
+                        message.ExecutorAnchorPx,
+                        message.ExecutorAnchorPy,
+                        message.ExecutorAnchorPz),
+                    message.ExecutorAnchorYaw),
+                message.StartTimeSec,
+                message.ResultTimeSec,
+                message.ExecutionDamage,
+                targetWillDie,
+                (ExecutionSessionFlags)message.SessionFlags);
+
+            if (!session.TryValidate(out _) || !session.IsActive)
+            {
+                session = default;
+                deathVariant = DeathPresentationVariant.Default;
+                return false;
+            }
+
+            return true;
         }
 
         private void RegisterPostureBreakEdge(int seqId)

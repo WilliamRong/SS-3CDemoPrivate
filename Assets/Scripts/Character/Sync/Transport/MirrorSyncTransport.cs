@@ -72,9 +72,14 @@ namespace Character.Sync
 
         private uint _nextExecutionRequestSeq = 1;
         private readonly Dictionary<NetworkConnectionToClient, uint> _lastExecutionRequestSeqByConnection = new();
+        private ExecutionLifecycleService _boundExecutionLifecycle;
 
         public event Action<StateSnapshot> OnSnapshotReceived;
         public event Action<ActionEvent> OnActionEventReceived;
+        public event Action<ExecutionStartMsg> OnExecutionStartReceived;
+        public event Action<ExecutionResultMsg> OnExecutionResultReceived;
+
+        private readonly HashSet<ulong> _receivedExecutionStartIds = new();
 
         private static MirrorSyncTransport _activeInstance;
         private static bool _handlersRegistered;
@@ -101,7 +106,9 @@ namespace Character.Sync
                 _activeInstance = null;
 
             UnregisterHandlers();
+            UnbindExecutionLifecycle();
             _lastExecutionRequestSeqByConnection.Clear();
+            _receivedExecutionStartIds.Clear();
         }
 
         // ============ Client 发送 ============
@@ -229,6 +236,71 @@ namespace Character.Sync
             }
         }
 
+        private void BindExecutionLifecycle(
+            ExecutionLifecycleService lifecycle)
+        {
+            if (ReferenceEquals(_boundExecutionLifecycle, lifecycle))
+                return;
+
+            UnbindExecutionLifecycle();
+
+            _boundExecutionLifecycle = lifecycle;
+            if (_boundExecutionLifecycle != null)
+            {
+                _boundExecutionLifecycle.ResultCommitted +=
+                    OnExecutionResultCommitted;
+            }
+        }
+
+        private void UnbindExecutionLifecycle()
+        {
+            if (_boundExecutionLifecycle == null)
+                return;
+
+            _boundExecutionLifecycle.ResultCommitted -=
+                OnExecutionResultCommitted;
+            _boundExecutionLifecycle = null;
+        }
+
+        private void OnExecutionResultCommitted(
+            ExecutionSession session,
+            CombatActor target,
+            double authorityTimeSec)
+        {
+            if (!NetworkServer.active ||
+                target == null ||
+                !session.IsResultCommitted ||
+                target.ActorId != session.TargetActorId)
+            {
+                return;
+            }
+
+            var message = new ExecutionResultMsg
+            {
+                ExecutionId = session.ExecutionId,
+                ExecutorActorId = session.ExecutorActorId,
+                TargetActorId = session.TargetActorId,
+                AuthorityTimeSec = authorityTimeSec,
+                CurrentHp = target.CurrentHp,
+                MaxHp = target.MaxHp,
+                HealthRevision = target.HealthRevision,
+                DeathVariant = (byte)(session.TargetWillDie
+                    ? DeathPresentationVariant.Executed
+                    : DeathPresentationVariant.Default),
+            };
+
+            NetworkServer.SendToAll(message);
+
+            if (_logRelay)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] BroadcastExecutionResult " +
+                    $"execution={message.ExecutionId} " +
+                    $"hp={message.CurrentHp:F1}/{message.MaxHp:F1} " +
+                    $"revision={message.HealthRevision}");
+            }
+        }
+
         // ============ Mirror Handler 生命周期 ============
 
         /// <summary>
@@ -243,6 +315,8 @@ namespace Character.Sync
             NetworkServer.RegisterHandler<ExecutionRequestMsg>(OnServerExecutionRequest);
             NetworkClient.RegisterHandler<SnapshotMsg>(OnClientSnapshot);
             NetworkClient.RegisterHandler<ActionMsg>(OnClientAction);
+            NetworkClient.RegisterHandler<ExecutionStartMsg>(OnClientExecutionStart);
+            NetworkClient.RegisterHandler<ExecutionResultMsg>(OnClientExecutionResult);
             _handlersRegistered = true;
         }
 
@@ -255,6 +329,8 @@ namespace Character.Sync
             NetworkServer.UnregisterHandler<ExecutionRequestMsg>();
             NetworkClient.UnregisterHandler<SnapshotMsg>();
             NetworkClient.UnregisterHandler<ActionMsg>();
+            NetworkClient.UnregisterHandler<ExecutionStartMsg>();
+            NetworkClient.UnregisterHandler<ExecutionResultMsg>();
             _handlersRegistered = false;
         }
 
@@ -461,6 +537,8 @@ namespace Character.Sync
 
             if (config == null || runtime == null || !runtime.HasAuthority) return;
 
+            transport.BindExecutionLifecycle(runtime.Lifecycle);
+
             if (!runtime.TryStart(executor, target, config,
                     out ExecutionSession session,
                     out ExecutionEligibilityResult eligibility,
@@ -532,6 +610,116 @@ namespace Character.Sync
             ActionEvent evt = FromMsg(msg);
             if (_activeInstance._logReceive) Debug.Log($"[MirrorTransport] RecvAction seq={evt.SeqId} type={evt.Type}");
             _activeInstance.OnActionEventReceived?.Invoke(evt);
+        }
+
+        private static void OnClientExecutionStart(ExecutionStartMsg message)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+
+            if (transport == null || !transport.TryAcceptExecutionStart(message, out ExecutionSession session))
+            {
+                return;
+            }
+
+            if (transport._logReceive)
+            {
+                Debug.Log(
+            $"[MirrorTransport] RecvExecutionStart " +
+            $"execution={session.ExecutionId} " +
+            $"executor={session.ExecutorActorId} " +
+            $"target={session.TargetActorId} " +
+            $"start={session.StartTimeSec:F3}");
+            }
+
+            transport.OnExecutionStartReceived?.Invoke(message);
+        }
+
+        private static void OnClientExecutionResult(
+            ExecutionResultMsg message)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+            if (transport == null)
+                return;
+
+            if (transport._logReceive)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] RecvExecutionResult " +
+                    $"execution={message.ExecutionId} " +
+                    $"revision={message.HealthRevision}");
+            }
+
+            transport.OnExecutionResultReceived?.Invoke(message);
+        }
+
+        private bool TryAcceptExecutionStart(in ExecutionStartMsg message, out ExecutionSession session)
+        {
+            session = default;
+
+            if (message.ExecutionId == 0 || message.ExecutorActorId <= 0 || message.TargetActorId <= 0 || message.ExecutorActorId == message.TargetActorId)
+            {
+                return false;
+            }
+
+            if (message.TargetWillDie > 1) return false;
+
+            DeathPresentationVariant deathVariant = (DeathPresentationVariant)message.DeathVariant;
+
+            if (deathVariant != DeathPresentationVariant.Default && deathVariant != DeathPresentationVariant.Executed) return false;
+
+            bool targetWillDie = message.TargetWillDie != 0;
+
+            if (targetWillDie && deathVariant != DeathPresentationVariant.Executed) return false;
+
+            if (!targetWillDie && deathVariant != DeathPresentationVariant.Default) return false;
+
+            ExecutionSessionFlags flags = (ExecutionSessionFlags)message.SessionFlags;
+
+            ExecutionSessionFlags knownFlags =
+                    ExecutionSessionFlags.ResultCommitted |
+                    ExecutionSessionFlags.ExecutorCompleted |
+                    ExecutionSessionFlags.TargetCompleted |
+                    ExecutionSessionFlags.Cancelled;
+
+            if ((flags & ~knownFlags) != ExecutionSessionFlags.None) return false;
+
+            ExecutionPose fixedTargetPose = new ExecutionPose(new Vector3(message.FixedTargetPx, message.FixedTargetPy, message.FixedTargetPz), message.FixedTargetYaw);
+
+            ExecutionPose executorAnchorPose =
+            new ExecutionPose(
+            new Vector3(
+                message.ExecutorAnchorPx,
+                message.ExecutorAnchorPy,
+                message.ExecutorAnchorPz),
+            message.ExecutorAnchorYaw);
+
+            session = new ExecutionSession(
+                message.ExecutionId,
+                message.ExecutorActorId,
+                message.TargetActorId,
+                fixedTargetPose,
+                executorAnchorPose,
+                message.StartTimeSec,
+                message.ResultTimeSec,
+                message.ExecutionDamage,
+                targetWillDie,
+                flags);
+
+            if (!session.TryValidate(out _))
+            {
+                session = default;
+                return false;
+            }
+
+            // 同一个 executionId 的 Start 只能接受一次。
+            if (!_receivedExecutionStartIds.Add(message.ExecutionId))
+            {
+                session = default;
+                return false;
+            }
+
+            return true;
+
         }
 
         // ============ 协议对象转换 ============

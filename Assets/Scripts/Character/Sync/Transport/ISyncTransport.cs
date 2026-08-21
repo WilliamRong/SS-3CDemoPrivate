@@ -9,6 +9,8 @@ namespace Character.Sync
     {
         event Action<StateSnapshot> OnSnapshotReceived;
         event Action<ActionEvent> OnActionEventReceived;
+        event Action<ExecutionStartMsg> OnExecutionStartReceived;
+        event Action<ExecutionResultMsg> OnExecutionResultReceived;
 
         void SendSnapshot(StateSnapshot snapshot);
         void SendActionEvent(ActionEvent actionEvent);

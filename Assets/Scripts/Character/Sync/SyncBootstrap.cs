@@ -52,6 +52,8 @@ namespace Character.Sync
 
             _transport.OnSnapshotReceived -= HandleSnapshotReceived;
             _transport.OnActionEventReceived -= HandleActionReceived;
+            _transport.OnExecutionStartReceived -= HandleExecutionStartReceived;
+            _transport.OnExecutionResultReceived -= HandleExecutionResultReceived;
 
             _isWired = false;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire down done.");
@@ -76,6 +78,8 @@ namespace Character.Sync
             // Transport -> 所有远端表现组件（挂在 PlayerPrefab/NpcPrefab）
             _transport.OnSnapshotReceived += HandleSnapshotReceived;
             _transport.OnActionEventReceived += HandleActionReceived;
+            _transport.OnExecutionStartReceived += HandleExecutionStartReceived;
+            _transport.OnExecutionResultReceived += HandleExecutionResultReceived;
 
             _isWired = true;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire up done.");
@@ -172,6 +176,29 @@ namespace Character.Sync
             for (int i = 0; i < appliers.Length; i++)
             {
                 appliers[i].Apply(actionEvent);
+            }
+        }
+
+        private void HandleExecutionStartReceived(
+            ExecutionStartMsg message)
+        {
+            var appliers = FindObjectsByType<RemoteActionApplier>(
+                FindObjectsSortMode.None);
+            for (int i = 0; i < appliers.Length; i++)
+            {
+                appliers[i].ApplyExecutionStart(message);
+            }
+        }
+
+        private void HandleExecutionResultReceived(
+            ExecutionResultMsg message)
+        {
+            var appliers = FindObjectsByType<RemoteActionApplier>(
+                FindObjectsSortMode.None);
+
+            for (int i = 0; i < appliers.Length; i++)
+            {
+                appliers[i].ApplyExecutionResult(message);
             }
         }
     }
