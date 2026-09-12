@@ -312,13 +312,29 @@ namespace Character.Combat
         /// </summary>
         public bool ApplyAuthoritativeHealth(float currentHp, float maxHp, uint revision)
         {
-            if (_hasAppliedHealthRevision && revision <= HealthRevision) return false;
+            // A revision is monotonic, but a result and a snapshot with the
+            // same revision can cross on the wire. Keep the lower HP value and
+            // reject a stale snapshot that would restore a higher HP.
+            if (_hasAppliedHealthRevision && revision < HealthRevision)
+                return true;
+
+            if (_hasAppliedHealthRevision && revision == HealthRevision)
+            {
+                if (Mathf.Approximately(currentHp, CurrentHp) ||
+                    currentHp >= CurrentHp)
+                {
+                    return true;
+                }
+            }
 
             float previousHp = CurrentHp;
 
             if (_playerController != null)
             {
-                _playerController.ApplyAuthoritativeHealth(currentHp, maxHp);
+                // A network message can arrive before PlayerController.Start.
+                // Do not advance the revision until the context is available.
+                if (!_playerController.ApplyAuthoritativeHealth(currentHp, maxHp))
+                    return false;
             }
             else
             {
@@ -382,7 +398,7 @@ namespace Character.Combat
 
             if (!HasPostureSimulationAuthority() || executionId == 0 ||
                 float.IsNaN(damage) || float.IsInfinity(damage) || damage < 0f ||
-                !IsBoundToExecutedSession(executionId))
+                !IsExecutionTargetAvailable())
             {
                 return false;
             }
@@ -396,9 +412,16 @@ namespace Character.Combat
             float previousHp = CurrentHp;
             if (_playerController != null)
             {
-                _playerController.ApplyAuthoritativeHealth(
-                    Mathf.Max(0f, previousHp - damage),
-                    MaxHp);
+                if (!_playerController.ApplyAuthoritativeHealth(
+                        Mathf.Max(0f, previousHp - damage),
+                        MaxHp))
+                {
+                    return false;
+                }
+
+                float appliedDamage = Mathf.Max(0f, previousHp - CurrentHp);
+                if (appliedDamage > 0f)
+                    DamageTaken?.Invoke(appliedDamage);
             }
             else
             {
@@ -946,7 +969,19 @@ namespace Character.Combat
         private CharacterStateId ResolveCurrentStateId()
         {
             if (_npcDriver != null)
+            {
+                // NPC state machines are authoritative and only exist on the
+                // server. A pure client must use the latest server snapshot;
+                // otherwise every remote NPC appears as None and can never be
+                // selected as an execution target.
+                if (!NetworkServer.active &&
+                    TryGetRemoteSnapshotState(out CharacterStateId remoteNpcState))
+                {
+                    return remoteNpcState;
+                }
+
                 return _npcDriver.CurrentStateId;
+            }
 
             CharacterStateId controllerState =
                 _playerController != null
@@ -990,7 +1025,9 @@ namespace Character.Combat
             if (snapshot.Tick == 0)
                 return false;
 
-            stateId = snapshot.StateId;
+            stateId = _remoteActionApplier != null
+                ? _remoteActionApplier.ResolveSnapshotState(snapshot.StateId)
+                : snapshot.StateId;
             return true;
         }
 
@@ -1327,20 +1364,9 @@ namespace Character.Combat
                        executionId);
         }
 
-        private bool IsBoundToExecutedSession(
-            ulong executionId)
+        private bool IsExecutionTargetAvailable()
         {
-            if (_playerController != null)
-            {
-                return _playerController.TryGetActiveExecutedState(
-                           out ExecutedState state) &&
-                       state.IsBoundTo(executionId);
-            }
-
-            return _npcDriver != null &&
-                   _npcDriver.TryGetActiveExecutedState(
-                       out NpcExecutedState npcState) &&
-                   npcState.IsBoundTo(executionId);
+            return _playerController != null || _npcDriver != null;
         }
     }
 }

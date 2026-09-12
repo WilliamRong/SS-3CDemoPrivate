@@ -286,23 +286,16 @@
 - **WHEN** 处决实现完成
 - **THEN** 项目文档包含 Parried/PostureBroken、Guard 禁止处决、正反面、距离/高度/墙体、输入优先级、Warp、无敌叠加/HurtBox 开关、攻击抑制、处决死亡变体、镜头、Player/NPC 目标及 Offline/Host/Client 乱序用例，且没有证据的项目保持未验证
 
-### Requirement: Execution damage animation branching
+### Requirement: 处决伤害动画分支
 
-An accepted execution SHALL apply the configured `executionDamage` exactly once.
-The session SHALL lock whether that damage is lethal before the target animation
-starts. A surviving target SHALL play `rig_Executed` and return to `Idle` after its
-configured duration. A lethal target SHALL play `rig_Executed_Death` and enter
-`Dead` only after the lethal branch duration; entering `Dead` MUST NOT restart the
-same lethal clip.
+接受处决后必须（SHALL）只应用一次配置的 `executionDamage`。会话必须（SHALL）在目标动画开始前锁存该伤害是否致死。存活目标必须（SHALL）播放 `rig_Executed`，并在配置时长结束后返回 `Idle`。致死目标必须（SHALL）播放 `rig_Executed_Death`，并仅在致死分支时长结束后进入 `Dead`；进入 `Dead` 时不得（MUST NOT）再次播放同一致死动画。
 
-#### Scenario: Non-lethal execution
+#### Scenario: 非致死处决
 
-- **WHEN** the configured execution damage leaves the target above zero HP
-- **THEN** the target plays `rig_Executed`, takes no second execution damage, and
-  returns to `Idle` after the branch completes
+- **WHEN** 配置的处决伤害结算后目标 HP 仍大于零
+- **THEN** 目标播放 `rig_Executed`，不再承受第二次处决伤害，并在该分支完成后返回 `Idle`
 
-#### Scenario: Lethal execution
+#### Scenario: 致死处决
 
-- **WHEN** the configured execution damage reduces the target to zero HP
-- **THEN** the target plays `rig_Executed_Death` once and transitions to `Dead`
-  after that animation completes
+- **WHEN** 配置的处决伤害将目标 HP 降至零
+- **THEN** 目标只播放一次 `rig_Executed_Death`，并在该动画完成后进入 `Dead`

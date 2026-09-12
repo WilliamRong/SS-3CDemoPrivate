@@ -4,11 +4,11 @@
 - [x] 1.2 在 `AttackDefinition` 增加独立的普通命中与格挡架势伤害字段，更新 fallback 构造，并为 `DefaultAttackSet.asset` 每项攻击配置架势值。
 - [x] 1.3 实现带钳制、最近增长时间、HP 比例恢复、重置和远端绝对状态应用的 `PostureRuntime`。
 - [x] 1.4 让 `CombatActor` 统一持有 Player/NPC 架势，公开 current/max/ratio 与 `PostureChanged`，只在 Offline/Server 权威端恢复，并在死亡/复活时重置。
-- [ ] 1.5 扩展状态/调试诊断和权威安全的 GM/调试控制，使 current/max、恢复、增加/重置和破势行为可确定性检查。
+- [ ] 1.5 扩展状态/调试诊断和权威安全的 GM/调试控制，使 current/max、恢复、增加/重置和破势行为可确定性检查。已有权威安全的“架势接近崩防”GM 指令，但完整 current/max、恢复和重置诊断尚未发现实现证据。
 
 ## 2. 破势逻辑与表现
 
-- [ ] 2.1 在不改变现有数值的前提下把 `PostureBroken` 追加到 `CharacterStateId`，并完整更新状态/动作映射、调试字符串和转换规则。
+- [x] 2.1 在不改变现有数值的前提下把 `PostureBroken` 追加到 `CharacterStateId`，并完整更新状态/动作映射、调试字符串和转换规则。
 - [x] 2.2 实现并注册 Player `PostureBrokenState`，包括移动/动作阻断、超时退出、死亡打断和 Controller 入口/查询接口。
 - [x] 2.3 实现并注册 NPC `NpcPostureBrokenState`，包括 Motor 停止、意图阻断、超时退出、死亡打断和 Driver 入口/查询接口。
 - [x] 2.4 通过 `CharacterLateUpdatePipeline` 和 `CharacterCombatPresenter` 路由本地/远端破势，在 Reaction Layer 播放 `rig_Collide` 并保持 Dead 最高优先级。
@@ -23,7 +23,7 @@
 ## 4. 网络权威与同步
 
 - [x] 4.1 扩展 `StateSnapshot` 和 Mirror 序列化，携带绝对 current/max posture，同时保持现有字段和枚举兼容。
-- [ ] 4.2 让 Player/NPC 权威 publisher 都填充架势，并把更新的远端快照应用到 `CombatActor`，为 UI 提供绝对纠正和延迟绑定状态。
+- [x] 4.2 让 Player/NPC 权威 publisher 都填充架势，并把更新的远端快照应用到 `CombatActor`，为 UI 提供绝对纠正和延迟绑定状态。
 - [x] 4.3 增加并发布 `PostureBreak` 动作/状态边沿，更新远端去重和表现进入版本，并防止 Host 二次应用。
 - [ ] 4.4 验证非 Server Client 不运行架势增长/恢复/破势逻辑，Offline 模式保留本地权威。
 

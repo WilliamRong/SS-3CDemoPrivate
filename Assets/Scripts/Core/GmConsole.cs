@@ -4,6 +4,7 @@ using Character.Controller;
 using Character.StateMachine;
 using Mirror;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace Core
 {
@@ -47,6 +48,7 @@ namespace Core
     /// </summary>
     public sealed class GmConsole : MonoBehaviour
     {
+        private const string OnlineScenePath = "Assets/Scenes/Online.unity";
         private const float ButtonWidth = 140f;
         private const float ButtonHeight = 28f;
         private const float Margin = 8f;
@@ -57,11 +59,18 @@ namespace Core
         [SerializeField, Range(0f, 0.999f)]
         private float _nearBreakPostureRatio = 0.99f;
         [SerializeField, Min(0f)]
-        private float _nearBreakPostureRecoveryDelay = 30f;
+        // Keep the GM near-break probe on the same recovery cadence as normal
+        // combat. A long debug-only delay made a 99% posture value look stuck
+        // and hid whether authoritative recovery was actually running.
+        private float _nearBreakPostureRecoveryDelay = 2f;
 
         private bool _isOpen;
         private bool _allCharactersGuarded;
         private bool _npcLockNearestPlayer;
+        private bool _hasPendingForceGuard;
+        private GmForceGuardMsg _pendingForceGuard;
+        private static GmConsole _instance;
+        private static GmConsole _handlerOwner;
 
         // ============ 生命周期与网络注册 ============
 
@@ -75,8 +84,30 @@ namespace Core
             go.AddComponent<GmConsole>();
         }
 
+        private void Awake()
+        {
+            if (_instance != null && _instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            _instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+
         private void OnEnable()
         {
+            if (_handlerOwner != null && _handlerOwner != this)
+            {
+                enabled = false;
+                return;
+            }
+
+            _handlerOwner = this;
+            SceneManager.sceneLoaded += OnSceneLoaded;
+            ResetSceneScopedState(SceneManager.GetActiveScene());
+
             NetworkClient.RegisterHandler<GmForceGuardMsg>(OnClientForceGuard, false);
             NetworkServer.RegisterHandler<GmForceGuardMsg>(OnServerForceGuard, false);
             NetworkServer.RegisterHandler<GmNpcLockNearestPlayerMsg>(OnServerNpcLockNearestPlayer, false);
@@ -86,11 +117,57 @@ namespace Core
 
         private void OnDisable()
         {
+            if (_handlerOwner != this)
+                return;
+
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+
             NetworkClient.UnregisterHandler<GmForceGuardMsg>();
             NetworkServer.UnregisterHandler<GmForceGuardMsg>();
             NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
             NetworkServer.UnregisterHandler<GmSetPostureNearBreakMsg>();
             NetworkServer.UnregisterHandler<GmReviveAllNpcsMsg>();
+            _handlerOwner = null;
+
+            if (_instance == this)
+                _instance = null;
+        }
+
+        private void Update()
+        {
+            if (!_hasPendingForceGuard ||
+                !NetworkClient.active ||
+                !NetworkClient.isConnected ||
+                !NetworkClient.ready)
+            {
+                return;
+            }
+
+            if (TryApplyLocalPlayerGuardState(_pendingForceGuard))
+                _hasPendingForceGuard = false;
+        }
+
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            ResetSceneScopedState(scene);
+        }
+
+        private void ResetSceneScopedState(Scene scene)
+        {
+            if (!scene.IsValid())
+                return;
+
+            _hasPendingForceGuard = false;
+            _pendingForceGuard = default;
+
+            if (scene.path != OnlineScenePath)
+                return;
+
+            // GmConsole survives scene changes, but these toggles describe the
+            // current Online session and must not leak from a previous one.
+            _allCharactersGuarded = false;
+            _npcLockNearestPlayer = false;
+            _isOpen = false;
         }
 
         /// <summary>
@@ -155,20 +232,29 @@ namespace Core
             {
                 Guarded = _allCharactersGuarded,
                 ExcludedPlayerNetId = ResolveControlledPlayerNetId(),
-                PlayerHoldDuration = _playerGuardHoldDuration,
-                NpcHoldDuration = _npcGuardHoldDuration
+                PlayerHoldDuration = SanitizeHoldDuration(_playerGuardHoldDuration),
+                NpcHoldDuration = SanitizeHoldDuration(_npcGuardHoldDuration)
             };
 
             if (NetworkServer.active)
             {
                 ApplyNpcGuardStateOnServer(msg);
                 NetworkServer.SendToAll(msg);
-                ApplyLocalPlayerGuardState(msg);
                 return;
             }
 
             if (NetworkClient.active)
             {
+                if (!NetworkClient.isConnected ||
+                    NetworkClient.connection == null ||
+                    !NetworkClient.ready)
+                {
+                    _allCharactersGuarded = !_allCharactersGuarded;
+                    Debug.LogWarning(
+                        "[GmConsole] Cannot toggle all-character guard before the client connection is ready.");
+                    return;
+                }
+
                 NetworkClient.Send(msg);
                 return;
             }
@@ -255,6 +341,18 @@ namespace Core
 
         private static void OnServerForceGuard(NetworkConnectionToClient conn, GmForceGuardMsg msg)
         {
+            if (!IsOnlineScene() || conn?.identity == null || !conn.isReady)
+                return;
+
+            // The sender may exclude only its own Player. Clamp malformed
+            // durations before they reach the FSM or other clients.
+            msg.ExcludedPlayerNetId = conn.identity.netId;
+            msg.PlayerHoldDuration = SanitizeHoldDuration(msg.PlayerHoldDuration);
+            msg.NpcHoldDuration = SanitizeHoldDuration(msg.NpcHoldDuration);
+
+            if (_instance != null)
+                _instance._allCharactersGuarded = msg.Guarded;
+
             ApplyNpcGuardStateOnServer(msg);
             NetworkServer.SendToAll(msg);
         }
@@ -289,23 +387,45 @@ namespace Core
 
         private static void OnClientForceGuard(GmForceGuardMsg msg)
         {
-            ApplyLocalPlayerGuardState(msg);
+            if (!IsOnlineScene() || _instance == null)
+                return;
+
+            _instance._allCharactersGuarded = msg.Guarded;
+
+            if (!TryApplyLocalPlayerGuardState(msg))
+            {
+                _instance._pendingForceGuard = msg;
+                _instance._hasPendingForceGuard = true;
+            }
         }
 
         // ============ 防御状态应用 ============
 
-        private static void ApplyLocalPlayerGuardState(GmForceGuardMsg msg)
+        private static bool TryApplyLocalPlayerGuardState(GmForceGuardMsg msg)
         {
-            if (NetworkClient.localPlayer == null) return;
+            if (NetworkClient.localPlayer == null)
+                return false;
 
             var identity = NetworkClient.localPlayer;
-            if (identity.netId == msg.ExcludedPlayerNetId) return;
+            if (identity.netId == msg.ExcludedPlayerNetId)
+                return true;
 
             var player = identity.GetComponent<PlayerController>();
+            if (player == null)
+                return false;
+
             if (msg.Guarded)
-                player?.ForceEnterGuard(msg.PlayerHoldDuration);
+                player.SetGmGuardOverride(true, msg.PlayerHoldDuration);
             else
-                player?.ForceExitGuardToIdle();
+                player.SetGmGuardOverride(false);
+
+            return true;
+        }
+
+        private static bool IsOnlineScene()
+        {
+            Scene scene = SceneManager.GetActiveScene();
+            return scene.IsValid() && scene.path == OnlineScenePath;
         }
 
         private static void ApplyNpcGuardStateOnServer(GmForceGuardMsg msg)
@@ -486,9 +606,9 @@ namespace Core
             foreach (var player in players)
             {
                 if (msg.Guarded)
-                    player?.ForceEnterGuard(msg.PlayerHoldDuration);
+                    player?.SetGmGuardOverride(true, msg.PlayerHoldDuration);
                 else
-                    player?.ForceExitGuardToIdle();
+                    player?.SetGmGuardOverride(false);
             }
 
             var npcs = FindObjectsByType<NpcCharacterDriver>(FindObjectsSortMode.None);
@@ -507,6 +627,14 @@ namespace Core
                 return NetworkClient.localPlayer.netId;
 
             return 0;
+        }
+
+        private static float SanitizeHoldDuration(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                return 30f;
+
+            return Mathf.Clamp(value, 0.1f, 300f);
         }
     }
 }

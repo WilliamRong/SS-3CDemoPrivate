@@ -1,0 +1,36 @@
+{
+  "desktop": {
+    "colors": 3666,
+    "brightness": 167.0986846982822,
+    "hash": 2380204119,
+    "horseInFrame": true,
+    "animations": 1,
+    "size": [
+      1280,
+      720
+    ]
+  },
+  "moved": {
+    "colors": 3587,
+    "brightness": 167.34567077417506,
+    "hash": 3131205285,
+    "horseInFrame": true,
+    "animations": 1,
+    "size": [
+      1280,
+      720
+    ]
+  },
+  "mobile": {
+    "colors": 1804,
+    "brightness": 165.33794162827294,
+    "hash": 1660775059,
+    "horseInFrame": true,
+    "animations": 1,
+    "size": [
+      390,
+      844
+    ]
+  },
+  "errors": []
+}

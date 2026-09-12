@@ -35,7 +35,7 @@ This section is managed by Funplay MCP for Unity. Everything between the begin a
 
 ## Project
 
-- Project root: `D:\UnityProject\SS-3CDemoPrivate`
+- Project root: `G:\UnityProject\SS&3CDemo`
 - Product name: `SS&3CDemo`
 
 ## Notes

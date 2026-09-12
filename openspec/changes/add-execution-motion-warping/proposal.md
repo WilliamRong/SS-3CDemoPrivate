@@ -37,10 +37,15 @@
 - 编辑器工具：新增 Editor-only 的 Motion Warping 配置、预览和诊断窗口，通过正式配置资产写回数据，并与运行时共享 Warp 计算语义；编辑器不参与权威资格、会话、位移或致死判定。
 - 不增加第三方包依赖，不要求 Animation Rigging；第一版 Motion Warping 复用现有 Root Motion 消费管线实现，编辑器工具不增加运行时依赖。
 
-## Latest correction: execution damage branches
+## 当前实现状态
 
-An accepted execution applies the configured `executionDamage` exactly once; it is
-not implicitly lethal. The target locks its animation branch from that result:
-survivors play `rig_Executed` and return to `Idle` after their configured duration,
-while lethal targets play `rig_Executed_Death` and enter `Dead` only after that
-branch completes. Entering `Dead` must not restart the lethal execution clip.
+- Offline/Server 共用的候选解析、资格校验、处决会话、成对状态、配置伤害分支、Motion Warping、无敌/攻击抑制、配对动画、输入锁定和处决镜头已有代码实现。
+- Mirror 已接入 `ExecutionRequestMsg`、`ExecutionStartMsg` 和 `ExecutionResultMsg`，包括连接所有权校验、Server 资格重算、Start/Result 广播以及远端表现锁存。
+- `ExecutionCompleteMsg` 已注册 Handler、由生命周期服务广播并接入 `SyncBootstrap` / `RemoteActionApplier`；远端按执行者/目标完成位释放抑制，并缓存 Complete 或 Result 先于 Start 的乱序情况。动画按权威开始时间追赶已接入；`ExecutionStateRequestMsg` / `ExecutionStateMsg` 提供活跃会话、短期终态、固定姿态和绝对 HP/revision 的晚加入/重绑定恢复。上述路径仍待 Unity Host/Client 运行验收。
+- `CharacterPresentationConfig` 已声明处决 CrossFade 与 clip 校准字段，但 `DefaultPresentation.asset` 尚未持久化这些字段；`DefaultCombat.asset` 的处决数值也仍需 Offline 动画校准。
+- 独立执行 `dotnet build Assembly-CSharp.csproj --no-restore -m:1` 时，生成的 `.csproj` 仍引用 9 个已迁移的 `Assets/Scripts/AI/*.cs` 旧路径并产生 `CS2001`；实际文件位于 `Assets/Scripts/AI/NpcStates/` 与 `Assets/Scripts/AI/BT/`，因此该命令当前不能作为零编译错误证据。
+- Scene Gizmo、Motion Warping 可视化编辑器、自动化测试以及 Offline/Host/Client 验收尚未完成。当前没有足够运行证据将这些环境标记为 `Verified`，因此本 change 暂不归档。
+
+## 最新修正：处决伤害决定表现分支
+
+接受处决后只应用一次配置的 `executionDamage`，不默认视为致死。目标根据该结果锁存动画分支：存活目标播放 `rig_Executed`，并在配置时长结束后返回 `Idle`；致死目标播放 `rig_Executed_Death`，仅在该分支完成后进入 `Dead`。进入 `Dead` 时不得再次播放同一处决死亡动画。

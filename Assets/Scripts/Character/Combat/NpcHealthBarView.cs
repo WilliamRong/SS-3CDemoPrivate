@@ -123,6 +123,19 @@ namespace Character.Combat
                 return;
             }
 
+            // Reconcile a remote Player's bar with its current authoritative
+            // health in case the network result arrived before the event
+            // subscription was established.
+            if (_playerController != null &&
+                !Mathf.Approximately(
+                    _lastObservedPlayerHp,
+                    _playerController.CurrentHp))
+            {
+                OnPlayerHealthChanged(
+                    _playerController.CurrentHp,
+                    _playerController.MaxHp);
+            }
+
             UpdatePostureBreakOutline();
 
             bool shouldShow = _isLockOnVisible || Time.unscaledTime < _visibleUntil;

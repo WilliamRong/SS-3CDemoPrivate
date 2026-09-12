@@ -158,7 +158,12 @@ namespace Character.Sync
                 return;
 
 
-            bool hasAuthoritativePosture = _combatActor != null && (NetworkServer.active || !NetworkClient.active);
+            // Offline/authority instances may publish the complete combat state.
+            // In Mirror mode the server replaces the client-supplied health fields
+            // before relaying the snapshot, so a client cannot forge HP.
+            bool hasAuthoritativeState =
+                _combatActor != null &&
+                (NetworkServer.active || !NetworkClient.active);
 
             var snapshot = new StateSnapshot(
                 tick,
@@ -176,8 +181,13 @@ namespace Character.Sync
                 lockTargetNetId,
                 moveInput.x,
                 moveInput.y,
+                hasAuthoritativeHealth:
+                hasAuthoritativeState ? (byte)1 : (byte)0,
+                currentHp: _combatActor != null ? _combatActor.CurrentHp : 0f,
+                maxHp: _combatActor != null ? _combatActor.MaxHp : 0f,
+                healthRevision: _combatActor != null ? _combatActor.HealthRevision : 0u,
                 hasAuthoritativePosture:
-                hasAuthoritativePosture ? (byte)1 : (byte)0,
+                hasAuthoritativeState ? (byte)1 : (byte)0,
                 currentPosture: _combatActor != null ? _combatActor.CurrentPosture : 0f,
                 maxPosture: _combatActor != null ? _combatActor.MaxPosture : 0f,
                 parryPhase: parryPhase

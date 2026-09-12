@@ -45,8 +45,9 @@ namespace Character.Execution
         public ExecutionSessionCoordinator Coordinator => _coordinator;
         public int ActiveExecutionCount => _activeById.Count;
 
-        public event Action<ExecutionSession, CombatActor, double>
-            ResultCommitted;
+        public event Action<ExecutionSession, CombatActor, double> ResultCommitted;
+
+        public event Action<ExecutionSession> CompletionChanged;
 
         public ExecutionLifecycleService(ExecutionSessionCoordinator coordinator)
         {
@@ -144,9 +145,7 @@ namespace Character.Execution
                     executionId,
                     out ActiveExecution active))
             {
-                return _coordinator.TryCancelSession(
-                    executionId,
-                    out _);
+                return TryCancelCoordinatedSession(executionId);
             }
 
             CleanupActorsAndSession(active);
@@ -235,6 +234,8 @@ namespace Character.Execution
                     return true;
                 }
 
+                CompletionChanged?.Invoke(session);
+
                 if (released)
                     return true;
             }
@@ -256,18 +257,33 @@ namespace Character.Execution
 
                 if (!_coordinator.TryMarkTargetCompleted(
                         executionId,
-                        out _,
+                        out session,
                         out bool released))
                 {
                     CleanupActorsAndSession(active);
                     return true;
                 }
 
+                CompletionChanged?.Invoke(session);
+
                 if (released)
                     return true;
             }
 
             return false;
+        }
+
+        private bool TryCancelCoordinatedSession(ulong executionId)
+        {
+            if (!_coordinator.TryCancelSession(
+                    executionId,
+                    out ExecutionSession cancelled))
+            {
+                return false;
+            }
+
+            CompletionChanged?.Invoke(cancelled);
+            return true;
         }
 
         private void CleanupActorsAndSession(
@@ -305,7 +321,7 @@ namespace Character.Execution
             if (active.Target != null)
                 active.Target.EndExecutionCombatSuppression(executionId);
 
-            _coordinator.TryCancelSession(executionId, out _);
+            TryCancelCoordinatedSession(executionId);
         }
 
         private static bool IsSameSession(

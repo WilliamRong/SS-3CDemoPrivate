@@ -71,6 +71,18 @@ namespace Character.Presentation
 
             UpdatePostureBreakPresentation();
 
+            // Health can be applied before this HUD finishes binding during
+            // Mirror player spawn. Reconcile the displayed value with the
+            // authoritative PlayerController so a missed event cannot leave
+            // the HUD at the old HP.
+            if (_player != null)
+            {
+                float maxHp = Mathf.Max(1f, _player.MaxHp);
+                float ratio = Mathf.Clamp01(_player.CurrentHp / maxHp);
+                if (!Mathf.Approximately(ratio, _targetRatio))
+                    OnHealthChanged(_player.CurrentHp, maxHp);
+            }
+
             if (_fillImage != null)
             {
                 _displayRatio = Mathf.MoveTowards(

@@ -17,6 +17,8 @@ namespace Character.Sync
         public event Action<ActionEvent> OnActionEventReceived;
         public event Action<ExecutionStartMsg> OnExecutionStartReceived;
         public event Action<ExecutionResultMsg> OnExecutionResultReceived;
+        public event Action<ExecutionCompleteMsg> OnExecutionCompleteReceived;
+        public event Action<ExecutionStateMsg> OnExecutionStateReceived;
 
         /// <summary>
         /// 将载荷与本地投递时刻绑定，避免模拟层修改业务快照本身。

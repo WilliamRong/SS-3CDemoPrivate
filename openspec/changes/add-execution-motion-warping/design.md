@@ -2,9 +2,15 @@
 
 当前 `Parried` 与 `PostureBroken` 都使用 `rig_Collide` 表现，默认逻辑时长约为 1.067 秒，并在超时后返回可行动状态。左键已经映射为 Attack 单帧脉冲，普通攻击由 Idle、Move 和 Guard 等状态直接消费。战斗命中由 `CombatResolver` 遍历 `CombatHitBox`，查询 `CombatHurtBox` 后通过 `CombatActor.CanReceiveHit` 提交事务。
 
-项目已经通过 `AnimatorRootMotionRelay` 把 Animator delta 交给 Player `CharacterMotor` 或权威 NPC Motor，但当前管线只原样消费 Root Motion，不知道目标锚点。Unity 读回显示 `rig_Execute` 长约 2.7 秒并前进约 0.75 米，`rig_Executed` 长约 3.517 秒并包含约 2.29 米的根位移，两者长度和轨迹不同；目标从处决进入死亡时还需要播放约 2.533 秒的 `rig_Executed_Death`。Animator Controller 的 Combat/Reaction Layer 尚未接入这些 clip。
+项目通过 `AnimatorRootMotionRelay` 把 Animator delta 交给 Player `CharacterMotor` 或权威 NPC Motor。当前实现已在该管线中接入会话级 `ExecutionWarpContext`，并在 Animator Controller 的 Combat/Reaction Layer 增加 `Executing`、`Executed` 与 `ExecutedDeath`。此前 Unity 读回显示 `rig_Execute` 长约 2.7 秒并前进约 0.75 米，`rig_Executed` 长约 3.517 秒并包含约 2.29 米的根位移，两者长度和轨迹不同；致死分支使用约 2.533 秒的 `rig_Executed_Death`。
 
 处决是跨输入、状态机、战斗、移动、动画、镜头和网络的成对事务。目标位置必须稳定，只有处决者依据目标执行 Motion Warping；普通 HitBox/HurtBox 在双方各自动画结束前不得参与战斗，但环境碰撞仍要保留。
+
+## 当前实现边界
+
+截至当前代码状态，Offline/Server 的处决候选、权威校验、会话、成对状态、配置伤害分支、Warp、无敌/攻击抑制、动画、输入锁定与镜头路径已实现。Mirror 已闭合 Request/Start/Result/Complete/StateReplay 链路：生命周期服务发布累计完成/取消边沿，客户端按 `executionId` 和 Flags 去重，并在 Complete 或 Result 先到时缓存等待会话；远端动画按权威开始时间追赶，晚加入/重绑定使用固定姿态和绝对 HP/revision 恢复。上述路径仍未完成 Unity Host/Client 运行验收。
+
+表现配置类型已有处决 CrossFade 和 clip 校准字段，但 `DefaultPresentation.asset` 尚未持久化；默认战斗资产的距离、角度、Warp 预算与时长仍需 Offline 校准。Scene Gizmo、Motion Warping 可视化编辑器、自动化测试和 Offline/Host/Client 运行验收尚未完成。由于 Unity MCP 当前不可用，现阶段只能认定为代码实现，不能认定为运行时 `Verified`。
 
 ## 目标 / 非目标
 
@@ -134,11 +140,6 @@ Client 请求只携带目标 ActorId 和本地请求序号。Server 重新解析
 - `executorAnchorOffset`、Warp Window、最大 Yaw 和 `executionResultTime` 的最终默认值需要在 Unity 动画预览与 Offline 双人实测后确定。
 - 是否为合法目标显示处决提示 UI、是否延长约 1.067 秒的资格窗口、是否允许 NPC AI 主动处决，均保留为后续独立 change。
 
-## Latest correction: execution result is a branch
+## 最新修正：处决结果是分支
 
-The session locks the configured execution damage and the resulting lethal flag.
-The target uses `rig_Executed` when it survives and returns to `Idle` after the
-surviving branch duration. When the damage is lethal, the target uses
-`rig_Executed_Death` and transitions to `Dead` only after that animation duration;
-the `Dead` presentation keeps the completed lethal pose instead of crossfading the
-same clip a second time.
+会话锁存配置的处决伤害及其致死结果。目标存活时使用 `rig_Executed`，并在存活分支时长结束后返回 `Idle`；伤害致死时使用 `rig_Executed_Death`，仅在该动画时长结束后进入 `Dead`。`Dead` 表现保留已经完成的致死姿态，不得再次 CrossFade 同一动画。

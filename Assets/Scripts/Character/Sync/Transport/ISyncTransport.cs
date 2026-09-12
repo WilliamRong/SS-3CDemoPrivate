@@ -11,6 +11,8 @@ namespace Character.Sync
         event Action<ActionEvent> OnActionEventReceived;
         event Action<ExecutionStartMsg> OnExecutionStartReceived;
         event Action<ExecutionResultMsg> OnExecutionResultReceived;
+        event Action<ExecutionCompleteMsg> OnExecutionCompleteReceived;
+        event Action<ExecutionStateMsg> OnExecutionStateReceived;
 
         void SendSnapshot(StateSnapshot snapshot);
         void SendActionEvent(ActionEvent actionEvent);

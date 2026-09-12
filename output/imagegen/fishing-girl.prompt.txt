@@ -1,0 +1,10 @@
+Use case: illustration-story
+Asset type: standalone finished illustration
+Primary request: A beautiful young adult woman fishing beside a lake, with freely designed anime styling.
+Scene/backdrop: A peaceful summer lake with clear turquoise water, a small wooden jetty, and leafy shoreline trees. Gentle ripples and soft sunlit reflections on the water.
+Subject: One charming young woman with long dark hair loosely tied back, expressive eyes, and a relaxed, attentive smile. She wears a straw sun hat, a light short-sleeved blouse, denim shorts, and practical canvas shoes. She sits naturally on the wooden jetty while fishing, looking toward the float.
+Action: One hand holds the fishing rod by its grip and the other rests naturally near the reel. A single fishing line runs continuously from the rod tip to a small float on the lake. Make the fishing activity immediately legible.
+Style/medium: Polished Japanese anime illustration with delicate clean linework, soft painterly shading, and luminous watercolor-like scenery. Carefully drawn face, hands, clothing folds, and fishing equipment.
+Composition/framing: Landscape composition, three-quarter view with the character, fishing rod, float, and surrounding lake clearly visible. Strong subject focus with a spacious, readable background.
+Lighting/mood: Clear summer daylight, gentle dappled light, fresh and tranquil atmosphere.
+Constraints: One person only; natural anatomy and believable grip; no extra fingers or limbs; no duplicate fishing rods; no text, logos, borders, or watermark.

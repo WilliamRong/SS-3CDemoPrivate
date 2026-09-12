@@ -71,13 +71,25 @@ namespace Character.Sync
         [SerializeField] private bool _logRelay;
 
         private uint _nextExecutionRequestSeq = 1;
+        private uint _nextExecutionStateRequestSeq = 1;
         private readonly Dictionary<NetworkConnectionToClient, uint> _lastExecutionRequestSeqByConnection = new();
+        private readonly Dictionary<int, CachedExecutionState> _terminalExecutionStatesByActor = new();
         private ExecutionLifecycleService _boundExecutionLifecycle;
+
+        private const float TerminalExecutionStateCacheLifetimeSec = 3f;
+
+        private sealed class CachedExecutionState
+        {
+            public ExecutionStateMsg Message;
+            public double ExpiresAtSec;
+        }
 
         public event Action<StateSnapshot> OnSnapshotReceived;
         public event Action<ActionEvent> OnActionEventReceived;
         public event Action<ExecutionStartMsg> OnExecutionStartReceived;
         public event Action<ExecutionResultMsg> OnExecutionResultReceived;
+        public event Action<ExecutionCompleteMsg> OnExecutionCompleteReceived;
+        public event Action<ExecutionStateMsg> OnExecutionStateReceived;
 
         private readonly HashSet<ulong> _receivedExecutionStartIds = new();
 
@@ -108,6 +120,7 @@ namespace Character.Sync
             UnregisterHandlers();
             UnbindExecutionLifecycle();
             _lastExecutionRequestSeqByConnection.Clear();
+            _terminalExecutionStatesByActor.Clear();
             _receivedExecutionStartIds.Clear();
         }
 
@@ -170,6 +183,55 @@ namespace Character.Sync
             return sequence;
         }
 
+        public static bool TrySendExecutionStateRequest(
+            int actorId,
+            out uint requestSeq)
+        {
+            requestSeq = 0;
+
+            MirrorSyncTransport transport = _activeInstance;
+            if (transport == null ||
+                !NetworkClient.active ||
+                !NetworkClient.ready ||
+                actorId <= 0)
+            {
+                return false;
+            }
+
+            requestSeq =
+                transport.AllocateExecutionStateRequestSequence();
+
+            NetworkClient.Send(new ExecutionStateRequestMsg
+            {
+                RequestSeq = requestSeq,
+                ActorId = actorId,
+            });
+
+            if (transport._logSend)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] SendExecutionStateRequest " +
+                    $"seq={requestSeq} actor={actorId}");
+            }
+
+            return true;
+        }
+
+        private uint AllocateExecutionStateRequestSequence()
+        {
+            uint sequence = _nextExecutionStateRequestSeq;
+
+            unchecked
+            {
+                _nextExecutionStateRequestSeq++;
+            }
+
+            if (_nextExecutionStateRequestSeq == 0)
+                _nextExecutionStateRequestSeq = 1;
+
+            return sequence;
+        }
+
         // ============ Server 广播 ============
 
         public void BroadcastSnapshotFromServer(StateSnapshot snapshot)
@@ -194,6 +256,9 @@ namespace Character.Sync
             }
 
             DeathPresentationVariant deathVariant = session.TargetWillDie ? DeathPresentationVariant.Executed : DeathPresentationVariant.Default;
+
+            _terminalExecutionStatesByActor.Remove(session.ExecutorActorId);
+            _terminalExecutionStatesByActor.Remove(session.TargetActorId);
 
             ExecutionStartMsg message = new ExecutionStartMsg
             {
@@ -249,6 +314,7 @@ namespace Character.Sync
             {
                 _boundExecutionLifecycle.ResultCommitted +=
                     OnExecutionResultCommitted;
+                _boundExecutionLifecycle.CompletionChanged += OnExecutionCompletionChanged;
             }
         }
 
@@ -259,6 +325,8 @@ namespace Character.Sync
 
             _boundExecutionLifecycle.ResultCommitted -=
                 OnExecutionResultCommitted;
+            _boundExecutionLifecycle.CompletionChanged -=
+                OnExecutionCompletionChanged;
             _boundExecutionLifecycle = null;
         }
 
@@ -301,6 +369,39 @@ namespace Character.Sync
             }
         }
 
+        private void OnExecutionCompletionChanged(ExecutionSession session)
+        {
+            const ExecutionSessionFlags completionFlags = ExecutionSessionFlags.ExecutorCompleted | ExecutionSessionFlags.TargetCompleted | ExecutionSessionFlags.Cancelled;
+
+            if (!NetworkServer.active || !session.TryValidate(out _) || (session.Flags & completionFlags) == ExecutionSessionFlags.None) return;
+
+            DeathPresentationVariant deathVariant = session.TargetWillDie ? DeathPresentationVariant.Executed : DeathPresentationVariant.Default;
+
+            var message = new ExecutionCompleteMsg
+            {
+                ExecutionId = session.ExecutionId,
+                ExecutorActorId = session.ExecutorActorId,
+                TargetActorId = session.TargetActorId,
+                AuthorityTimeSec = NetworkTime.localTime,
+                SessionFlags = (byte)session.Flags,
+                DeathVariant = (byte)deathVariant,
+            };
+
+            NetworkServer.SendToAll(message);
+
+            if (session.IsComplete)
+                CacheTerminalExecutionState(session);
+
+            if (_logRelay)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] BroadcastExecutionComplete " +
+                    $"execution={message.ExecutionId} " +
+                    $"flags={session.Flags} " +
+                    $"death={deathVariant}");
+            }
+        }
+
         // ============ Mirror Handler 生命周期 ============
 
         /// <summary>
@@ -313,10 +414,13 @@ namespace Character.Sync
             NetworkServer.RegisterHandler<SnapshotMsg>(OnServerSnapshot);
             NetworkServer.RegisterHandler<ActionMsg>(OnServerAction);
             NetworkServer.RegisterHandler<ExecutionRequestMsg>(OnServerExecutionRequest);
+            NetworkServer.RegisterHandler<ExecutionStateRequestMsg>(OnServerExecutionStateRequest);
             NetworkClient.RegisterHandler<SnapshotMsg>(OnClientSnapshot);
             NetworkClient.RegisterHandler<ActionMsg>(OnClientAction);
             NetworkClient.RegisterHandler<ExecutionStartMsg>(OnClientExecutionStart);
             NetworkClient.RegisterHandler<ExecutionResultMsg>(OnClientExecutionResult);
+            NetworkClient.RegisterHandler<ExecutionCompleteMsg>(OnClientExecutionComplete);
+            NetworkClient.RegisterHandler<ExecutionStateMsg>(OnClientExecutionState);
             _handlersRegistered = true;
         }
 
@@ -327,10 +431,13 @@ namespace Character.Sync
             NetworkServer.UnregisterHandler<SnapshotMsg>();
             NetworkServer.UnregisterHandler<ActionMsg>();
             NetworkServer.UnregisterHandler<ExecutionRequestMsg>();
+            NetworkServer.UnregisterHandler<ExecutionStateRequestMsg>();
             NetworkClient.UnregisterHandler<SnapshotMsg>();
             NetworkClient.UnregisterHandler<ActionMsg>();
             NetworkClient.UnregisterHandler<ExecutionStartMsg>();
             NetworkClient.UnregisterHandler<ExecutionResultMsg>();
+            NetworkClient.UnregisterHandler<ExecutionCompleteMsg>();
+            NetworkClient.UnregisterHandler<ExecutionStateMsg>();
             _handlersRegistered = false;
         }
 
@@ -361,6 +468,18 @@ namespace Character.Sync
 
             // Player 架势由 Server 上的 CombatActor 覆盖，不能信任 Client。
             CombatActor actor = identity.GetComponent<CombatActor>();
+            // Health is authoritative on the server for both client-owned
+            // Players and server-owned NPCs. The incoming Player snapshot only
+            // carries presentation/input fields, so fill these values from the
+            // server actor before broadcasting it to every observer.
+            msg.HasAuthoritativeHealth =
+                actor != null ? (byte)1 : (byte)0;
+            msg.CurrentHp =
+                actor != null ? actor.CurrentHp : 0f;
+            msg.MaxHp =
+                actor != null ? actor.MaxHp : 0f;
+            msg.HealthRevision =
+                actor != null ? actor.HealthRevision : 0u;
             msg.HasAuthoritativePosture =
                 actor != null ? (byte)1 : (byte)0;
             msg.CurrentPosture =
@@ -576,6 +695,237 @@ namespace Character.Sync
 
         }
 
+        /// <summary>
+        /// Handles a client request for the authoritative execution state of one
+        /// actor. Active sessions are read from the server coordinator; recently
+        /// completed sessions are served from a short-lived replay cache.
+        /// </summary>
+        private static void OnServerExecutionStateRequest(
+            NetworkConnectionToClient conn,
+            ExecutionStateRequestMsg message)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+
+            if (!NetworkServer.active ||
+                transport == null ||
+                conn?.identity == null ||
+                !conn.isReady ||
+                message.RequestSeq == 0 ||
+                message.ActorId <= 0)
+            {
+                return;
+            }
+
+            uint actorNetId = unchecked((uint)message.ActorId);
+
+            if (!NetworkServer.spawned.TryGetValue(
+                    actorNetId,
+                    out NetworkIdentity identity))
+            {
+                return;
+            }
+
+            CombatActor actor = identity.GetComponent<CombatActor>();
+
+            if (actor == null ||
+                actor.ActorId != message.ActorId)
+            {
+                return;
+            }
+
+            ExecutionStateMsg response = new ExecutionStateMsg
+            {
+                RequestSeq = message.RequestSeq,
+                RequestedActorId = message.ActorId,
+                HasState = 0,
+                AuthorityTimeSec = NetworkTime.localTime,
+            };
+
+            ExecutionRuntime runtime = ExecutionRuntime.Instance;
+
+            if (runtime != null &&
+                runtime.HasAuthority &&
+                runtime.Coordinator != null &&
+                runtime.Coordinator.TryGetSessionForActor(
+                    message.ActorId,
+                    out ExecutionSession session) &&
+                session.TryValidate(out _) &&
+                session.IsActive &&
+                NetworkServer.spawned.TryGetValue(
+                    unchecked((uint)session.ExecutorActorId),
+                    out NetworkIdentity executorIdentity) &&
+                NetworkServer.spawned.TryGetValue(
+                    unchecked((uint)session.TargetActorId),
+                    out NetworkIdentity targetIdentity))
+            {
+                CombatActor executorActor =
+                    executorIdentity.GetComponent<CombatActor>();
+                CombatActor targetActor =
+                    targetIdentity.GetComponent<CombatActor>();
+
+                if (executorActor != null &&
+                    targetActor != null &&
+                    executorActor.ActorId == session.ExecutorActorId &&
+                    targetActor.ActorId == session.TargetActorId)
+                {
+                    Transform executorTransform = executorIdentity.transform;
+                    Vector3 executorPosition = executorTransform.position;
+                    DeathPresentationVariant deathVariant =
+                        session.TargetWillDie
+                            ? DeathPresentationVariant.Executed
+                            : DeathPresentationVariant.Default;
+
+                    response = new ExecutionStateMsg
+                    {
+                        RequestSeq = message.RequestSeq,
+                        RequestedActorId = message.ActorId,
+                        HasState = 1,
+
+                        ExecutionId = session.ExecutionId,
+                        ExecutorActorId = session.ExecutorActorId,
+                        TargetActorId = session.TargetActorId,
+
+                        FixedTargetPx = session.FixedTargetPose.Position.x,
+                        FixedTargetPy = session.FixedTargetPose.Position.y,
+                        FixedTargetPz = session.FixedTargetPose.Position.z,
+                        FixedTargetYaw = session.FixedTargetPose.Yaw,
+
+                        ExecutorAnchorPx = session.ExecutorAnchorPose.Position.x,
+                        ExecutorAnchorPy = session.ExecutorAnchorPose.Position.y,
+                        ExecutorAnchorPz = session.ExecutorAnchorPose.Position.z,
+                        ExecutorAnchorYaw = session.ExecutorAnchorPose.Yaw,
+
+                        ExecutorPx = executorPosition.x,
+                        ExecutorPy = executorPosition.y,
+                        ExecutorPz = executorPosition.z,
+                        ExecutorYaw = executorTransform.eulerAngles.y,
+
+                        StartTimeSec = session.StartTimeSec,
+                        ResultTimeSec = session.ResultTimeSec,
+                        AuthorityTimeSec = NetworkTime.localTime,
+
+                        ExecutionDamage = session.ExecutionDamage,
+                        TargetWillDie = session.TargetWillDie ? (byte)1 : (byte)0,
+                        SessionFlags = (byte)session.Flags,
+
+                        HasHealthResult = session.IsResultCommitted ? (byte)1 : (byte)0,
+                        CurrentHp = targetActor.CurrentHp,
+                        MaxHp = targetActor.MaxHp,
+                        HealthRevision = targetActor.HealthRevision,
+
+                        DeathVariant = (byte)deathVariant,
+                    };
+                }
+            }
+
+            if (response.HasState == 0 &&
+                transport.TryGetCachedTerminalExecutionState(
+                    message.ActorId,
+                    out ExecutionStateMsg cachedState))
+            {
+                cachedState.RequestSeq = message.RequestSeq;
+                cachedState.RequestedActorId = message.ActorId;
+                response = cachedState;
+            }
+
+            conn.Send(response);
+
+            if (transport._logRelay)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] ReplyExecutionState " +
+                    $"request={message.RequestSeq} " +
+                    $"actor={message.ActorId} " +
+                    $"hasState={response.HasState != 0} " +
+                    $"execution={response.ExecutionId}");
+            }
+        }
+
+        private void CacheTerminalExecutionState(in ExecutionSession session)
+        {
+            if (!NetworkServer.active ||
+                !session.TryValidate(out _) ||
+                !session.IsComplete ||
+                !NetworkServer.spawned.TryGetValue(
+                    unchecked((uint)session.ExecutorActorId),
+                    out NetworkIdentity executorIdentity) ||
+                !NetworkServer.spawned.TryGetValue(
+                    unchecked((uint)session.TargetActorId),
+                    out NetworkIdentity targetIdentity))
+            {
+                return;
+            }
+
+            CombatActor executor = executorIdentity.GetComponent<CombatActor>();
+            CombatActor target = targetIdentity.GetComponent<CombatActor>();
+            if (executor == null || target == null)
+                return;
+
+            DeathPresentationVariant deathVariant = session.TargetWillDie
+                ? DeathPresentationVariant.Executed
+                : DeathPresentationVariant.Default;
+            Vector3 executorPosition = executorIdentity.transform.position;
+            ExecutionStateMsg cached = new ExecutionStateMsg
+            {
+                HasState = 1,
+                ExecutionId = session.ExecutionId,
+                ExecutorActorId = session.ExecutorActorId,
+                TargetActorId = session.TargetActorId,
+                FixedTargetPx = session.FixedTargetPose.Position.x,
+                FixedTargetPy = session.FixedTargetPose.Position.y,
+                FixedTargetPz = session.FixedTargetPose.Position.z,
+                FixedTargetYaw = session.FixedTargetPose.Yaw,
+                ExecutorAnchorPx = session.ExecutorAnchorPose.Position.x,
+                ExecutorAnchorPy = session.ExecutorAnchorPose.Position.y,
+                ExecutorAnchorPz = session.ExecutorAnchorPose.Position.z,
+                ExecutorAnchorYaw = session.ExecutorAnchorPose.Yaw,
+                ExecutorPx = executorPosition.x,
+                ExecutorPy = executorPosition.y,
+                ExecutorPz = executorPosition.z,
+                ExecutorYaw = executorIdentity.transform.eulerAngles.y,
+                StartTimeSec = session.StartTimeSec,
+                ResultTimeSec = session.ResultTimeSec,
+                AuthorityTimeSec = NetworkTime.localTime,
+                ExecutionDamage = session.ExecutionDamage,
+                TargetWillDie = session.TargetWillDie ? (byte)1 : (byte)0,
+                SessionFlags = (byte)session.Flags,
+                HasHealthResult = session.IsResultCommitted ? (byte)1 : (byte)0,
+                CurrentHp = target.CurrentHp,
+                MaxHp = target.MaxHp,
+                HealthRevision = target.HealthRevision,
+                DeathVariant = (byte)deathVariant,
+            };
+
+            double expiresAt = NetworkTime.localTime +
+                TerminalExecutionStateCacheLifetimeSec;
+            _terminalExecutionStatesByActor[session.ExecutorActorId] =
+                new CachedExecutionState { Message = cached, ExpiresAtSec = expiresAt };
+            _terminalExecutionStatesByActor[session.TargetActorId] =
+                new CachedExecutionState { Message = cached, ExpiresAtSec = expiresAt };
+        }
+
+        private bool TryGetCachedTerminalExecutionState(
+            int actorId,
+            out ExecutionStateMsg message)
+        {
+            message = default;
+            if (!_terminalExecutionStatesByActor.TryGetValue(
+                    actorId,
+                    out CachedExecutionState cached))
+            {
+                return false;
+            }
+
+            if (NetworkTime.localTime > cached.ExpiresAtSec)
+            {
+                _terminalExecutionStatesByActor.Remove(actorId);
+                return false;
+            }
+
+            message = cached.Message;
+            return true;
+        }
+
         private bool TryAcceptExecutionRequestSequence(NetworkConnectionToClient conn, uint requestSeq)
         {
             if (_lastExecutionRequestSeqByConnection.TryGetValue(conn, out uint previous))
@@ -650,6 +1000,45 @@ namespace Character.Sync
             }
 
             transport.OnExecutionResultReceived?.Invoke(message);
+        }
+
+        private static void OnClientExecutionComplete(
+            ExecutionCompleteMsg message)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+            if (transport == null)
+                return;
+
+            if (transport._logReceive)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] RecvExecutionComplete " +
+                    $"execution={message.ExecutionId} " +
+                    $"flags={(ExecutionSessionFlags)message.SessionFlags}");
+            }
+
+            transport.OnExecutionCompleteReceived?.Invoke(message);
+        }
+
+        private static void OnClientExecutionState(
+            ExecutionStateMsg message)
+        {
+            MirrorSyncTransport transport = _activeInstance;
+            if (transport == null)
+                return;
+
+            if (transport._logReceive)
+            {
+                Debug.Log(
+                    $"[MirrorTransport] RecvExecutionState " +
+                    $"request={message.RequestSeq} " +
+                    $"actor={message.RequestedActorId} " +
+                    $"hasState={message.HasState != 0} " +
+                    $"execution={message.ExecutionId} " +
+                    $"flags={(ExecutionSessionFlags)message.SessionFlags}");
+            }
+
+            transport.OnExecutionStateReceived?.Invoke(message);
         }
 
         private bool TryAcceptExecutionStart(in ExecutionStartMsg message, out ExecutionSession session)

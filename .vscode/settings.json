@@ -56,7 +56,7 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "SS-3CDemoPrivate.slnx",
+    "dotnet.defaultSolution": "SS_3CDemo.slnx",
     "claudeCode.environmentVariables": [
         {
             "name": "ANTHROPIC_BASE_URL",

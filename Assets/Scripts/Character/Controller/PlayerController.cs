@@ -77,6 +77,9 @@ namespace Character.Controller
         private CharacterLateUpdatePipeline _lateUpdatePipeline;
         private ILockOnLocomotionQuery _lockOnQuery;
         private float _forcedGuardTimer;
+        private bool _gmGuardOverrideActive;
+        private bool _forcedGuardPending;
+        private float _forcedGuardPendingDuration;
 
         // ============ Unity 生命周期 ============
 
@@ -200,6 +203,8 @@ namespace Character.Controller
 
             if (_context.IsDead)
             {
+                _forcedGuardPending = false;
+                _forcedGuardTimer = 0f;
                 intent.IsAttackPressed = false;
                 intent.IsDodgePressed = false;
                 intent.IsJumpPressed = false;
@@ -240,6 +245,8 @@ namespace Character.Controller
             LastMoveInput = intent.Move;
             _fsm.Tick(intent, Time.deltaTime);
             Velocity = _context.Velocity;
+
+            TryApplyPendingForceGuard();
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.F))
             {
@@ -303,6 +310,7 @@ namespace Character.Controller
             }
 
             _forcedGuardTimer = 0f;
+            _forcedGuardPending = false;
 
             if (_fsm.TryTransition(
                     CharacterStateId.Executing,
@@ -328,6 +336,7 @@ namespace Character.Controller
             }
 
             _forcedGuardTimer = 0f;
+            _forcedGuardPending = false;
             DeathPresentationVariant previousVariant =
                 CurrentDeathPresentationVariant;
             CurrentDeathPresentationVariant = session.TargetWillDie
@@ -344,6 +353,46 @@ namespace Character.Controller
 
             CurrentDeathPresentationVariant = previousVariant;
             _executedState.CancelPreparation(session.ExecutionId);
+            return false;
+        }
+
+        /// <summary>
+        /// Enters the authoritative executed state when the local owner has
+        /// not observed the target's preceding Parried/PostureBroken edge yet.
+        /// Server execution messages are authoritative, so an Idle/Move local
+        /// state may be staged through PostureBroken before entering Executed.
+        /// </summary>
+        public bool TryEnterExecutedFromAuthoritative(
+            in ExecutionSession session)
+        {
+            if (CanEnterExecuted())
+                return TryEnterExecuted(session);
+
+            CharacterStateId previousState = CurrentStateId;
+            if (previousState is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move))
+            {
+                return false;
+            }
+
+            if (!_fsm.TryTransition(
+                    CharacterStateId.PostureBroken,
+                    _stateRegistry,
+                    TransitionReason.ExecutionAccepted))
+            {
+                return false;
+            }
+
+            if (TryEnterExecuted(session))
+                return true;
+
+            // Do not leave a synthetic PostureBroken state behind if the
+            // authoritative execution could not be prepared.
+            _fsm.TryTransition(
+                previousState,
+                _stateRegistry,
+                TransitionReason.ExecutionCancelled);
             return false;
         }
 
@@ -375,13 +424,24 @@ namespace Character.Controller
                 if (!_executedState.IsBoundTo(executionId) ||
                     previousState is not (
                         CharacterStateId.Parried or
-                        CharacterStateId.PostureBroken))
+                        CharacterStateId.PostureBroken or
+                        CharacterStateId.Idle or
+                        CharacterStateId.Move))
                 {
                     return false;
                 }
 
+                // A client may have been staged through PostureBroken because
+                // its local state lagged behind the authoritative start. The
+                // only safe locomotion rollback target from Executed is Idle.
+                CharacterStateId rollbackState = previousState is
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move
+                    ? CharacterStateId.Idle
+                    : previousState;
+
                 bool restored = _fsm.TryTransition(
-                    previousState,
+                    rollbackState,
                     _stateRegistry,
                     TransitionReason.ExecutionCancelled);
                 if (restored)
@@ -482,6 +542,12 @@ namespace Character.Controller
 
         public bool TryEnterDead()
         {
+            return TryEnterDead(DeathPresentationVariant.Default);
+        }
+
+        public bool TryEnterDead(
+            DeathPresentationVariant presentationVariant)
+        {
             if (_context == null || !_context.IsDead || _fsm == null || _stateRegistry == null)
             {
                 return false;
@@ -490,9 +556,13 @@ namespace Character.Controller
             if (CurrentStateId == CharacterStateId.Dead)
                 return true;
 
-            DeathPresentationVariant presentationVariant = CurrentDeathPresentationVariant;
+            _forcedGuardPending = false;
+            _forcedGuardTimer = 0f;
 
-            CurrentDeathPresentationVariant = DeathPresentationVariant.Default;
+            DeathPresentationVariant previousPresentationVariant =
+                CurrentDeathPresentationVariant;
+
+            CurrentDeathPresentationVariant = presentationVariant;
 
             if (_fsm.TryTransition(
                 CharacterStateId.Dead,
@@ -502,7 +572,7 @@ namespace Character.Controller
                 return true;
             }
 
-            CurrentDeathPresentationVariant = presentationVariant;
+            CurrentDeathPresentationVariant = previousPresentationVariant;
             return false;
         }
 
@@ -580,13 +650,14 @@ namespace Character.Controller
             ApplyHealthDamageOnly(damage);
         }
 
-        public void ApplyAuthoritativeHealth(float currentHp, float maxHp)
+        public bool ApplyAuthoritativeHealth(float currentHp, float maxHp)
         {
             // 使用绝对值覆盖累计误差，迟到或丢失的增量不会永久造成血量漂移。
-            if (_context == null) return;
+            if (_context == null) return false;
 
             _context.SetHealth(currentHp, maxHp);
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
+            return true;
         }
 
         /// <summary>
@@ -611,6 +682,8 @@ namespace Character.Controller
 
         public void Revive(float hp)
         {
+            _forcedGuardPending = false;
+            _forcedGuardTimer = 0f;
             _context.Revive(hp);
             HealthChanged?.Invoke(_context.CurrentHp, _context.MaxHp);
             if (_fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Revive))
@@ -624,9 +697,58 @@ namespace Character.Controller
             if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null)
                 return false;
 
-            _forcedGuardTimer = Mathf.Max(_forcedGuardTimer, Mathf.Max(0.1f, holdDuration));
+            float duration = SanitizeGuardDuration(holdDuration);
+            CharacterStateId current = CurrentStateId;
+
+            if (current == CharacterStateId.Guard)
+            {
+                _forcedGuardPending = false;
+                _forcedGuardTimer = Mathf.Max(_forcedGuardTimer, duration);
+                return true;
+            }
+
+            if (current is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move or
+                    CharacterStateId.Sprint))
+            {
+                // Execution, hit, parry, and posture states must finish under
+                // their authoritative session. Apply the GM intent when the
+                // state machine returns to locomotion instead of interrupting it.
+                _forcedGuardPending = true;
+                _forcedGuardPendingDuration = duration;
+                _forcedGuardTimer = 0f;
+                return false;
+            }
+
+            _forcedGuardPending = false;
+            _forcedGuardPendingDuration = duration;
+            _forcedGuardTimer = duration;
             return _fsm.TryTransition(CharacterStateId.Guard, _stateRegistry, TransitionReason.InputGuard)
                 || CurrentStateId == CharacterStateId.Guard;
+        }
+
+        /// <summary>
+        /// Keeps the GM guard intent alive across authoritative reactions and
+        /// execution sessions until an explicit release command arrives.
+        /// </summary>
+        public bool SetGmGuardOverride(
+            bool active,
+            float holdDuration = 30f)
+        {
+            _gmGuardOverrideActive = active;
+
+            if (!active)
+                return CurrentStateId != CharacterStateId.Guard ||
+                       ForceExitGuardToIdle();
+
+            float duration = SanitizeGuardDuration(holdDuration);
+            _forcedGuardPendingDuration = duration;
+
+            // Returning false here only means that the current authoritative
+            // state cannot be interrupted. The override remains pending.
+            ForceEnterGuard(duration);
+            return true;
         }
 
         public bool ForceExitGuardToIdle()
@@ -634,11 +756,40 @@ namespace Character.Controller
             if (_context == null || _context.IsDead || _fsm == null || _stateRegistry == null)
                 return false;
 
+            _forcedGuardPending = false;
+            _forcedGuardPendingDuration = 0f;
             _forcedGuardTimer = 0f;
             if (CurrentStateId != CharacterStateId.Guard)
                 return false;
 
             return _fsm.TryTransition(CharacterStateId.Idle, _stateRegistry, TransitionReason.Timeout);
+        }
+
+        private void TryApplyPendingForceGuard()
+        {
+            if ((!_gmGuardOverrideActive && !_forcedGuardPending) ||
+                _context == null ||
+                _context.IsDead ||
+                CurrentStateId == CharacterStateId.Guard ||
+                CurrentStateId is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move or
+                    CharacterStateId.Sprint))
+            {
+                return;
+            }
+
+            float duration = _forcedGuardPendingDuration;
+            _forcedGuardPending = false;
+            ForceEnterGuard(duration);
+        }
+
+        private static float SanitizeGuardDuration(float duration)
+        {
+            if (float.IsNaN(duration) || float.IsInfinity(duration))
+                return 30f;
+
+            return Mathf.Clamp(duration, 0.1f, 300f);
         }
 
         // ============ 输入与状态约束 ============

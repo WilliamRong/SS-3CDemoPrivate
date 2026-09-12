@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Horse on the grassland</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #a7d8ef; }
+    canvas { display: block; width: 100%; height: 100%; }
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}
+  </script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#aedbef');
+scene.fog = new THREE.Fog('#bededc', 33, 145);
+const camera = new THREE.PerspectiveCamera(43, innerWidth / innerHeight, 0.1, 240);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.22;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight('#d8f1ff', '#8b9050', 2.3));
+const sun = new THREE.DirectionalLight('#fff2d9', 3.1);
+sun.position.set(-5, 11, 7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -9, right: 9, top: 9, bottom: -9, near: 0.5, far: 40 });
+sun.shadow.normalBias = 0.025;
+sun.shadow.bias = -0.00015;
+sun.shadow.radius = 3;
+scene.add(sun);
+
+let seed = 47821;
+function random() {
+  seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+  return seed / 4294967296;
+}
+
+const textureCanvas = document.createElement('canvas');
+textureCanvas.width = textureCanvas.height = 512;
+const textureContext = textureCanvas.getContext('2d');
+textureContext.fillStyle = '#739840';
+textureContext.fillRect(0, 0, 512, 512);
+for (let i = 0; i < 23000; i++) {
+  textureContext.fillStyle = ['#799e45', '#8aa94e', '#638b38', '#90ac56'][i % 4];
+  textureContext.globalAlpha = 0.15 + random() * 0.25;
+  textureContext.fillRect(random() * 512, random() * 512, 1 + random() * 8, 1 + random() * 5);
+}
+const groundTexture = new THREE.CanvasTexture(textureCanvas);
+groundTexture.colorSpace = THREE.SRGBColorSpace;
+groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+groundTexture.repeat.set(25, 25);
+groundTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(220, 220),
+  new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.025;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const terrainGeometry = new THREE.PlaneGeometry(240, 130, 120, 65);
+terrainGeometry.rotateX(-Math.PI / 2);
+const terrainPositions = terrainGeometry.attributes.position;
+for (let i = 0; i < terrainPositions.count; i++) {
+  const x = terrainPositions.getX(i);
+  const z = terrainPositions.getZ(i) - 88;
+  const fade = THREE.MathUtils.smoothstep(-z, 23, 65);
+  const height = fade * (6 + 3.8 * Math.sin(x * 0.035 + z * 0.03)
+    + 2.9 * Math.sin(x * 0.068 - z * 0.039) + 1.8 * Math.cos(z * 0.12 + x * 0.014));
+  terrainPositions.setXYZ(i, x, height - 0.07, z);
+}
+terrainGeometry.computeVertexNormals();
+const hills = new THREE.Mesh(terrainGeometry, new THREE.MeshStandardMaterial({ color: '#6c9665', roughness: 1 }));
+hills.receiveShadow = true;
+scene.add(hills);
+
+// Repeating ground strips keep the camera with the horse throughout the shot.
+const stripWidth = 22;
+const strips = [];
+const bladeVertices = [];
+for (let blade = 0; blade < 3; blade++) {
+  const angle = blade * Math.PI / 3;
+  const dx = Math.cos(angle) * 0.045;
+  const dz = Math.sin(angle) * 0.045;
+  bladeVertices.push(-dx, 0, -dz, dx, 0, dz, 0.035, 0.32 + blade * 0.035, 0.02);
+}
+const grassGeometry = new THREE.BufferGeometry();
+grassGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bladeVertices, 3));
+grassGeometry.computeVertexNormals();
+const grassMaterial = new THREE.MeshStandardMaterial({
+  color: '#ffffff', roughness: 1, side: THREE.DoubleSide
+});
+const grassColors = ['#729943', '#88a84b', '#9ab551', '#5d873a', '#b1bc65'];
+const transform = new THREE.Object3D();
+for (let stripIndex = -1; stripIndex <= 1; stripIndex++) {
+  const strip = new THREE.Group();
+  const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, 6200);
+  for (let i = 0; i < grass.count; i++) {
+    const x = (random() - 0.5) * stripWidth;
+    const z = -25 + random() * 34;
+    const height = 0.35 + random() * 0.75;
+    transform.position.set(x, 0, z);
+    transform.rotation.set(0, random() * Math.PI, (random() - 0.5) * 0.15);
+    transform.scale.setScalar(height);
+    transform.updateMatrix();
+    grass.setMatrixAt(i, transform.matrix);
+    grass.setColorAt(i, new THREE.Color(grassColors[Math.floor(random() * grassColors.length)]));
+  }
+  grass.receiveShadow = true;
+  strip.add(grass);
+  const flowers = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(0.025, 0),
+    new THREE.MeshStandardMaterial({ color: '#f6edb2', roughness: 1 }),
+    75
+  );
+  for (let i = 0; i < flowers.count; i++) {
+    transform.position.set((random() - 0.5) * stripWidth, 0.12 + random() * 0.08, -13 + random() * 20);
+    transform.rotation.set(0, 0, 0);
+    transform.scale.setScalar(0.7 + random() * 0.7);
+    transform.updateMatrix();
+    flowers.setMatrixAt(i, transform.matrix);
+  }
+  strip.add(flowers);
+  strip.userData.index = stripIndex;
+  scene.add(strip);
+  strips.push(strip);
+}
+
+const gltf = await new GLTFLoader().loadAsync('/assets/Horse.glb');
+if (!gltf.animations.length) throw new Error('Horse asset has no animation.');
+const horse = gltf.scene;
+horse.scale.setScalar(0.012);
+horse.rotation.y = Math.PI / 2;
+horse.traverse((object) => {
+  if (!object.isMesh) return;
+  object.castShadow = true;
+  object.receiveShadow = true;
+  object.material.roughness = 0.93;
+});
+scene.add(horse);
+const mixer = new THREE.AnimationMixer(horse);
+mixer.clipAction(gltf.animations[0]).play();
+
+function positionCamera(t) {
+  const portraitScale = camera.aspect < 1 ? 1.85 : 1;
+  camera.position.set(1.6 * portraitScale, 2.35 * portraitScale, 7.4 * portraitScale);
+  camera.position.y += 0.015 * Math.sin(t * 2.1);
+  camera.lookAt(0.2, 1.05, 0);
+}
+
+window.renderFrame = (t) => {
+  mixer.setTime(t * 2.0 + 0.16);
+  horse.position.x = 0.1 * Math.sin(t * 0.9);
+  for (const strip of strips) {
+    strip.position.x = strip.userData.index * stripWidth - (t * 5.2) % stripWidth;
+    if (strip.position.x < -stripWidth) strip.position.x += stripWidth * 3;
+  }
+  groundTexture.offset.x = t * 5.2 / 220 * groundTexture.repeat.x;
+  hills.position.x = -t * 0.32;
+  positionCamera(t);
+  renderer.render(scene, camera);
+};
+
+window.inspectFrame = () => {
+  const gl = renderer.getContext();
+  const pixels = new Uint8Array(gl.drawingBufferWidth * gl.drawingBufferHeight * 4);
+  gl.readPixels(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  const colors = new Set();
+  let brightness = 0;
+  let count = 0;
+  let hash = 2166136261;
+  for (let i = 0; i < pixels.length; i += 164) {
+    colors.add((pixels[i] << 16) | (pixels[i + 1] << 8) | pixels[i + 2]);
+    brightness += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+    hash = Math.imul(hash ^ pixels[i] ^ (pixels[i + 1] << 8) ^ (pixels[i + 2] << 16), 16777619);
+    count++;
+  }
+  const box = new THREE.Box3().setFromObject(horse, true);
+  const projected = [];
+  for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+    const point = new THREE.Vector3(x, y, z).project(camera);
+    projected.push({ x: point.x, y: point.y });
+  }
+  return {
+    colors: colors.size, brightness: brightness / count, hash: hash >>> 0,
+    horseInFrame: projected.every(({ x, y }) => Math.abs(x) < 0.98 && Math.abs(y) < 0.98),
+    animations: gltf.animations.length,
+    size: [gl.drawingBufferWidth, gl.drawingBufferHeight]
+  };
+};
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  window.renderFrame(0.6);
+});
+window.renderFrame(0.6);
+window.sceneReady = true;
+if (!new URLSearchParams(location.search).has('capture')) {
+  const started = performance.now();
+  renderer.setAnimationLoop(() => window.renderFrame((performance.now() - started) / 1000));
+}
+</script>
+</body>
+</html>

@@ -43,6 +43,7 @@ namespace AI
         private NpcDeadState _dead;
 
         private bool _gmGuardOverrideActive;
+        private bool _forcedGuardPending;
         private bool _gmFacingOverrideActive;
         private float _gmGuardHoldDuration = 30f;
         private bool _gmPausedBehaviorTree;
@@ -122,6 +123,7 @@ namespace AI
         public override void OnStopServer()
         {
             _gmGuardOverrideActive = false;
+            _forcedGuardPending = false;
             _gmFacingOverrideActive = false;
             _intentSource?.ClearGmFacingTarget();
             RestoreBehaviorTreeAfterGmOverride();
@@ -598,6 +600,7 @@ namespace AI
             }
 
             _gmGuardOverrideActive = false;
+            _forcedGuardPending = false;
             bool exited = CurrentStateId != CharacterStateId.Guard || ForceExitGuardToIdle();
             RefreshBehaviorTreeForGmOverride();
             return exited;
@@ -606,12 +609,36 @@ namespace AI
         public bool ForceEnterGuard(float loopHoldDuration = 2f)
         {
             if (_guard == null || _fsm == null || _registry == null) return false;
-            _guard.Prepare(loopHoldDuration);
+
+            float duration = SanitizeGuardDuration(loopHoldDuration);
+            CharacterStateId current = CurrentStateId;
+
+            if (current == CharacterStateId.Guard)
+            {
+                _forcedGuardPending = false;
+                _guard.Prepare(duration);
+                return true;
+            }
+
+            if (current is not (
+                    CharacterStateId.Idle or
+                    CharacterStateId.Move or
+                    CharacterStateId.Sprint))
+            {
+                _forcedGuardPending = true;
+                _gmGuardHoldDuration = duration;
+                return false;
+            }
+
+            _forcedGuardPending = false;
+            _gmGuardHoldDuration = duration;
+            _guard.Prepare(duration);
             return _fsm.TryTransition(CharacterStateId.Guard, _registry, TransitionReason.InputGuard) || CurrentStateId == CharacterStateId.Guard;
         }
 
         public bool ForceExitGuardToIdle()
         {
+            _forcedGuardPending = false;
             if (_fsm == null || _registry == null || CurrentStateId != CharacterStateId.Guard)
                 return false;
 
@@ -653,7 +680,7 @@ namespace AI
 
         private void TryApplyPendingGmGuard()
         {
-            if (!_gmGuardOverrideActive ||
+            if ((!_gmGuardOverrideActive && !_forcedGuardPending) ||
                 CurrentStateId is CharacterStateId.Guard or CharacterStateId.Dead)
             {
                 return;
@@ -668,6 +695,14 @@ namespace AI
             }
 
             ForceEnterGuard(_gmGuardHoldDuration);
+        }
+
+        private static float SanitizeGuardDuration(float duration)
+        {
+            if (float.IsNaN(duration) || float.IsInfinity(duration))
+                return 30f;
+
+            return Mathf.Clamp(duration, 0.1f, 300f);
         }
 
         private void RefreshExpiredGmFacingOverride()

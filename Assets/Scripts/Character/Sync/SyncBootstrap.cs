@@ -54,6 +54,8 @@ namespace Character.Sync
             _transport.OnActionEventReceived -= HandleActionReceived;
             _transport.OnExecutionStartReceived -= HandleExecutionStartReceived;
             _transport.OnExecutionResultReceived -= HandleExecutionResultReceived;
+            _transport.OnExecutionCompleteReceived -= HandleExecutionCompleteReceived;
+            _transport.OnExecutionStateReceived -= HandleExecutionStateReceived;
 
             _isWired = false;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire down done.");
@@ -80,6 +82,8 @@ namespace Character.Sync
             _transport.OnActionEventReceived += HandleActionReceived;
             _transport.OnExecutionStartReceived += HandleExecutionStartReceived;
             _transport.OnExecutionResultReceived += HandleExecutionResultReceived;
+            _transport.OnExecutionCompleteReceived += HandleExecutionCompleteReceived;
+            _transport.OnExecutionStateReceived += HandleExecutionStateReceived;
 
             _isWired = true;
             if (_logWireUp) Debug.Log("[SyncBootstrap] Wire up done.");
@@ -199,6 +203,30 @@ namespace Character.Sync
             for (int i = 0; i < appliers.Length; i++)
             {
                 appliers[i].ApplyExecutionResult(message);
+            }
+        }
+
+        private void HandleExecutionCompleteReceived(
+            ExecutionCompleteMsg message)
+        {
+            var appliers = FindObjectsByType<RemoteActionApplier>(
+                FindObjectsSortMode.None);
+
+            for (int i = 0; i < appliers.Length; i++)
+            {
+                appliers[i].ApplyExecutionComplete(message);
+            }
+        }
+
+        private void HandleExecutionStateReceived(
+            ExecutionStateMsg message)
+        {
+            var appliers = FindObjectsByType<RemoteActionApplier>(
+                FindObjectsSortMode.None);
+
+            for (int i = 0; i < appliers.Length; i++)
+            {
+                appliers[i].ApplyExecutionState(message);
             }
         }
     }

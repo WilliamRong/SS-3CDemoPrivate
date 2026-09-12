@@ -83,4 +83,59 @@ namespace Character.Sync
 
         public byte DeathVariant;
     }
+
+    /// <summary>
+    /// Client 请求指定 Actor 当前关联的权威处决状态。
+    /// </summary>
+    public struct ExecutionStateRequestMsg : NetworkMessage
+    {
+        public uint RequestSeq;
+        public int ActorId;
+    }
+
+    /// <summary>
+    /// Server 返回活跃会话或短期缓存的终态。
+    /// 使用扁平字段，保持 Mirror 协议布局明确。
+    /// </summary>
+    public struct ExecutionStateMsg : NetworkMessage
+    {
+        public uint RequestSeq;
+        public int RequestedActorId;
+        public byte HasState;
+
+        public ulong ExecutionId;
+        public int ExecutorActorId;
+        public int TargetActorId;
+
+        public float FixedTargetPx;
+        public float FixedTargetPy;
+        public float FixedTargetPz;
+        public float FixedTargetYaw;
+
+        public float ExecutorAnchorPx;
+        public float ExecutorAnchorPy;
+        public float ExecutorAnchorPz;
+        public float ExecutorAnchorYaw;
+
+        // 返回消息时处决者的绝对权威姿态。
+        public float ExecutorPx;
+        public float ExecutorPy;
+        public float ExecutorPz;
+        public float ExecutorYaw;
+
+        public double StartTimeSec;
+        public double ResultTimeSec;
+        public double AuthorityTimeSec;
+
+        public float ExecutionDamage;
+        public byte TargetWillDie;
+        public byte SessionFlags;
+
+        public byte HasHealthResult;
+        public float CurrentHp;
+        public float MaxHp;
+        public uint HealthRevision;
+
+        public byte DeathVariant;
+    }
 }

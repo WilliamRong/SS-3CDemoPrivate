@@ -93,6 +93,7 @@ GameObject:
   - component: {fileID: 946464254992824523}
   - component: {fileID: 6429374102917368422}
   - component: {fileID: 7160000000000000001}
+  - component: {fileID: 3600960838356838102}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -130,8 +131,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a0b06d856bb591043bb6aef2a88a3633, type: 3}
-  m_Name: ""
-  m_EditorClassIdentifier: ""
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!143 &3193431677645894127
 CharacterController:
   m_ObjectHideFlags: 0
@@ -207,7 +208,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   sceneId: 0
-  _assetId: 215819706
+  _assetId: 0
   serverOnly: 0
   visibility: 0
   hasSpawned: 0
@@ -226,9 +227,11 @@ MonoBehaviour:
   _clock: {fileID: 0}
   _playerController: {fileID: 6134410188504937041}
   _authorityGate: {fileID: 0}
+  _combatActor: {fileID: 0}
   _actorId: 1
   _networkIdentity: {fileID: 0}
   _lockOnController: {fileID: 0}
+  _postureCorrectionIntervalTicks: 10
 --- !u!114 &5566778899001122334
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -338,8 +341,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _player: {fileID: 6134410188504937041}
+  _remoteActionApplier: {fileID: 0}
   _screenOffset: {x: 12, y: 12}
+  _referenceResolution: {x: 1920, y: 1080}
+  _minScale: 0.6
+  _maxScale: 2
   _fontSize: 20
+  _buttonSize: {x: 112, y: 28}
+  _buttonToPanelGap: 8
+  _isOpen: 0
+  _isExecutionOpen: 0
   _showNumericId: 1
 --- !u!114 &7711002200334455666
 MonoBehaviour:
@@ -488,8 +499,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d27b2e7f8c2049a8ae8d4971da3933d2, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   _lockOn: {fileID: -6764813204625197364}
 --- !u!114 &7160000000000000001
 MonoBehaviour:
@@ -504,8 +515,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _actor: {fileID: 946464254992824523}
-  _healthBarPrefab: {fileID: 1000000000000000000, guid: 47cb294d0e6e4e8ab1683ce9d6f0a4aa, type: 3}
-  _damageTextPrefab: {fileID: 1000000000000000000, guid: 0c1d707540854c218791f3bc495f6a2f, type: 3}
+  _healthBarPrefab: {fileID: 1000000000000000000, guid: 47cb294d0e6e4e8ab1683ce9d6f0a4aa,
+    type: 3}
+  _damageTextPrefab: {fileID: 1000000000000000000, guid: 0c1d707540854c218791f3bc495f6a2f,
+    type: 3}
   _worldOffset: {x: 0, y: 2.2, z: 0}
   _damageTextRise: 0.45
   _damageTextLifetime: 0.75
@@ -514,6 +527,22 @@ MonoBehaviour:
   _postureFillPath: PostureBackground/Fill
   _postureBreakOutlineDuration: 1
   _hideForLocalPlayer: 1
+--- !u!114 &3600960838356838102
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3638829530761909756}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 469b6890d09942a4a969812174bdc396, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  _config: {fileID: 11400000, guid: d1e2f3a4b5c6478990a1b2c3d4e5f602, type: 2}
+  _target: {fileID: 2401825596774786525, guid: 8a48a4a271cef49438cbbf46ddb207e8, type: 3}
+  _autoResolveRuntimeTarget: 1
+  _drawWhenNotSelected: 1
 --- !u!1 &7067791028141538116
 GameObject:
   m_ObjectHideFlags: 0

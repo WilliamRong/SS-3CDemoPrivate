@@ -51,6 +51,24 @@ namespace Character.Sync
         private int _executionStartVersion;
         private ulong _lastExecutionResultId;
         private uint _lastExecutionResultRevision;
+        // Result and completion are separate reliable edges. Keep a validated
+        // result briefly when it arrives after the local execution session was
+        // retired, then replay it after Start/StateReplay reconstructs the
+        // session. Without this, a late result is discarded and the target
+        // keeps the pre-execution HP forever.
+        private ExecutionResultMsg _pendingExecutionResult;
+        private bool _hasPendingExecutionResult;
+        private ulong _lastExecutionCompleteId;
+        private ExecutionSessionFlags _lastExecutionCompleteFlags;
+        private CharacterStateId _executionPreviousStateId =
+            CharacterStateId.None;
+        // Complete 先于 Result 或终态快照到达时，保留会话覆盖旧快照。
+        private bool _executionAwaitingCompletionSnapshot;
+        private CharacterStateId _executionCompletionStateId =
+            CharacterStateId.None;
+        private bool _executionStateRecoveryPending;
+        private float _nextExecutionStateRecoveryTime;
+        private const float ExecutionStateRecoveryRetryDelay = 0.5f;
 
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
@@ -58,10 +76,7 @@ namespace Character.Sync
         public bool HasExecutionSession => _hasExecutionSession;
         public ExecutionSession ExecutionSession => _executionSession;
         public int ExecutionStartVersion => _executionStartVersion;
-        public DeathPresentationVariant ExecutionDeathVariant =>
-            _hasExecutionSession
-                ? _executionDeathVariant
-                : DeathPresentationVariant.Default;
+        public DeathPresentationVariant ExecutionDeathVariant => _executionDeathVariant;
 
         // ============ Unity 生命周期 ============
 
@@ -71,6 +86,21 @@ namespace Character.Sync
             _playerController = GetComponent<PlayerController>();
             _combatActor = GetComponent<CombatActor>();
             _healthBarView = GetComponent<NpcHealthBarView>();
+        }
+
+        private void Update()
+        {
+            if (_hasPendingExecutionResult)
+                TryApplyPendingExecutionResult();
+
+            if (!_executionStateRecoveryPending ||
+                Time.unscaledTime < _nextExecutionStateRecoveryTime)
+            {
+                return;
+            }
+
+            _executionStateRecoveryPending = false;
+            RequestExecutionStateRecovery();
         }
 
         // ============ 动作入口 ============
@@ -113,6 +143,18 @@ namespace Character.Sync
                 return;
             }
 
+            _executionPreviousStateId = _combatActor != null
+                ? _combatActor.CurrentStateId
+                : CharacterStateId.None;
+
+            _executionAwaitingCompletionSnapshot = false;
+            _executionCompletionStateId = CharacterStateId.None;
+            _executionStateRecoveryPending = false;
+            _nextExecutionStateRecoveryTime = 0f;
+
+            _lastExecutionCompleteId = session.ExecutionId;
+            _lastExecutionCompleteFlags = session.Flags;
+
             _executionSession = session;
             _hasExecutionSession = true;
             _executionStateId = stateId;
@@ -136,7 +178,8 @@ namespace Character.Sync
                 {
                     bool entered = stateId == CharacterStateId.Executing
                         ? _playerController.TryEnterExecuting(session)
-                        : _playerController.TryEnterExecuted(session);
+                        : _playerController.TryEnterExecutedFromAuthoritative(
+                            session);
 
                     if (!entered)
                     {
@@ -154,6 +197,190 @@ namespace Character.Sync
                     $"[RemoteActionApplier] execution start " +
                     $"execution={session.ExecutionId} actor={actorId} " +
                     $"state={stateId} death={deathVariant}");
+            }
+
+            // A result may have arrived before Start (or after a previous
+            // completion edge retired this applier). Replay it now that the
+            // matching session is available again.
+            TryApplyPendingExecutionResult();
+        }
+
+        /// <summary>
+        /// Replays one authoritative execution state by feeding it through the
+        /// existing Start, Result, and Complete edge handlers in order.
+        /// </summary>
+        public void ApplyExecutionState(ExecutionStateMsg message)
+        {
+            int actorId = ResolveActorId();
+
+            if (message.RequestSeq == 0 ||
+                message.RequestedActorId != actorId ||
+                message.HasState > 1 ||
+                double.IsNaN(message.AuthorityTimeSec) ||
+                double.IsInfinity(message.AuthorityTimeSec) ||
+                message.AuthorityTimeSec < 0d)
+            {
+                return;
+            }
+
+            if (message.HasState == 0)
+            {
+                _executionStateRecoveryPending = false;
+                if (_logApply)
+                {
+                    Debug.Log(
+                        $"[RemoteActionApplier] execution state empty " +
+                        $"request={message.RequestSeq} actor={actorId}");
+                }
+
+                return;
+            }
+
+            const ExecutionSessionFlags knownFlags =
+                ExecutionSessionFlags.ResultCommitted |
+                ExecutionSessionFlags.ExecutorCompleted |
+                ExecutionSessionFlags.TargetCompleted |
+                ExecutionSessionFlags.Cancelled;
+
+            ExecutionSessionFlags stateFlags =
+                (ExecutionSessionFlags)message.SessionFlags;
+            bool hasHealthResult = message.HasHealthResult != 0;
+
+            if (message.HasHealthResult > 1 ||
+                (stateFlags & ~knownFlags) != ExecutionSessionFlags.None ||
+                ((stateFlags & ExecutionSessionFlags.ResultCommitted) != 0) !=
+                    hasHealthResult ||
+                float.IsNaN(message.ExecutorPx) ||
+                float.IsInfinity(message.ExecutorPx) ||
+                float.IsNaN(message.ExecutorPy) ||
+                float.IsInfinity(message.ExecutorPy) ||
+                float.IsNaN(message.ExecutorPz) ||
+                float.IsInfinity(message.ExecutorPz) ||
+                float.IsNaN(message.ExecutorYaw) ||
+                float.IsInfinity(message.ExecutorYaw))
+            {
+                return;
+            }
+
+            // Start is replayed without cumulative flags. Result and completion
+            // then pass through their normal validation and deduplication paths.
+            var startMessage = new ExecutionStartMsg
+            {
+                RequestSeq = message.RequestSeq,
+                ExecutionId = message.ExecutionId,
+                ExecutorActorId = message.ExecutorActorId,
+                TargetActorId = message.TargetActorId,
+                FixedTargetPx = message.FixedTargetPx,
+                FixedTargetPy = message.FixedTargetPy,
+                FixedTargetPz = message.FixedTargetPz,
+                FixedTargetYaw = message.FixedTargetYaw,
+                ExecutorAnchorPx = message.ExecutorAnchorPx,
+                ExecutorAnchorPy = message.ExecutorAnchorPy,
+                ExecutorAnchorPz = message.ExecutorAnchorPz,
+                ExecutorAnchorYaw = message.ExecutorAnchorYaw,
+                StartTimeSec = message.StartTimeSec,
+                ResultTimeSec = message.ResultTimeSec,
+                ExecutionDamage = message.ExecutionDamage,
+                TargetWillDie = message.TargetWillDie,
+                DeathVariant = message.DeathVariant,
+                SessionFlags = (byte)ExecutionSessionFlags.None,
+            };
+
+            if (!TryBuildExecutionSession(
+                    startMessage,
+                    out ExecutionSession stateSession,
+                    out _))
+            {
+                return;
+            }
+
+            if (actorId != stateSession.ExecutorActorId &&
+                actorId != stateSession.TargetActorId)
+            {
+                return;
+            }
+
+            if (_hasExecutionSession &&
+                (_executionSession.ExecutionId != stateSession.ExecutionId ||
+                 _executionSession.ExecutorActorId !=
+                    stateSession.ExecutorActorId ||
+                 _executionSession.TargetActorId !=
+                    stateSession.TargetActorId ||
+                 _executionSession.TargetWillDie !=
+                    stateSession.TargetWillDie))
+            {
+                return;
+            }
+
+            if (!NetworkServer.active)
+            {
+                Vector3 position = actorId == stateSession.ExecutorActorId
+                    ? new Vector3(
+                        message.ExecutorPx,
+                        message.ExecutorPy,
+                        message.ExecutorPz)
+                    : stateSession.FixedTargetPose.Position;
+                float yaw = actorId == stateSession.ExecutorActorId
+                    ? message.ExecutorYaw
+                    : stateSession.FixedTargetPose.Yaw;
+
+                transform.SetPositionAndRotation(
+                    position,
+                    Quaternion.Euler(0f, yaw, 0f));
+            }
+
+            ApplyExecutionStart(startMessage);
+
+            TryApplyPendingExecutionResult();
+
+            if (!_hasExecutionSession ||
+                _executionSession.ExecutionId != stateSession.ExecutionId)
+            {
+                return;
+            }
+
+            _executionStateRecoveryPending = false;
+
+            if (hasHealthResult)
+            {
+                ApplyExecutionResult(new ExecutionResultMsg
+                {
+                    ExecutionId = message.ExecutionId,
+                    ExecutorActorId = message.ExecutorActorId,
+                    TargetActorId = message.TargetActorId,
+                    AuthorityTimeSec = message.AuthorityTimeSec,
+                    CurrentHp = message.CurrentHp,
+                    MaxHp = message.MaxHp,
+                    HealthRevision = message.HealthRevision,
+                    DeathVariant = message.DeathVariant,
+                });
+            }
+
+            const ExecutionSessionFlags completionFlags =
+                ExecutionSessionFlags.ExecutorCompleted |
+                ExecutionSessionFlags.TargetCompleted |
+                ExecutionSessionFlags.Cancelled;
+
+            if ((stateFlags & completionFlags) != ExecutionSessionFlags.None)
+            {
+                ApplyExecutionComplete(new ExecutionCompleteMsg
+                {
+                    ExecutionId = message.ExecutionId,
+                    ExecutorActorId = message.ExecutorActorId,
+                    TargetActorId = message.TargetActorId,
+                    AuthorityTimeSec = message.AuthorityTimeSec,
+                    SessionFlags = message.SessionFlags,
+                    DeathVariant = message.DeathVariant,
+                });
+            }
+
+            if (_logApply)
+            {
+                Debug.Log(
+                    $"[RemoteActionApplier] execution state replay " +
+                    $"request={message.RequestSeq} " +
+                    $"execution={message.ExecutionId} actor={actorId} " +
+                    $"flags={stateFlags}");
             }
         }
 
@@ -214,6 +441,20 @@ namespace Character.Sync
                 return;
             }
 
+            if (!NetworkServer.active)
+            {
+                if (_combatActor == null ||
+                    !_combatActor.ApplyAuthoritativeHealth(
+                        message.CurrentHp,
+                        message.MaxHp,
+                        message.HealthRevision))
+                {
+                    QueuePendingExecutionResult(message);
+                    RequestExecutionStateRecovery();
+                    return;
+                }
+            }
+
             _lastExecutionResultId = message.ExecutionId;
             _lastExecutionResultRevision = message.HealthRevision;
 
@@ -222,15 +463,6 @@ namespace Character.Sync
                 _executionSession =
                     _executionSession.MarkResultCommitted();
                 _executionDeathVariant = variant;
-            }
-
-            // Server already applied the authoritative damage before broadcasting.
-            if (!NetworkServer.active)
-            {
-                _combatActor?.ApplyAuthoritativeHealth(
-                    message.CurrentHp,
-                    message.MaxHp,
-                    message.HealthRevision);
             }
 
             _healthBarView?.ShowForHit();
@@ -243,6 +475,133 @@ namespace Character.Sync
                     $"hp={message.CurrentHp:F1}/{message.MaxHp:F1} " +
                     $"revision={message.HealthRevision} " +
                     $"death={variant}");
+            }
+
+            // Complete can arrive before the absolute HP result. Retry the
+            // owned Player FSM transition after health becomes authoritative.
+            if (_hasExecutionSession)
+                TryFinishCompletedExecution();
+        }
+
+        private void QueuePendingExecutionResult(
+            in ExecutionResultMsg message)
+        {
+            if (!_hasPendingExecutionResult ||
+                message.ExecutionId > _pendingExecutionResult.ExecutionId ||
+                (message.ExecutionId == _pendingExecutionResult.ExecutionId &&
+                 message.HealthRevision > _pendingExecutionResult.HealthRevision))
+            {
+                _pendingExecutionResult = message;
+                _hasPendingExecutionResult = true;
+            }
+        }
+
+        private void TryApplyPendingExecutionResult()
+        {
+            if (!_hasPendingExecutionResult)
+                return;
+
+            ExecutionResultMsg pending = _pendingExecutionResult;
+            if (_hasExecutionSession &&
+                pending.ExecutionId != _executionSession.ExecutionId)
+                return;
+
+            _hasPendingExecutionResult = false;
+            ApplyExecutionResult(pending);
+
+            if (_lastExecutionResultId == pending.ExecutionId &&
+                _lastExecutionResultRevision >= pending.HealthRevision)
+            {
+                _pendingExecutionResult = default;
+                _hasPendingExecutionResult = false;
+            }
+        }
+
+        /// <summary>
+        /// Applies cumulative completion/cancellation flags without retiring the
+        /// execution until a matching authoritative snapshot confirms the result.
+        /// </summary>
+        public void ApplyExecutionComplete(ExecutionCompleteMsg message)
+        {
+            if (!TryValidateExecutionComplete(
+                    message,
+                    out ExecutionSessionFlags incomingFlags,
+                    out DeathPresentationVariant deathVariant))
+            {
+                return;
+            }
+
+            int actorId = ResolveActorId();
+            if (actorId != message.ExecutorActorId &&
+                actorId != message.TargetActorId)
+            {
+                return;
+            }
+
+            if (!_hasExecutionSession)
+            {
+                RequestExecutionStateRecovery();
+                return;
+            }
+
+            if (!_hasExecutionSession ||
+                _executionSession.ExecutionId != message.ExecutionId ||
+                _executionSession.ExecutorActorId != message.ExecutorActorId ||
+                _executionSession.TargetActorId != message.TargetActorId ||
+                _executionSession.TargetWillDie !=
+                    (deathVariant == DeathPresentationVariant.Executed))
+            {
+                RequestExecutionStateRecovery();
+                return;
+            }
+
+            ExecutionSessionFlags previousFlags =
+                _lastExecutionCompleteId == message.ExecutionId
+                    ? _lastExecutionCompleteFlags
+                    : ExecutionSessionFlags.None;
+            ExecutionSessionFlags addedFlags =
+                incomingFlags & ~previousFlags;
+
+            if (addedFlags == ExecutionSessionFlags.None)
+                return;
+
+            ExecutionSession merged = MergeExecutionFlags(
+                _executionSession,
+                incomingFlags);
+            if (!merged.TryValidate(out _))
+                return;
+
+            _lastExecutionCompleteId = message.ExecutionId;
+            _lastExecutionCompleteFlags |= incomingFlags;
+            _executionSession = merged;
+            _executionDeathVariant = deathVariant;
+
+            bool cancelled =
+                (addedFlags & ExecutionSessionFlags.Cancelled) != 0;
+            bool actorCompleted = actorId == message.ExecutorActorId
+                ? (addedFlags & ExecutionSessionFlags.ExecutorCompleted) != 0
+                : (addedFlags & ExecutionSessionFlags.TargetCompleted) != 0;
+
+            if (!cancelled && !actorCompleted)
+                return;
+
+            _executionCompletionStateId =
+                ResolveExecutionCompletionState(actorId, merged);
+            _executionAwaitingCompletionSnapshot = true;
+            CurrentRemoteAction = ActionType.None;
+
+            CharacterStateId completionState =
+                _executionCompletionStateId;
+
+            TryFinishCompletedExecution();
+
+            if (_logApply)
+            {
+                Debug.Log(
+                    $"[RemoteActionApplier] execution complete " +
+                    $"execution={message.ExecutionId} actor={actorId} " +
+                    $"flags={incomingFlags} " +
+                    $"state={completionState}");
             }
         }
 
@@ -462,7 +821,33 @@ namespace Character.Sync
         public CharacterStateId ResolveSnapshotState(CharacterStateId snapshotState)
         {
             if (_hasExecutionSession)
-                return _executionStateId;
+            {
+                if (!_executionAwaitingCompletionSnapshot)
+                    return _executionStateId;
+
+                bool resultReady =
+                    _executionCompletionStateId != CharacterStateId.Dead ||
+                    _combatActor == null ||
+                    _combatActor.IsDead;
+
+                if (snapshotState == _executionCompletionStateId &&
+                    resultReady)
+                {
+                    RetireCompletedExecution();
+                    return snapshotState;
+                }
+
+                // The completion edge wins over stale Executing/Executed
+                // snapshots until the authoritative terminal state arrives.
+                return _executionCompletionStateId;
+            }
+
+            if (snapshotState is
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed)
+            {
+                RequestExecutionStateRecovery();
+            }
 
             if (snapshotState == CharacterStateId.Dead)
             {
@@ -591,6 +976,13 @@ namespace Character.Sync
             _executionStartVersion = 0;
             _lastExecutionResultId = 0;
             _lastExecutionResultRevision = 0;
+            _pendingExecutionResult = default;
+            _hasPendingExecutionResult = false;
+            _lastExecutionCompleteId = 0;
+            _lastExecutionCompleteFlags = ExecutionSessionFlags.None;
+            _executionPreviousStateId = CharacterStateId.None;
+            _executionAwaitingCompletionSnapshot = false;
+            _executionCompletionStateId = CharacterStateId.None;
         }
 
         private int ResolveActorId()
@@ -608,6 +1000,232 @@ namespace Character.Sync
                     ? 1
                     : _executionStartVersion + 1;
         }
+
+        private CharacterStateId ResolveExecutionCompletionState(
+            int actorId,
+            in ExecutionSession session)
+        {
+            if (!session.IsCancelled)
+            {
+                return actorId == session.TargetActorId &&
+                       session.TargetWillDie
+                    ? CharacterStateId.Dead
+                    : CharacterStateId.Idle;
+            }
+
+            // Cancellation after a committed lethal result cannot revive the target.
+            if (actorId == session.TargetActorId &&
+                session.TargetWillDie &&
+                session.IsResultCommitted)
+            {
+                return CharacterStateId.Dead;
+            }
+
+            bool validPreviousState = actorId == session.ExecutorActorId
+                ? _executionPreviousStateId is
+                    CharacterStateId.Idle or CharacterStateId.Move
+                : _executionPreviousStateId is
+                    CharacterStateId.Parried or CharacterStateId.PostureBroken;
+
+            return validPreviousState
+                ? _executionPreviousStateId
+                : CharacterStateId.Idle;
+        }
+
+        private void TryFinishCompletedExecution()
+        {
+            if (!_hasExecutionSession ||
+                !_executionAwaitingCompletionSnapshot)
+            {
+                return;
+            }
+
+            int actorId = ResolveActorId();
+            ulong executionId = _executionSession.ExecutionId;
+
+            // Host/server already owns the authoritative FSM and has completed
+            // the state transition before broadcasting this edge. It will not
+            // receive a separate terminal snapshot, so release the local replay
+            // state immediately.
+            if (NetworkServer.active)
+            {
+                _combatActor?.EndExecutionCombatSuppression(executionId);
+                RetireCompletedExecution();
+                return;
+            }
+
+            bool waitingForLethalResult =
+                actorId == _executionSession.TargetActorId &&
+                _executionCompletionStateId == CharacterStateId.Dead &&
+                (_combatActor == null || !_combatActor.IsDead);
+
+            if (waitingForLethalResult)
+                return;
+
+            bool changed = true;
+            bool ownsLocalFsm =
+                _networkIdentity != null &&
+                _networkIdentity.isLocalPlayer &&
+                _playerController != null;
+
+            if (ownsLocalFsm)
+            {
+                if (_executionSession.IsCancelled &&
+                    _executionCompletionStateId != CharacterStateId.Dead)
+                {
+                    changed = _playerController.TryRollbackExecutionStart(
+                        executionId,
+                        _executionPreviousStateId);
+                }
+                else
+                {
+                    changed = actorId == _executionSession.ExecutorActorId
+                        ? _playerController.TryCompleteExecuting(executionId)
+                        : _playerController.TryCompleteExecuted(executionId);
+
+                    if (!changed)
+                    {
+                        // A local target can receive the authoritative result
+                        // before its stale FSM has entered Executed. Reconcile
+                        // the terminal edge from the authoritative health/state
+                        // rather than retaining a session that blocks the next
+                        // execution.
+                        if (actorId == _executionSession.TargetActorId &&
+                            _executionCompletionStateId ==
+                                CharacterStateId.Dead &&
+                            _combatActor != null &&
+                            _combatActor.IsDead)
+                        {
+                            changed = _playerController.TryEnterDead(
+                                _executionDeathVariant);
+                        }
+                        else if (_executionCompletionStateId ==
+                                     CharacterStateId.Idle &&
+                                 _playerController.CurrentStateId is
+                                     CharacterStateId.Idle or
+                                     CharacterStateId.Move)
+                        {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+
+            if (changed)
+            {
+                _combatActor?.EndExecutionCombatSuppression(executionId);
+
+                // Completion is authoritative for every observer. Remote NPCs
+                // and non-owned Players have no local FSM transition to wait
+                // for; retaining their replay session would reject the next
+                // Start when a terminal snapshot is delayed or lost.
+                RetireCompletedExecution();
+            }
+            else if (_logApply)
+            {
+                Debug.LogWarning(
+                    $"[RemoteActionApplier] Failed to finish execution " +
+                    $"execution={executionId} actor={actorId}");
+            }
+        }
+
+        private void RetireCompletedExecution()
+        {
+            bool keepExecutedDeath =
+                _executionCompletionStateId == CharacterStateId.Dead &&
+                _executionDeathVariant == DeathPresentationVariant.Executed;
+
+            _executionSession = default;
+            _hasExecutionSession = false;
+            _executionStateId = CharacterStateId.None;
+            _executionPreviousStateId = CharacterStateId.None;
+            _executionAwaitingCompletionSnapshot = false;
+            _executionCompletionStateId = CharacterStateId.None;
+            CurrentRemoteAction = ActionType.None;
+            _executionStateRecoveryPending = false;
+            _nextExecutionStateRecoveryTime = 0f;
+
+            if (!keepExecutedDeath)
+                _executionDeathVariant = DeathPresentationVariant.Default;
+        }
+
+        private void RequestExecutionStateRecovery()
+        {
+            if (NetworkServer.active ||
+                _networkIdentity == null ||
+                !NetworkClient.active ||
+                !NetworkClient.isConnected ||
+                !NetworkClient.ready ||
+                _executionStateRecoveryPending ||
+                Time.unscaledTime < _nextExecutionStateRecoveryTime)
+            {
+                return;
+            }
+
+            if (MirrorSyncTransport.TrySendExecutionStateRequest(
+                    ResolveActorId(),
+                    out _))
+            {
+                _executionStateRecoveryPending = true;
+                _nextExecutionStateRecoveryTime =
+                    Time.unscaledTime + ExecutionStateRecoveryRetryDelay;
+            }
+        }
+
+        private static ExecutionSession MergeExecutionFlags(
+            in ExecutionSession session,
+            ExecutionSessionFlags flags)
+        {
+            ExecutionSession merged = session;
+
+            if ((flags & ExecutionSessionFlags.ResultCommitted) != 0)
+                merged = merged.MarkResultCommitted();
+            if ((flags & ExecutionSessionFlags.ExecutorCompleted) != 0)
+                merged = merged.MarkExecutorCompleted();
+            if ((flags & ExecutionSessionFlags.TargetCompleted) != 0)
+                merged = merged.MarkTargetCompleted();
+            if ((flags & ExecutionSessionFlags.Cancelled) != 0)
+                merged = merged.MarkCancelled();
+
+            return merged;
+        }
+
+        private static bool TryValidateExecutionComplete(
+            in ExecutionCompleteMsg message,
+            out ExecutionSessionFlags flags,
+            out DeathPresentationVariant deathVariant)
+        {
+            flags = (ExecutionSessionFlags)message.SessionFlags;
+            deathVariant =
+                (DeathPresentationVariant)message.DeathVariant;
+
+            const ExecutionSessionFlags knownFlags =
+                ExecutionSessionFlags.ResultCommitted |
+                ExecutionSessionFlags.ExecutorCompleted |
+                ExecutionSessionFlags.TargetCompleted |
+                ExecutionSessionFlags.Cancelled;
+
+            const ExecutionSessionFlags completionFlags =
+                ExecutionSessionFlags.ExecutorCompleted |
+                ExecutionSessionFlags.TargetCompleted |
+                ExecutionSessionFlags.Cancelled;
+
+            return message.ExecutionId != 0 &&
+                   message.ExecutorActorId > 0 &&
+                   message.TargetActorId > 0 &&
+                   message.ExecutorActorId != message.TargetActorId &&
+                   !double.IsNaN(message.AuthorityTimeSec) &&
+                   !double.IsInfinity(message.AuthorityTimeSec) &&
+                   message.AuthorityTimeSec >= 0d &&
+                   (flags & ~knownFlags) == ExecutionSessionFlags.None &&
+                   (flags & completionFlags) != ExecutionSessionFlags.None &&
+                   ((flags & ExecutionSessionFlags.TargetCompleted) == 0 ||
+                    (flags & ExecutionSessionFlags.ResultCommitted) != 0) &&
+                   deathVariant is
+                       DeathPresentationVariant.Default or
+                       DeathPresentationVariant.Executed;
+        }
+
 
         private static bool TryBuildExecutionSession(
             in ExecutionStartMsg message,
