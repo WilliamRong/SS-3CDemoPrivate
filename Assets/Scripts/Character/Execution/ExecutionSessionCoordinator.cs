@@ -98,7 +98,7 @@ namespace Character.Execution
             }
 
             eligibility =
-                ExecutionEligibilityService.EvaluateCurrent(
+                ExecutionEligibilityPrecheck.EvaluateCurrent(
                     executor,
                     target,
                     config,

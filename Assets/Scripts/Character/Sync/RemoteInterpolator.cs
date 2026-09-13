@@ -2,6 +2,7 @@ using Character.Config;
 using Core;
 using Mirror;
 using Character.Combat;
+using Character.StateMachine;
 using UnityEngine;
 
 namespace Character.Sync
@@ -101,7 +102,15 @@ namespace Character.Sync
             // Dedicated Server 和 Host 已持有权威数值，不能再消费回环快照覆盖。
             if (!NetworkServer.active && _combatActor != null)
             {
-                if (to.HasAuthoritativeHealth != 0)
+                // During an execution, HP is committed by ExecutionResultMsg.
+                // The movement snapshot may arrive before or after that edge;
+                // applying it here would create a second, competing writer.
+                bool executionPresentationActive =
+                    to.StateId is CharacterStateId.Executing or
+                        CharacterStateId.Executed;
+
+                if (to.HasAuthoritativeHealth != 0 &&
+                    !executionPresentationActive)
                 {
                     _combatActor.ApplyAuthoritativeHealth(
                         to.CurrentHp,

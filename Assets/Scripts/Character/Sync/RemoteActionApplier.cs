@@ -66,16 +66,24 @@ namespace Character.Sync
         private bool _executionAwaitingCompletionSnapshot;
         private CharacterStateId _executionCompletionStateId =
             CharacterStateId.None;
+        private bool _executionTerminalDead;
+        private bool _executionTerminalLatched;
+        private CharacterStateId _executionTerminalStateId = CharacterStateId.None;
+        // Delayed recovery messages for a completed session must not recreate
+        // that same session and replay its animation/suppression.
+        private ulong _executionTerminalExecutionId;
+        private bool _localExecutionStateEntered;
         private bool _executionStateRecoveryPending;
         private float _nextExecutionStateRecoveryTime;
         private const float ExecutionStateRecoveryRetryDelay = 0.5f;
 
         private NetworkIdentity _networkIdentity;
         private PlayerController _playerController;
+        private CharacterLateUpdatePipeline _lateUpdatePipeline;
 
-        public bool HasExecutionSession => _hasExecutionSession;
-        public ExecutionSession ExecutionSession => _executionSession;
         public int ExecutionStartVersion => _executionStartVersion;
+        public bool HasExecutionSession => _hasExecutionSession;
+        public CharacterStateId ExecutionStateId => _executionStateId;
         public DeathPresentationVariant ExecutionDeathVariant => _executionDeathVariant;
 
         // ============ Unity 生命周期 ============
@@ -84,12 +92,15 @@ namespace Character.Sync
         {
             _networkIdentity = GetComponent<NetworkIdentity>();
             _playerController = GetComponent<PlayerController>();
+            _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
             _combatActor = GetComponent<CombatActor>();
             _healthBarView = GetComponent<NpcHealthBarView>();
         }
 
         private void Update()
         {
+            TryEnterLocalExecutionState();
+
             if (_hasPendingExecutionResult)
                 TryApplyPendingExecutionResult();
 
@@ -111,7 +122,7 @@ namespace Character.Sync
         /// </summary>
         public void ApplyExecutionStart(ExecutionStartMsg message)
         {
-            if (!TryBuildExecutionSession(
+            if (!ExecutionMessageValidator.TryBuildSession(
                     message,
                     out ExecutionSession session,
                     out DeathPresentationVariant deathVariant))
@@ -134,6 +145,12 @@ namespace Character.Sync
                 return;
             }
 
+            if (_executionTerminalLatched &&
+                _executionTerminalExecutionId == session.ExecutionId)
+            {
+                return;
+            }
+
             if (_hasExecutionSession)
             {
                 if (_executionSession.ExecutionId == session.ExecutionId)
@@ -149,6 +166,7 @@ namespace Character.Sync
 
             _executionAwaitingCompletionSnapshot = false;
             _executionCompletionStateId = CharacterStateId.None;
+            _executionTerminalDead = false;
             _executionStateRecoveryPending = false;
             _nextExecutionStateRecoveryTime = 0f;
 
@@ -159,6 +177,10 @@ namespace Character.Sync
             _hasExecutionSession = true;
             _executionStateId = stateId;
             _executionDeathVariant = deathVariant;
+            _executionTerminalDead = false;
+            _executionTerminalLatched = false;
+            _executionTerminalStateId = CharacterStateId.None;
+            _localExecutionStateEntered = false;
             AdvanceExecutionStartVersion();
 
             CurrentRemoteAction = ActionType.None;
@@ -177,7 +199,7 @@ namespace Character.Sync
                     _playerController != null)
                 {
                     bool entered = stateId == CharacterStateId.Executing
-                        ? _playerController.TryEnterExecuting(session)
+                        ? _playerController.TryEnterExecutingFromAuthoritative(session)
                         : _playerController.TryEnterExecutedFromAuthoritative(
                             session);
 
@@ -236,6 +258,13 @@ namespace Character.Sync
                 return;
             }
 
+            if (_executionTerminalLatched &&
+                _executionTerminalExecutionId == message.ExecutionId)
+            {
+                _executionStateRecoveryPending = false;
+                return;
+            }
+
             const ExecutionSessionFlags knownFlags =
                 ExecutionSessionFlags.ResultCommitted |
                 ExecutionSessionFlags.ExecutorCompleted |
@@ -286,7 +315,7 @@ namespace Character.Sync
                 SessionFlags = (byte)ExecutionSessionFlags.None,
             };
 
-            if (!TryBuildExecutionSession(
+            if (!ExecutionMessageValidator.TryBuildSession(
                     startMessage,
                     out ExecutionSession stateSession,
                     out _))
@@ -435,6 +464,15 @@ namespace Character.Sync
                 return;
             }
 
+            // Result packets can arrive after the completion edge. The
+            // terminal execution has already committed health and must not be
+            // applied or presented again.
+            if (_executionTerminalLatched &&
+                _executionTerminalExecutionId == message.ExecutionId)
+            {
+                return;
+            }
+
             if (_lastExecutionResultId == message.ExecutionId &&
                 message.HealthRevision <= _lastExecutionResultRevision)
             {
@@ -455,6 +493,10 @@ namespace Character.Sync
                 }
             }
 
+            // The message can arrive before PlayerController.Start. Retry the
+            // authoritative local transition from Update until it succeeds.
+            TryEnterLocalExecutionState();
+
             _lastExecutionResultId = message.ExecutionId;
             _lastExecutionResultRevision = message.HealthRevision;
 
@@ -463,6 +505,8 @@ namespace Character.Sync
                 _executionSession =
                     _executionSession.MarkResultCommitted();
                 _executionDeathVariant = variant;
+                if (variant == DeathPresentationVariant.Executed)
+                    _executionTerminalDead = true;
             }
 
             _healthBarView?.ShowForHit();
@@ -523,7 +567,7 @@ namespace Character.Sync
         /// </summary>
         public void ApplyExecutionComplete(ExecutionCompleteMsg message)
         {
-            if (!TryValidateExecutionComplete(
+            if (!ExecutionMessageValidator.TryValidateComplete(
                     message,
                     out ExecutionSessionFlags incomingFlags,
                     out DeathPresentationVariant deathVariant))
@@ -534,6 +578,12 @@ namespace Character.Sync
             int actorId = ResolveActorId();
             if (actorId != message.ExecutorActorId &&
                 actorId != message.TargetActorId)
+            {
+                return;
+            }
+
+            if (_executionTerminalLatched &&
+                _executionTerminalExecutionId == message.ExecutionId)
             {
                 return;
             }
@@ -565,7 +615,7 @@ namespace Character.Sync
             if (addedFlags == ExecutionSessionFlags.None)
                 return;
 
-            ExecutionSession merged = MergeExecutionFlags(
+            ExecutionSession merged = ExecutionMessageValidator.MergeFlags(
                 _executionSession,
                 incomingFlags);
             if (!merged.TryValidate(out _))
@@ -684,6 +734,11 @@ namespace Character.Sync
                     break;
                 case ActionType.Revive:
                     CurrentRemoteAction = ActionType.Revive;
+                    _executionTerminalDead = false;
+                    _executionTerminalLatched = false;
+                    _executionTerminalExecutionId = 0;
+                    _executionTerminalStateId = CharacterStateId.None;
+                    _executionDeathVariant = DeathPresentationVariant.Default;
                     ClearPostureBreakTracking();
                     ClearParryTracking();
                     ClearParriedTracking();
@@ -748,7 +803,11 @@ namespace Character.Sync
                 return;
 
             // 使用绝对生命值纠正累计误差，revision 会拒绝乱序旧结果。
-            if (_combatActor != null && evt.HasHealthResult != 0)
+            // ExecutionResultMsg is the sole HP commit for an active execution.
+            // A generic combat result can cross it on the wire; keep the event
+            // for presentation, but do not let it become a second health writer.
+            if (_combatActor != null && evt.HasHealthResult != 0 &&
+                !_hasExecutionSession)
             {
                 _combatActor.ApplyAuthoritativeHealth(
                     evt.CurrentHp,
@@ -764,6 +823,7 @@ namespace Character.Sync
                 _playerController.TryEnterPostureBroken();
             }
             else if (!isGuard && !isHealthOnly &&
+                !_hasExecutionSession &&
                 _playerController != null &&
                 _networkIdentity != null &&
                 _networkIdentity.isLocalPlayer)
@@ -842,19 +902,28 @@ namespace Character.Sync
                 return _executionCompletionStateId;
             }
 
-            if (snapshotState is
-                    CharacterStateId.Executing or
-                    CharacterStateId.Executed)
-            {
-                RequestExecutionStateRecovery();
-            }
-
             if (snapshotState == CharacterStateId.Dead)
             {
                 ClearPostureBreakTracking();
                 ClearParryTracking();
                 ClearParriedTracking();
                 return CharacterStateId.Dead;
+            }
+
+            if (_executionTerminalLatched &&
+                snapshotState == CharacterStateId.Executed)
+            {
+                return _executionTerminalStateId is
+                    CharacterStateId.Dead or CharacterStateId.Idle
+                    ? _executionTerminalStateId
+                    : CharacterStateId.Idle;
+            }
+
+            if (snapshotState is
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed)
+            {
+                RequestExecutionStateRecovery();
             }
 
             if (snapshotState == CharacterStateId.Parried)
@@ -973,6 +1042,9 @@ namespace Character.Sync
             _hasExecutionSession = false;
             _executionStateId = CharacterStateId.None;
             _executionDeathVariant = DeathPresentationVariant.Default;
+            _executionTerminalLatched = false;
+            _executionTerminalExecutionId = 0;
+            _executionTerminalStateId = CharacterStateId.None;
             _executionStartVersion = 0;
             _lastExecutionResultId = 0;
             _lastExecutionResultRevision = 0;
@@ -983,6 +1055,7 @@ namespace Character.Sync
             _executionPreviousStateId = CharacterStateId.None;
             _executionAwaitingCompletionSnapshot = false;
             _executionCompletionStateId = CharacterStateId.None;
+            _localExecutionStateEntered = false;
         }
 
         private int ResolveActorId()
@@ -1068,6 +1141,13 @@ namespace Character.Sync
                 _networkIdentity.isLocalPlayer &&
                 _playerController != null;
 
+            if (ownsLocalFsm && !_localExecutionStateEntered)
+            {
+                TryEnterLocalExecutionState();
+                if (!_localExecutionStateEntered)
+                    return;
+            }
+
             if (ownsLocalFsm)
             {
                 if (_executionSession.IsCancelled &&
@@ -1131,9 +1211,18 @@ namespace Character.Sync
 
         private void RetireCompletedExecution()
         {
+            ulong executionId = _executionSession.ExecutionId;
+            CharacterStateId terminalState = _executionCompletionStateId;
             bool keepExecutedDeath =
                 _executionCompletionStateId == CharacterStateId.Dead &&
                 _executionDeathVariant == DeathPresentationVariant.Executed;
+
+            // Retire can be reached from snapshot reconciliation as well as
+            // the normal completion edge. Always release the execution-owned
+            // suppression before clearing the session id, otherwise a remote
+            // NPC keeps its HurtBoxes disabled forever after the execution.
+            if (executionId != 0)
+                _combatActor?.EndExecutionCombatSuppression(executionId);
 
             _executionSession = default;
             _hasExecutionSession = false;
@@ -1147,6 +1236,74 @@ namespace Character.Sync
 
             if (!keepExecutedDeath)
                 _executionDeathVariant = DeathPresentationVariant.Default;
+
+            _executionTerminalDead = keepExecutedDeath;
+            _executionTerminalLatched = true;
+            _executionTerminalExecutionId = executionId;
+            _executionTerminalStateId = terminalState is
+                CharacterStateId.Dead or CharacterStateId.Idle
+                ? terminalState
+                : CharacterStateId.Idle;
+            _localExecutionStateEntered = false;
+        }
+
+        private void TryEnterLocalExecutionState()
+        {
+            if (NetworkServer.active ||
+                !_hasExecutionSession ||
+                _networkIdentity == null ||
+                !_networkIdentity.isLocalPlayer ||
+                _playerController == null)
+            {
+                return;
+            }
+
+            if (_executionStateId == CharacterStateId.Executing)
+            {
+                if (_playerController.CurrentStateId == CharacterStateId.Executing)
+                {
+                    if (_localExecutionStateEntered)
+                        return;
+
+                    _localExecutionStateEntered = true;
+                    PresentLocalExecutionState();
+                    return;
+                }
+
+                if (_playerController.TryEnterExecutingFromAuthoritative(_executionSession))
+                {
+                    _localExecutionStateEntered = true;
+                    PresentLocalExecutionState();
+                }
+                return;
+            }
+
+            if (_executionStateId == CharacterStateId.Executed &&
+                _playerController.CurrentStateId == CharacterStateId.Executed)
+            {
+                if (_localExecutionStateEntered)
+                    return;
+
+                _localExecutionStateEntered = true;
+                PresentLocalExecutionState();
+                return;
+            }
+
+            if (_executionStateId == CharacterStateId.Executed &&
+                _playerController.TryEnterExecutedFromAuthoritative(
+                    _executionSession))
+            {
+                _localExecutionStateEntered = true;
+                PresentLocalExecutionState();
+            }
+        }
+
+        private void PresentLocalExecutionState()
+        {
+            if (_lateUpdatePipeline == null)
+                _lateUpdatePipeline = GetComponent<CharacterLateUpdatePipeline>();
+
+            _lateUpdatePipeline?.TickLateUpdate();
         }
 
         private void RequestExecutionStateRecovery()
@@ -1170,116 +1327,6 @@ namespace Character.Sync
                 _nextExecutionStateRecoveryTime =
                     Time.unscaledTime + ExecutionStateRecoveryRetryDelay;
             }
-        }
-
-        private static ExecutionSession MergeExecutionFlags(
-            in ExecutionSession session,
-            ExecutionSessionFlags flags)
-        {
-            ExecutionSession merged = session;
-
-            if ((flags & ExecutionSessionFlags.ResultCommitted) != 0)
-                merged = merged.MarkResultCommitted();
-            if ((flags & ExecutionSessionFlags.ExecutorCompleted) != 0)
-                merged = merged.MarkExecutorCompleted();
-            if ((flags & ExecutionSessionFlags.TargetCompleted) != 0)
-                merged = merged.MarkTargetCompleted();
-            if ((flags & ExecutionSessionFlags.Cancelled) != 0)
-                merged = merged.MarkCancelled();
-
-            return merged;
-        }
-
-        private static bool TryValidateExecutionComplete(
-            in ExecutionCompleteMsg message,
-            out ExecutionSessionFlags flags,
-            out DeathPresentationVariant deathVariant)
-        {
-            flags = (ExecutionSessionFlags)message.SessionFlags;
-            deathVariant =
-                (DeathPresentationVariant)message.DeathVariant;
-
-            const ExecutionSessionFlags knownFlags =
-                ExecutionSessionFlags.ResultCommitted |
-                ExecutionSessionFlags.ExecutorCompleted |
-                ExecutionSessionFlags.TargetCompleted |
-                ExecutionSessionFlags.Cancelled;
-
-            const ExecutionSessionFlags completionFlags =
-                ExecutionSessionFlags.ExecutorCompleted |
-                ExecutionSessionFlags.TargetCompleted |
-                ExecutionSessionFlags.Cancelled;
-
-            return message.ExecutionId != 0 &&
-                   message.ExecutorActorId > 0 &&
-                   message.TargetActorId > 0 &&
-                   message.ExecutorActorId != message.TargetActorId &&
-                   !double.IsNaN(message.AuthorityTimeSec) &&
-                   !double.IsInfinity(message.AuthorityTimeSec) &&
-                   message.AuthorityTimeSec >= 0d &&
-                   (flags & ~knownFlags) == ExecutionSessionFlags.None &&
-                   (flags & completionFlags) != ExecutionSessionFlags.None &&
-                   ((flags & ExecutionSessionFlags.TargetCompleted) == 0 ||
-                    (flags & ExecutionSessionFlags.ResultCommitted) != 0) &&
-                   deathVariant is
-                       DeathPresentationVariant.Default or
-                       DeathPresentationVariant.Executed;
-        }
-
-
-        private static bool TryBuildExecutionSession(
-            in ExecutionStartMsg message,
-            out ExecutionSession session,
-            out DeathPresentationVariant deathVariant)
-        {
-            session = default;
-            deathVariant = (DeathPresentationVariant)message.DeathVariant;
-
-            if (message.TargetWillDie > 1 ||
-                deathVariant is not (
-                    DeathPresentationVariant.Default or
-                    DeathPresentationVariant.Executed))
-            {
-                return false;
-            }
-
-            bool targetWillDie = message.TargetWillDie != 0;
-            if (targetWillDie !=
-                (deathVariant == DeathPresentationVariant.Executed))
-            {
-                return false;
-            }
-
-            session = new ExecutionSession(
-                message.ExecutionId,
-                message.ExecutorActorId,
-                message.TargetActorId,
-                new ExecutionPose(
-                    new Vector3(
-                        message.FixedTargetPx,
-                        message.FixedTargetPy,
-                        message.FixedTargetPz),
-                    message.FixedTargetYaw),
-                new ExecutionPose(
-                    new Vector3(
-                        message.ExecutorAnchorPx,
-                        message.ExecutorAnchorPy,
-                        message.ExecutorAnchorPz),
-                    message.ExecutorAnchorYaw),
-                message.StartTimeSec,
-                message.ResultTimeSec,
-                message.ExecutionDamage,
-                targetWillDie,
-                (ExecutionSessionFlags)message.SessionFlags);
-
-            if (!session.TryValidate(out _) || !session.IsActive)
-            {
-                session = default;
-                deathVariant = DeathPresentationVariant.Default;
-                return false;
-            }
-
-            return true;
         }
 
         private void RegisterPostureBreakEdge(int seqId)

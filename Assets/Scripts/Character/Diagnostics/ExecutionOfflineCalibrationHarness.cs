@@ -109,7 +109,7 @@ namespace Character.Diagnostics
                     : null;
 
             ExecutionEligibilityResult result =
-                ExecutionEligibilityService.EvaluateCurrent(
+                ExecutionEligibilityPrecheck.EvaluateCurrent(
                     executor,
                     target,
                     config,

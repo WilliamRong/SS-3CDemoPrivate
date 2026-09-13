@@ -51,7 +51,7 @@ namespace Character.Execution
                     ref seenCount);
 
                 ExecutionEligibilityResult lockedEligibility =
-                    ExecutionEligibilityService.EvaluateCurrent(
+                    ExecutionEligibilityPrecheck.EvaluateCurrent(
                         executor,
                         lockedActor,
                         config,
@@ -104,7 +104,7 @@ namespace Character.Execution
                 }
 
                 ExecutionEligibilityResult actorEligibility =
-                    ExecutionEligibilityService.EvaluateCurrent(
+                    ExecutionEligibilityPrecheck.EvaluateCurrent(
                         executor,
                         actor,
                         config,

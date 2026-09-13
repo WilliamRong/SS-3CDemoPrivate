@@ -131,7 +131,7 @@ namespace Character.Sync
             if (!NetworkClient.active) return;
 
             if (_logSend) Debug.Log($"[MirrorTransport] SendSnapshot tick={snapshot.Tick}");
-            NetworkClient.Send(ToMsg(snapshot));
+            NetworkClient.Send(SyncMessageConverter.ToMessage(snapshot));
         }
 
         public void SendActionEvent(ActionEvent actionEvent)
@@ -139,7 +139,7 @@ namespace Character.Sync
             if (!NetworkClient.active) return;
 
             if (_logSend) Debug.Log($"[MirrorTransport] SendAction seq={actionEvent.SeqId} type={actionEvent.Type}");
-            NetworkClient.Send(ToMsg(actionEvent));
+            NetworkClient.Send(SyncMessageConverter.ToMessage(actionEvent));
         }
 
         public static bool TrySendExecutionRequest(int targetActorId, out uint requestSeq)
@@ -238,14 +238,14 @@ namespace Character.Sync
         {
             if (!NetworkServer.active) return;
 
-            NetworkServer.SendToAll(ToMsg(snapshot));
+            NetworkServer.SendToReady(SyncMessageConverter.ToMessage(snapshot));
         }
 
         public void BroadcastActionFromServer(ActionEvent actionEvent)
         {
             if (!NetworkServer.active) return;
 
-            NetworkServer.SendToAll(ToMsg(actionEvent));
+            NetworkServer.SendToReady(SyncMessageConverter.ToMessage(actionEvent));
         }
 
         private void BroadcastExecutionStart(uint requestSeq, in ExecutionSession session)
@@ -287,7 +287,7 @@ namespace Character.Sync
                 SessionFlags = (byte)session.Flags,
             };
 
-            NetworkServer.SendToAll(message);
+            NetworkServer.SendToReady(message);
 
             if (_logRelay)
             {
@@ -357,7 +357,7 @@ namespace Character.Sync
                     : DeathPresentationVariant.Default),
             };
 
-            NetworkServer.SendToAll(message);
+            NetworkServer.SendToReady(message);
 
             if (_logRelay)
             {
@@ -387,7 +387,7 @@ namespace Character.Sync
                 DeathVariant = (byte)deathVariant,
             };
 
-            NetworkServer.SendToAll(message);
+            NetworkServer.SendToReady(message);
 
             if (session.IsComplete)
                 CacheTerminalExecutionState(session);
@@ -544,7 +544,7 @@ namespace Character.Sync
             // Server 本机也要吃一份客户端快照，否则 Server 无法用远端快照判断 Guard/LockOn/Attack 等表现状态。
             if (_activeInstance != null)
             {
-                StateSnapshot snapshot = FromMsg(msg);
+                StateSnapshot snapshot = SyncMessageConverter.ToSnapshot(msg);
                 snapshot.ArrivalTimeSec = Time.unscaledTime;
                 _activeInstance.OnSnapshotReceived?.Invoke(snapshot);
             }
@@ -580,7 +580,7 @@ namespace Character.Sync
 
             if (_activeInstance != null)
             {
-                ActionEvent evt = FromMsg(msg);
+                ActionEvent evt = SyncMessageConverter.ToActionEvent(msg);
                 _activeInstance.OnActionEventReceived?.Invoke(evt);
             }
 
@@ -947,7 +947,7 @@ namespace Character.Sync
         {
             if (_activeInstance == null) return;
 
-            StateSnapshot snapshot = FromMsg(msg);
+            StateSnapshot snapshot = SyncMessageConverter.ToSnapshot(msg);
             snapshot.ArrivalTimeSec = Time.unscaledTime;
             if (_activeInstance._logReceive) Debug.Log($"[MirrorTransport] RecvSnapshot tick={snapshot.Tick}");
             _activeInstance.OnSnapshotReceived?.Invoke(snapshot);
@@ -957,7 +957,7 @@ namespace Character.Sync
         {
             if (_activeInstance == null) return;
 
-            ActionEvent evt = FromMsg(msg);
+            ActionEvent evt = SyncMessageConverter.ToActionEvent(msg);
             if (_activeInstance._logReceive) Debug.Log($"[MirrorTransport] RecvAction seq={evt.SeqId} type={evt.Type}");
             _activeInstance.OnActionEventReceived?.Invoke(evt);
         }
@@ -1111,104 +1111,5 @@ namespace Character.Sync
 
         }
 
-        // ============ 协议对象转换 ============
-
-        /// <summary>
-        /// 业务值对象与 Mirror 消息显式逐字段转换，协议新增字段时编译审查点保持集中可见。
-        /// </summary>
-        private static SnapshotMsg ToMsg(StateSnapshot s)
-        {
-            return new SnapshotMsg
-            {
-                Tick = s.Tick,
-                ActorId = s.ActorId,
-                Px = s.Position.x,
-                Py = s.Position.y,
-                Pz = s.Position.z,
-                Yaw = s.Yaw,
-                Vx = s.VelocityXZ.x,
-                Vz = s.VelocityXZ.y,
-                StateId = (int)s.StateId,
-                SprintPhase = s.SprintPhase,
-                DodgeMode = s.DodgeMode,
-                GuardPhase = s.GuardPhase,
-                IdlePhase = s.IdlePhase,
-                AttackComboStep = s.AttackComboStep,
-                LockOnActive = s.LockOnActive,
-                LockTargetNetId = s.LockTargetNetId,
-                MoveInputX = s.MoveInputX,
-                MoveInputY = s.MoveInputY,
-                HasAuthoritativeHealth = s.HasAuthoritativeHealth,
-                CurrentHp = s.CurrentHp,
-                MaxHp = s.MaxHp,
-                HealthRevision = s.HealthRevision,
-                HasAuthoritativePosture = s.HasAuthoritativePosture,
-                CurrentPosture = s.CurrentPosture,
-                MaxPosture = s.MaxPosture,
-                ParryPhase = s.ParryPhase,
-            };
-        }
-
-        private static StateSnapshot FromMsg(SnapshotMsg m)
-        {
-            return new StateSnapshot(
-                m.Tick,
-                m.ActorId,
-                new Vector3(m.Px, m.Py, m.Pz),
-                m.Yaw,
-                new Vector2(m.Vx, m.Vz),
-                (StateMachine.CharacterStateId)m.StateId,
-                m.SprintPhase,
-                m.DodgeMode,
-                m.GuardPhase,
-                m.IdlePhase,
-                m.AttackComboStep,
-                m.LockOnActive,
-                m.LockTargetNetId,
-                m.MoveInputX,
-                m.MoveInputY,
-                m.HasAuthoritativeHealth,
-                m.CurrentHp,
-                m.MaxHp,
-                m.HealthRevision,
-                m.HasAuthoritativePosture,
-                m.CurrentPosture,
-                m.MaxPosture,
-                m.ParryPhase
-            );
-        }
-
-        private static ActionMsg ToMsg(ActionEvent e)
-        {
-            return new ActionMsg
-            {
-                SeqId = e.SeqId,
-                Tick = e.Tick,
-                ActorId = e.ActorId,
-                Type = (int)e.Type,
-                Param = e.Param,
-                HasHealthResult = e.HasHealthResult,
-                AppliedDamage = e.AppliedDamage,
-                CurrentHp = e.CurrentHp,
-                MaxHp = e.MaxHp,
-                HealthRevision = e.HealthRevision,
-            };
-        }
-
-        private static ActionEvent FromMsg(ActionMsg m)
-        {
-            return new ActionEvent(
-                m.SeqId,
-                m.Tick,
-                m.ActorId,
-                (ActionType)m.Type,
-                m.Param,
-                m.HasHealthResult,
-                m.AppliedDamage,
-                m.CurrentHp,
-                m.MaxHp,
-                m.HealthRevision
-            );
-        }
     }
 }

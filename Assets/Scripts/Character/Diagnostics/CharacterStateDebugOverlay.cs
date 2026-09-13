@@ -603,7 +603,7 @@ namespace Character.Diagnostics
                 snapshot.Spatial);
 
             snapshot.FullEligibility =
-                ExecutionEligibilityService.EvaluateCurrent(
+                ExecutionEligibilityPrecheck.EvaluateCurrent(
                     snapshot.Executor,
                     snapshot.Target,
                     snapshot.Config,

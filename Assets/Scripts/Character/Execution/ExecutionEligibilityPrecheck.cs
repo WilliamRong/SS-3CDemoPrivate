@@ -10,6 +10,34 @@ namespace Character.Execution
     /// </summary>
     public static class ExecutionEligibilityPrecheck
     {
+        /// <summary>
+        /// 计算完整的处决资格。
+        ///
+        /// 预检查、空间锚点和物理阻挡属于同一次资格评估，统一放在这里，
+        /// 避免调用方经过一个只负责转发的 EligibilityService 包装层。
+        /// </summary>
+        public static ExecutionEligibilityResult EvaluateCurrent(
+            CombatActor executor,
+            CombatActor target,
+            CharacterCombatConfig config,
+            IExecutionOccupancyQuery occupancyQuery = null)
+        {
+            ExecutionEligibilityResult precheck = Evaluate(
+                executor,
+                target,
+                config,
+                occupancyQuery);
+
+            if (!precheck.IsEligible)
+                return precheck;
+
+            return ExecutionPhysicsValidator.Evaluate(
+                executor,
+                target,
+                config,
+                precheck);
+        }
+
         public static ExecutionEligibilityResult Evaluate(
             CombatActor executor,
             CombatActor target,

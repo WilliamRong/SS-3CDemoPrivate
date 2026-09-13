@@ -135,6 +135,18 @@ namespace Core
 
         private void Update()
         {
+            if (!NetworkServer.active &&
+                (!NetworkClient.active ||
+                 !NetworkClient.isConnected))
+            {
+                // A network session can be torn down without unloading this
+                // DontDestroyOnLoad object. Drop queued GM state so a later
+                // reconnect cannot apply or toggle an old command.
+                _hasPendingForceGuard = false;
+                _pendingForceGuard = default;
+                _allCharactersGuarded = false;
+            }
+
             if (!_hasPendingForceGuard ||
                 !NetworkClient.active ||
                 !NetworkClient.isConnected ||
@@ -239,7 +251,10 @@ namespace Core
             if (NetworkServer.active)
             {
                 ApplyNpcGuardStateOnServer(msg);
-                NetworkServer.SendToAll(msg);
+                // Do not write to connections that are between disconnect and
+                // reconnect. SendToAll also includes not-ready/stale KCP
+                // entries and can emit RawSend invalid connectionId warnings.
+                NetworkServer.SendToReady(msg);
                 return;
             }
 
@@ -354,7 +369,7 @@ namespace Core
                 _instance._allCharactersGuarded = msg.Guarded;
 
             ApplyNpcGuardStateOnServer(msg);
-            NetworkServer.SendToAll(msg);
+            NetworkServer.SendToReady(msg);
         }
 
         private static void OnServerNpcLockNearestPlayer(NetworkConnectionToClient conn, GmNpcLockNearestPlayerMsg msg)

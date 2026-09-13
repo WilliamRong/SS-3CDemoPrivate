@@ -1,11 +1,26 @@
 using Character.Combat;
 using Character.Config;
+using Character.StateMachine;
 using Mirror;
 using UnityEngine;
 
 
 namespace Character.Execution
 {
+    public enum ExecutionStartFailure : byte
+    {
+        None = 0,
+        SessionCreationRejected = 1,
+        StateEntryUnavailable = 2,
+        ExecutorSuppressionRejected = 3,
+        TargetSuppressionRejected = 4,
+        TargetStateRejected = 5,
+        ExecutorStateRejected = 6,
+        RollbackFailed = 7,
+        LifecycleRegistrationRejected = 8,
+        AuthorityUnavailable = 9,
+    }
+
     /// <summary>
     /// 处决系统的权威组合根。
     /// 统一持有服务、选择时钟并推进活动会话。
@@ -29,7 +44,6 @@ namespace Character.Execution
 
         private ExecutionSessionCoordinator _coordinator;
         private ExecutionLifecycleService _lifecycle;
-        private ExecutionStartService _startService;
         private ExecutionCandidateResolver _candidateResolver;
 
         private AuthorityDomain _authorityDomain;
@@ -89,9 +103,6 @@ namespace Character.Execution
             _lifecycle =
                 new ExecutionLifecycleService(_coordinator);
 
-            _startService =
-                new ExecutionStartService(_lifecycle);
-
             _candidateResolver =
                 new ExecutionCandidateResolver();
         }
@@ -144,9 +155,86 @@ namespace Character.Execution
                 return false;
             }
 
-            return _startService.TryStart(executor, target, config, GetAuthorityTimeSec(domain),
-             out session, out eligibility, out createFailure, out startFailure);
+            CharacterStateId executorPreviousState = executor != null
+                ? executor.CurrentStateId
+                : CharacterStateId.None;
+            CharacterStateId targetPreviousState = target != null
+                ? target.CurrentStateId
+                : CharacterStateId.None;
 
+            if (!_coordinator.TryCreateSession(executor, target, config,
+                    GetAuthorityTimeSec(domain), out ExecutionSession created,
+                    out eligibility, out createFailure))
+            {
+                startFailure = ExecutionStartFailure.SessionCreationRejected;
+                return false;
+            }
+
+            if (!executor.CanEnterExecutionAsExecutor() ||
+                !target.CanEnterExecutionAsTarget())
+            {
+                _coordinator.TryCancelSession(created.ExecutionId, out _);
+                startFailure = ExecutionStartFailure.StateEntryUnavailable;
+                return false;
+            }
+
+            bool executorSuppressed = executor.BeginExecutionCombatSuppression(created.ExecutionId);
+            if (!executorSuppressed)
+            {
+                _coordinator.TryCancelSession(created.ExecutionId, out _);
+                startFailure = ExecutionStartFailure.ExecutorSuppressionRejected;
+                return false;
+            }
+
+            bool targetSuppressed = target.BeginExecutionCombatSuppression(created.ExecutionId);
+            if (!targetSuppressed)
+            {
+                CleanupFailedStart(created, executor, target, executorSuppressed, false);
+                startFailure = ExecutionStartFailure.TargetSuppressionRejected;
+                return false;
+            }
+
+            if (!target.TryEnterExecuted(created))
+            {
+                CleanupFailedStart(created, executor, target, executorSuppressed, targetSuppressed);
+                startFailure = ExecutionStartFailure.TargetStateRejected;
+                return false;
+            }
+
+            if (!executor.TryEnterExecuting(created))
+            {
+                bool restored = target.TryRollbackExecutionStart(created.ExecutionId, targetPreviousState);
+                CleanupFailedStart(created, executor, target, executorSuppressed, targetSuppressed);
+                startFailure = restored ? ExecutionStartFailure.ExecutorStateRejected : ExecutionStartFailure.RollbackFailed;
+                return false;
+            }
+
+            if (!_lifecycle.TryRegister(created, executor, target,
+                    executorPreviousState, targetPreviousState))
+            {
+                bool executorRestored = executor.TryRollbackExecutionStart(created.ExecutionId, executorPreviousState);
+                bool targetRestored = target.TryRollbackExecutionStart(created.ExecutionId, targetPreviousState);
+                CleanupFailedStart(created, executor, target, executorSuppressed, targetSuppressed);
+                startFailure = executorRestored && targetRestored
+                    ? ExecutionStartFailure.LifecycleRegistrationRejected
+                    : ExecutionStartFailure.RollbackFailed;
+                return false;
+            }
+
+            session = created;
+            return true;
+
+        }
+
+        private void CleanupFailedStart(in ExecutionSession session,
+            CombatActor executor, CombatActor target,
+            bool executorSuppressed, bool targetSuppressed)
+        {
+            if (targetSuppressed)
+                target.EndExecutionCombatSuppression(session.ExecutionId);
+            if (executorSuppressed)
+                executor.EndExecutionCombatSuppression(session.ExecutionId);
+            _coordinator.TryCancelSession(session.ExecutionId, out _);
         }
 
         public bool TryCancel(ulong executionId)

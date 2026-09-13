@@ -357,6 +357,50 @@ namespace Character.Controller
         }
 
         /// <summary>
+        /// Applies a server accepted execution even when the local owner is a
+        /// frame behind and still presents an interruptible combat state.
+        /// The server has already validated Idle/Move, so reconcile the local
+        /// state through Idle before preparing the execution.
+        /// </summary>
+        public bool TryEnterExecutingFromAuthoritative(
+            in ExecutionSession session)
+        {
+            if (CanEnterExecuting())
+                return TryEnterExecuting(session);
+
+            if (_context == null ||
+                _context.IsDead ||
+                _fsm == null ||
+                _stateRegistry == null ||
+                CurrentStateId is
+                    CharacterStateId.None or
+                    CharacterStateId.Dead or
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed)
+            {
+                return false;
+            }
+
+            CharacterStateId previousState = CurrentStateId;
+            if (!_fsm.TryTransition(
+                    CharacterStateId.Idle,
+                    _stateRegistry,
+                    TransitionReason.ExecutionAccepted))
+            {
+                return false;
+            }
+
+            if (TryEnterExecuting(session))
+                return true;
+
+            _fsm.TryTransition(
+                previousState,
+                _stateRegistry,
+                TransitionReason.ExecutionCancelled);
+            return false;
+        }
+
+        /// <summary>
         /// Enters the authoritative executed state when the local owner has
         /// not observed the target's preceding Parried/PostureBroken edge yet.
         /// Server execution messages are authoritative, so an Idle/Move local
@@ -369,9 +413,11 @@ namespace Character.Controller
                 return TryEnterExecuted(session);
 
             CharacterStateId previousState = CurrentStateId;
-            if (previousState is not (
-                    CharacterStateId.Idle or
-                    CharacterStateId.Move))
+            if (previousState is
+                    CharacterStateId.None or
+                    CharacterStateId.Dead or
+                    CharacterStateId.Executing or
+                    CharacterStateId.Executed)
             {
                 return false;
             }

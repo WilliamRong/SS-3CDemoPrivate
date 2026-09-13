@@ -21,6 +21,8 @@ namespace Character.Sync
         [SerializeField] private bool _logWireUp = false;
         
         private bool _isWired;
+        private bool _missingPublisherLogged;
+        private bool _missingTransportLogged;
 
         // ============ Unity 生命周期 ============
 
@@ -147,15 +149,29 @@ namespace Character.Sync
         {
             if (_publisher == null)
             {
-                Debug.LogError("[SyncBootstrap] Missing LocalSyncPublisher.");
+                if (!_missingPublisherLogged)
+                {
+                    Debug.LogWarning(
+                        "[SyncBootstrap] LocalSyncPublisher is not ready; waiting for the local player.");
+                    _missingPublisherLogged = true;
+                }
                 return false;
             }
 
+            _missingPublisherLogged = false;
+
             if (_transport == null)
             {
-                Debug.LogError($"[SyncBootstrap] Missing transport for mode {_transportMode}.");
+                if (!_missingTransportLogged)
+                {
+                    Debug.LogWarning(
+                        $"[SyncBootstrap] Transport for mode {_transportMode} is not ready; waiting.");
+                    _missingTransportLogged = true;
+                }
                 return false;
             }
+
+            _missingTransportLogged = false;
 
             return true;
         }

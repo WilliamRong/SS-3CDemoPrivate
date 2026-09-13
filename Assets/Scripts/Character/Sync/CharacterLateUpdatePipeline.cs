@@ -642,8 +642,23 @@ or CharacterStateId.Executed;
             if (!HasLocalPresentationAuthority())
                 return false;
 
-            stateId = _playerController.CurrentStateId;
-            stateEnterVersion = _playerController.StateEnterVersion;
+            // The authoritative execution edge can arrive one frame before
+            // the local FSM accepts it. Keep local presentation on the
+            // execution state instead of letting a stale local snapshot fall
+            // back to Idle/Move and suppress the execution animation.
+            if (_networkIdentity != null &&
+                _networkIdentity.isLocalPlayer &&
+                _remoteActionApplier != null &&
+                _remoteActionApplier.HasExecutionSession)
+            {
+                stateId = _remoteActionApplier.ExecutionStateId;
+                stateEnterVersion = _remoteActionApplier.ExecutionStartVersion;
+            }
+            else
+            {
+                stateId = _playerController.CurrentStateId;
+                stateEnterVersion = _playerController.StateEnterVersion;
+            }
             var velocity = _playerController.Velocity;
             velocityXZ = new Vector2(velocity.x, velocity.z);
             moveInput = _playerController.LastMoveInput;
@@ -960,6 +975,12 @@ or CharacterStateId.Executed;
             if (_playerController != null &&
                 HasLocalPresentationAuthority())
             {
+                if (_remoteActionApplier != null &&
+                    _remoteActionApplier.HasExecutionSession)
+                {
+                    return _remoteActionApplier.ExecutionDeathVariant;
+                }
+
                 return _playerController.CurrentDeathPresentationVariant;
             }
 
