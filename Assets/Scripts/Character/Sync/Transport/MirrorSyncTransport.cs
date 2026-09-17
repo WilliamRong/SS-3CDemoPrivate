@@ -169,6 +169,63 @@ namespace Character.Sync
             return true;
         }
 
+        /// <summary>
+        /// Starts an execution from a server-side diagnostic or GM caller.
+        /// Network gameplay requests continue to use TrySendExecutionRequest.
+        /// </summary>
+        public bool TryStartExecutionFromServer(
+            CombatActor executor,
+            CombatActor target,
+            CharacterCombatConfig config,
+            out ExecutionSession session,
+            out ExecutionEligibilityResult eligibility,
+            out ExecutionSessionCreateFailure createFailure,
+            out ExecutionStartFailure startFailure)
+        {
+            session = default;
+            eligibility = default;
+            createFailure = ExecutionSessionCreateFailure.None;
+            startFailure = ExecutionStartFailure.None;
+
+            if (!NetworkServer.active ||
+                executor == null ||
+                target == null ||
+                config == null)
+            {
+                startFailure = ExecutionStartFailure.AuthorityUnavailable;
+                return false;
+            }
+
+            ExecutionRuntime runtime = ExecutionRuntime.Instance;
+            if (runtime == null || !runtime.HasAuthority)
+            {
+                startFailure = ExecutionStartFailure.AuthorityUnavailable;
+                return false;
+            }
+
+            BindExecutionLifecycle(runtime.Lifecycle);
+
+            if (!runtime.TryStart(
+                    executor,
+                    target,
+                    config,
+                    out session,
+                    out eligibility,
+                    out createFailure,
+                    out startFailure))
+            {
+                return false;
+            }
+
+            // Direct server callers do not pass through OnServerExecutionRequest,
+            // so publish the accepted session explicitly.
+            BroadcastExecutionStart(
+                AllocateExecutionRequestSequence(),
+                session);
+
+            return true;
+        }
+
         private uint AllocateExecutionRequestSequence()
         {
             uint sequence = _nextExecutionRequestSeq;

@@ -1,6 +1,7 @@
 using Character.Combat;
 using Character.Config;
 using Character.Execution;
+using Character.Sync;
 using Core;
 using Mirror;
 using UnityEngine;
@@ -21,6 +22,7 @@ namespace Character.Diagnostics
         [SerializeField, Min(0.01f)] private float _residualLogInterval = 0.1f;
 
         private ExecutionRuntime _runtime;
+        private MirrorSyncTransport _mirrorTransport;
         private bool _eventsBound;
 
         private ulong _trackedExecutionId;
@@ -78,6 +80,14 @@ namespace Character.Diagnostics
             _runtime.Lifecycle.ResultCommitted += HandleResultCommitted;
             _runtime.Lifecycle.CompletionChanged += HandleCompletionChanged;
             _eventsBound = true;
+        }
+
+        private void ResolveMirrorTransport()
+        {
+            if (_mirrorTransport != null)
+                return;
+
+            _mirrorTransport = FindFirstObjectByType<MirrorSyncTransport>();
         }
 
         private void UnbindLifecycleEvents()
@@ -155,6 +165,68 @@ namespace Character.Diagnostics
                 return;
             }
 
+            // Online diagnostics must use the same transport edges as normal
+            // gameplay. Calling ExecutionRuntime.TryStart directly on a Host
+            // creates a server-only session with no Start/Complete broadcast.
+            if (NetworkServer.active)
+            {
+                ResolveMirrorTransport();
+                if (_mirrorTransport == null)
+                {
+                    Debug.LogWarning(
+                        "[ExecutionCalibration] MirrorSyncTransport is not ready.",
+                        this);
+                    return;
+                }
+
+                bool networkStarted = _mirrorTransport.TryStartExecutionFromServer(
+                    executor,
+                    target,
+                    config,
+                    out ExecutionSession networkSession,
+                    out ExecutionEligibilityResult networkEligibility,
+                    out ExecutionSessionCreateFailure networkCreateFailure,
+                    out ExecutionStartFailure networkStartFailure);
+
+                if (!networkStarted)
+                {
+                    Debug.LogWarning(
+                        "[ExecutionCalibration] Online start rejected. " +
+                        $"reason={networkEligibility.RejectionReason}; " +
+                        $"createFailure={networkCreateFailure}; " +
+                        $"startFailure={networkStartFailure}",
+                        this);
+                    return;
+                }
+
+                TrackStartedExecution(networkSession, executor, target);
+                Debug.Log(
+                    "[ExecutionCalibration] Online started. " +
+                    $"executionId={networkSession.ExecutionId}; " +
+                    $"executor={executor.name}; target={target.name}",
+                    this);
+                return;
+            }
+
+            if (NetworkClient.active)
+            {
+                if (!MirrorSyncTransport.TrySendExecutionRequest(
+                        target.ActorId,
+                        out uint requestSeq))
+                {
+                    Debug.LogWarning(
+                        "[ExecutionCalibration] Online client request could not be sent.",
+                        this);
+                    return;
+                }
+
+                Debug.Log(
+                    "[ExecutionCalibration] Online request sent. " +
+                    $"requestSeq={requestSeq}; target={target.name}({target.ActorId})",
+                    this);
+                return;
+            }
+
             bool started = _runtime.TryStart(
                 executor,
                 target,
@@ -175,6 +247,22 @@ namespace Character.Diagnostics
                 return;
             }
 
+            TrackStartedExecution(session, executor, target);
+
+            Debug.Log(
+                "[ExecutionCalibration] Started. " +
+                $"executionId={session.ExecutionId}; " +
+                $"executor={executor.name}; " +
+                $"target={target.name}; " +
+                $"resultTime={session.ResultTimeSec:F3}",
+                this);
+        }
+
+        private void TrackStartedExecution(
+            in ExecutionSession session,
+            CombatActor executor,
+            CombatActor target)
+        {
             _trackedExecutionId = session.ExecutionId;
             _trackedExecutor = executor;
             _trackedTarget = target;
@@ -184,14 +272,6 @@ namespace Character.Diagnostics
             _maxTargetPositionError = 0f;
             _maxTargetYawError = 0f;
             _nextResidualLogTime = 0f;
-
-            Debug.Log(
-                "[ExecutionCalibration] Started. " +
-                $"executionId={session.ExecutionId}; " +
-                $"executor={executor.name}; " +
-                $"target={target.name}; " +
-                $"resultTime={session.ResultTimeSec:F3}",
-                this);
         }
 
         private void CancelExecution()

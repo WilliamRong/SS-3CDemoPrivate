@@ -8,9 +8,17 @@
 
 ## 当前实现边界
 
-截至当前代码状态，Offline/Server 的处决候选、权威校验、会话、成对状态、配置伤害分支、Warp、无敌/攻击抑制、动画、输入锁定与镜头路径已实现。Mirror 已闭合 Request/Start/Result/Complete/StateReplay 链路：生命周期服务发布累计完成/取消边沿，客户端按 `executionId` 和 Flags 去重，并在 Complete 或 Result 先到时缓存等待会话；远端动画按权威开始时间追赶，晚加入/重绑定使用固定姿态和绝对 HP/revision 恢复。上述路径仍未完成 Unity Host/Client 运行验收。
+截至 2026-09-14，Offline/Server 的处决候选、权威校验、会话、成对状态、配置伤害分支、Warp、无敌/攻击抑制、动画、输入锁定与镜头路径已实现。Mirror 已闭合 Request/Start/Result/Complete/StateReplay 链路：生命周期服务发布累计完成/取消边沿，客户端按 `executionId` 和 Flags 去重，并在 Complete 或 Result 先到时缓存等待会话；远端动画按权威开始时间追赶，晚加入/重绑定使用固定姿态和绝对 HP/revision 恢复。
 
-表现配置类型已有处决 CrossFade 和 clip 校准字段，但 `DefaultPresentation.asset` 尚未持久化；默认战斗资产的距离、角度、Warp 预算与时长仍需 Offline 校准。Scene Gizmo、Motion Warping 可视化编辑器、自动化测试和 Offline/Host/Client 运行验收尚未完成。由于 Unity MCP 当前不可用，现阶段只能认定为代码实现，不能认定为运行时 `Verified`。
+处决表现字段已写入 `DefaultPresentation.asset`，`DefaultCombat.asset` 已包含处决空间、Warp、伤害和时长配置。`ExecutionSpatialGizmo`、`CharacterStateDebugOverlay` 和 `ExecutionOfflineCalibrationHarness` 已加入代码库，分别覆盖空间可视化、运行时诊断和校准操作入口。
+
+2026-09-13 的 Host/Client 实机验收已确认双端处决表现、处决死亡分支、NPC 目标和重复消息保护正常。2026-09-14 的 MCP 复核确认 Host/Client 编辑器可连接、当前不在 Play Mode、无 Unity 编译错误或 Console Error，并通过 `openspec validate add-execution-motion-warping --strict` 与 `git diff --check`。这些记录证明核心闭环已可用，但不替代完整的 Offline 碰撞/输入/校准、晚加入/重绑定和自动化回归证据。
+
+2026-09-17 的 4399 MCP Offline 验收补充了运行时证据：`CombatHurtBox` 在 Dodge/Execution 多令牌场景下按最后一个令牌恢复，攻击抑制与 Dodge 无敌相互隔离，非致死处决提交一次 `executionDamage` 后 HP `100 -> 50` 且 HealthRevision `+1`，致死处决 HP 到 0、HealthRevision `+1` 并保持 `DeathPresentationVariant.Executed`。同次验收确认 `Assets/Scenes/Offline.unity` 的 Arena 共 7 个 Ground/Wall/Obstacle collider 均启用且非 Trigger，处决中的 Guard 强制输入被拒绝，4399 与 8765 两个 Editor 最终均退出 Play Mode。
+
+同次验收也确认 Offline 校准仍未完成：当前 `DefaultCombat.asset` 的 `executionResultTime=0.01`，而设计预期结果时刻约为 `2.7s`；非致死单独复测显示会话释放后双方最终回到 `Idle`，但处决者位置残差约 `1.5414m`、目标残差为 `0.0000m`，因此 5.6 的最终配置与接触残差不能标记为通过。6.4 的角色输入锁已有局部证据，但鼠标 Look 连续旋转镜头尚未专项验证；7.6 的晚加入/重绑定和 8.x Motion Warping 编辑器仍未验收。
+
+Motion Warping 可视化编辑器（8.1-8.6）尚未实现；执行系统自动化测试、完整验证矩阵和项目文档同步也尚未完成，因此本 change 仍保持进行中。
 
 ## 目标 / 非目标
 

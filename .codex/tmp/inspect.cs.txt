@@ -1,0 +1,28 @@
+using Mirror;
+using UnityEngine;
+using Character.Combat;
+using Character.Controller;
+using AI;
+using Character.Execution;
+
+public class InspectExecutionRuntime
+{
+    public static string Run()
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var kv in (NetworkServer.active ? NetworkServer.spawned : NetworkClient.spawned))
+        {
+            if (kv.Value == null) continue;
+            var actor = kv.Value.GetComponent<CombatActor>();
+            if (actor == null) continue;
+            var player = kv.Value.GetComponent<PlayerController>();
+            var npc = kv.Value.GetComponent<NpcCharacterDriver>();
+            string state = player != null ? player.CurrentStateId.ToString() : (npc != null ? npc.CurrentStateId.ToString() : "none");
+            string variant = player != null ? player.CurrentDeathPresentationVariant.ToString() : (npc != null ? npc.CurrentDeathPresentationVariant.ToString() : "none");
+            sb.Append("actor=").Append(actor.ActorId).Append(";state=").Append(state).Append(";hp=").Append(actor.CurrentHp).Append(";max=").Append(actor.MaxHp).Append(";rev=").Append(actor.HealthRevision).Append(";dead=").Append(actor.IsDead).Append(";variant=").Append(variant).Append(";pos=").Append(kv.Value.transform.position).Append("|");
+        }
+        var runtime = ExecutionRuntime.Instance;
+        sb.Append("activeExecutions=").Append(runtime != null ? runtime.Lifecycle.ActiveExecutionCount.ToString() : "null");
+        return sb.ToString();
+    }
+}

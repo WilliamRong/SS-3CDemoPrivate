@@ -1,0 +1,24 @@
+using Mirror;
+using UnityEngine;
+using Character.Combat;
+using Character.Controller;
+using Character.Sync;
+
+public class PrepareAndSendHostExecution
+{
+    public static string Run()
+    {
+        if (!NetworkServer.spawned.TryGetValue(4u, out var eId) || !NetworkServer.spawned.TryGetValue(5u, out var tId))
+            return "players missing";
+        var ep = eId.GetComponent<PlayerController>();
+        var tp = tId.GetComponent<PlayerController>();
+        eId.transform.position = new Vector3(2f, 0f, 1f);
+        eId.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        tId.transform.position = new Vector3(2f, 0f, 0f);
+        tId.transform.rotation = Quaternion.identity;
+        bool posture = tp.TryEnterPostureBroken();
+        uint seq;
+        bool sent = MirrorSyncTransport.TrySendExecutionRequest(5, out seq);
+        return "posture=" + posture + ";sent=" + sent + ";seq=" + seq + ";states=" + ep.CurrentStateId + "," + tp.CurrentStateId;
+    }
+}

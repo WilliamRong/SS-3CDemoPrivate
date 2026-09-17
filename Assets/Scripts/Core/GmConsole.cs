@@ -69,6 +69,8 @@ namespace Core
         private bool _npcLockNearestPlayer;
         private bool _hasPendingForceGuard;
         private GmForceGuardMsg _pendingForceGuard;
+        private bool _clientHandlersRegistered;
+        private bool _serverHandlersRegistered;
         private static GmConsole _instance;
         private static GmConsole _handlerOwner;
 
@@ -107,12 +109,7 @@ namespace Core
             _handlerOwner = this;
             SceneManager.sceneLoaded += OnSceneLoaded;
             ResetSceneScopedState(SceneManager.GetActiveScene());
-
-            NetworkClient.RegisterHandler<GmForceGuardMsg>(OnClientForceGuard, false);
-            NetworkServer.RegisterHandler<GmForceGuardMsg>(OnServerForceGuard, false);
-            NetworkServer.RegisterHandler<GmNpcLockNearestPlayerMsg>(OnServerNpcLockNearestPlayer, false);
-            NetworkServer.RegisterHandler<GmSetPostureNearBreakMsg>(OnServerSetPostureNearBreak, false);
-            NetworkServer.RegisterHandler<GmReviveAllNpcsMsg>(OnServerReviveAllNpcs, false);
+            EnsureNetworkHandlers();
         }
 
         private void OnDisable()
@@ -122,11 +119,7 @@ namespace Core
 
             SceneManager.sceneLoaded -= OnSceneLoaded;
 
-            NetworkClient.UnregisterHandler<GmForceGuardMsg>();
-            NetworkServer.UnregisterHandler<GmForceGuardMsg>();
-            NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
-            NetworkServer.UnregisterHandler<GmSetPostureNearBreakMsg>();
-            NetworkServer.UnregisterHandler<GmReviveAllNpcsMsg>();
+            UnregisterNetworkHandlers();
             _handlerOwner = null;
 
             if (_instance == this)
@@ -135,6 +128,12 @@ namespace Core
 
         private void Update()
         {
+            // GmConsole survives scene and network-manager lifetimes. Mirror
+            // clears its static handler tables on StopClient/StopHost, so the
+            // next connection must restore the handlers before GM messages
+            // can be delivered again.
+            EnsureNetworkHandlers();
+
             if (!NetworkServer.active &&
                 (!NetworkClient.active ||
                  !NetworkClient.isConnected))
@@ -157,6 +156,55 @@ namespace Core
 
             if (TryApplyLocalPlayerGuardState(_pendingForceGuard))
                 _hasPendingForceGuard = false;
+        }
+
+        private void EnsureNetworkHandlers()
+        {
+            if (NetworkClient.active)
+            {
+                if (!_clientHandlersRegistered)
+                {
+                    NetworkClient.RegisterHandler<GmForceGuardMsg>(OnClientForceGuard, false);
+                    _clientHandlersRegistered = true;
+                }
+            }
+            else
+            {
+                _clientHandlersRegistered = false;
+            }
+
+            if (NetworkServer.active)
+            {
+                if (!_serverHandlersRegistered)
+                {
+                    NetworkServer.RegisterHandler<GmForceGuardMsg>(OnServerForceGuard, false);
+                    NetworkServer.RegisterHandler<GmNpcLockNearestPlayerMsg>(OnServerNpcLockNearestPlayer, false);
+                    NetworkServer.RegisterHandler<GmSetPostureNearBreakMsg>(OnServerSetPostureNearBreak, false);
+                    NetworkServer.RegisterHandler<GmReviveAllNpcsMsg>(OnServerReviveAllNpcs, false);
+                    _serverHandlersRegistered = true;
+                }
+            }
+            else
+            {
+                _serverHandlersRegistered = false;
+            }
+        }
+
+        private void UnregisterNetworkHandlers()
+        {
+            if (_clientHandlersRegistered)
+                NetworkClient.UnregisterHandler<GmForceGuardMsg>();
+
+            if (_serverHandlersRegistered)
+            {
+                NetworkServer.UnregisterHandler<GmForceGuardMsg>();
+                NetworkServer.UnregisterHandler<GmNpcLockNearestPlayerMsg>();
+                NetworkServer.UnregisterHandler<GmSetPostureNearBreakMsg>();
+                NetworkServer.UnregisterHandler<GmReviveAllNpcsMsg>();
+            }
+
+            _clientHandlersRegistered = false;
+            _serverHandlersRegistered = false;
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)

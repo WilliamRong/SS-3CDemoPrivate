@@ -40,11 +40,13 @@
 ## 当前实现状态
 
 - Offline/Server 共用的候选解析、资格校验、处决会话、成对状态、配置伤害分支、Motion Warping、无敌/攻击抑制、配对动画、输入锁定和处决镜头已有代码实现。
-- Mirror 已接入 `ExecutionRequestMsg`、`ExecutionStartMsg` 和 `ExecutionResultMsg`，包括连接所有权校验、Server 资格重算、Start/Result 广播以及远端表现锁存。
-- `ExecutionCompleteMsg` 已注册 Handler、由生命周期服务广播并接入 `SyncBootstrap` / `RemoteActionApplier`；远端按执行者/目标完成位释放抑制，并缓存 Complete 或 Result 先于 Start 的乱序情况。动画按权威开始时间追赶已接入；`ExecutionStateRequestMsg` / `ExecutionStateMsg` 提供活跃会话、短期终态、固定姿态和绝对 HP/revision 的晚加入/重绑定恢复。上述路径仍待 Unity Host/Client 运行验收。
-- `CharacterPresentationConfig` 已声明处决 CrossFade 与 clip 校准字段，但 `DefaultPresentation.asset` 尚未持久化这些字段；`DefaultCombat.asset` 的处决数值也仍需 Offline 动画校准。
-- 独立执行 `dotnet build Assembly-CSharp.csproj --no-restore -m:1` 时，生成的 `.csproj` 仍引用 9 个已迁移的 `Assets/Scripts/AI/*.cs` 旧路径并产生 `CS2001`；实际文件位于 `Assets/Scripts/AI/NpcStates/` 与 `Assets/Scripts/AI/BT/`，因此该命令当前不能作为零编译错误证据。
-- Scene Gizmo、Motion Warping 可视化编辑器、自动化测试以及 Offline/Host/Client 验收尚未完成。当前没有足够运行证据将这些环境标记为 `Verified`，因此本 change 暂不归档。
+- Mirror 已接入 `ExecutionRequestMsg`、`ExecutionStartMsg`、`ExecutionResultMsg`、`ExecutionCompleteMsg` 以及 `ExecutionStateRequestMsg` / `ExecutionStateMsg`，包括连接所有权校验、Server 资格重算、绝对 HP/revision、Start/Result/Complete 广播、乱序去重和终态恢复。
+- `DefaultPresentation.asset` 已持久化 `Executing` / `Executed` / `ExecutedDeath` 的 CrossFade 与 clip 校准字段；`DefaultCombat.asset` 已包含距离、角度、Warp 预算、曲线、伤害和时长配置，最终接触残差仍需 Offline 校准记录。
+- `ExecutionSpatialGizmo` 已绘制正面扇区、最大距离、处决锚点、Warp 平移预算和位置/Yaw 误差；`CharacterStateDebugOverlay` 已提供候选拒绝码、空间条件、Warp 和抑制状态诊断；`ExecutionOfflineCalibrationHarness` 已提供评估、启动、取消和残差采集入口。
+- 2026-09-13 的 Host/Client 验收确认双端处决、处决死亡表现、NPC 目标和重复消息保护正常。2026-09-14 通过 Host/Client MCP 复核：编辑器可连接、当前不在 Play Mode、无 Unity 编译错误或 Console Error；`openspec validate add-execution-motion-warping --strict` 与 `git diff --check` 通过。
+- 2026-09-17 通过 4399 MCP 在 `Assets/Scenes/Offline.unity` 执行临时运行时验收：无敌多令牌、HurtBox 关闭/恢复、攻击抑制隔离、非致死/致死伤害单次提交、处决死亡变体、角色输入锁定和 Arena 碰撞体启用均取得证据；8765 与 4399 两个 Editor 最终均退出 Play Mode 且未编译。此次验收同时发现 Offline 校准仍未通过：`DefaultCombat.asset` 当前 `executionResultTime=0.01`，处决者位置残差约 `1.5414m`，与设计期望的约 `2.7s` 结果时刻和可接受接触残差不符。
+- 当前任务清单为 `36/53`：核心运行时代码和已验收网络表现已完成；仍未完成的是 Offline 参数/碰撞/输入专项校准与证据、晚加入/重绑定专项验收、执行系统自动化测试、Motion Warping 可视化编辑器（8.1-8.6）以及完整需求/路线/验证文档更新（9.1-9.7 中的剩余项）。
+- 本 change 仍不能归档，原因是 Motion Warping 编辑器和验证/文档证据尚未完成；OpenSpec 工件本身完整不等于实现任务全部完成。
 
 ## 最新修正：处决伤害决定表现分支
 
