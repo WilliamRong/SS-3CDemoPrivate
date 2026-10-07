@@ -142,6 +142,38 @@ namespace Character.Config
         public AnimationCurve executionWarpCurve =
             AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
+        [Header("Executed Target Anchors")]
+        [Tooltip("Surviving target final anchor in the target's initial local space.")]
+        public Vector3 executedAnchorOffset =
+            new Vector3(-0.044593f, 0f, -2.505857f);
+
+        [Range(-180f, 180f)]
+        public float executedAnchorYawOffset = 0f;
+
+        [Tooltip("Lethal target final anchor in the target's initial local space.")]
+        public Vector3 executedDeathAnchorOffset =
+            new Vector3(-0.013544f, 0f, -2.648080f);
+
+        [Range(-180f, 180f)]
+        public float executedDeathAnchorYawOffset = 0f;
+
+        [Header("Executed Target Warp")]
+        [Tooltip("Maximum initial distance from the target to its selected branch anchor.")]
+        [Min(0f)]
+        public float executedMaxWarpTranslation = 4f;
+
+        [Range(0f, 180f)]
+        public float executedMaxWarpYaw = 90f;
+
+        [Range(0f, 1f)]
+        public float executedWarpWindowStartNormalized = 0f;
+
+        [Range(0f, 1f)]
+        public float executedWarpWindowEndNormalized = 1f;
+
+        public AnimationCurve executedWarpCurve =
+            AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+
         [Header("Execution Logic Timing")]
         [Tooltip("Authoritative health damage dealt once by an execution.")]
         [Min(0f)]
@@ -289,6 +321,43 @@ namespace Character.Config
             if (!IsExecutionWarpCurveValid(executionWarpCurve))
             {
                 executionWarpCurve =
+                    AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+            }
+
+            executedAnchorOffset = new Vector3(
+                FiniteOr(executedAnchorOffset.x, -0.044593f),
+                FiniteOr(executedAnchorOffset.y, 0f),
+                FiniteOr(executedAnchorOffset.z, -2.505857f));
+            executedAnchorYawOffset = Mathf.Clamp(
+                FiniteOr(executedAnchorYawOffset, 0f),
+                -180f,
+                180f);
+
+            executedDeathAnchorOffset = new Vector3(
+                FiniteOr(executedDeathAnchorOffset.x, -0.013544f),
+                FiniteOr(executedDeathAnchorOffset.y, 0f),
+                FiniteOr(executedDeathAnchorOffset.z, -2.648080f));
+            executedDeathAnchorYawOffset = Mathf.Clamp(
+                FiniteOr(executedDeathAnchorYawOffset, 0f),
+                -180f,
+                180f);
+
+            executedMaxWarpTranslation =
+                NonNegativeFinite(executedMaxWarpTranslation, 4f);
+            executedMaxWarpYaw = Mathf.Clamp(
+                FiniteOr(executedMaxWarpYaw, 90f),
+                0f,
+                180f);
+            executedWarpWindowStartNormalized = Mathf.Clamp01(
+                FiniteOr(executedWarpWindowStartNormalized, 0f));
+            executedWarpWindowEndNormalized = Mathf.Clamp(
+                FiniteOr(executedWarpWindowEndNormalized, 1f),
+                executedWarpWindowStartNormalized,
+                1f);
+
+            if (!IsExecutionWarpCurveValid(executedWarpCurve))
+            {
+                executedWarpCurve =
                     AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
             }
 

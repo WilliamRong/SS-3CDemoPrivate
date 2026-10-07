@@ -9,6 +9,7 @@ namespace Character.StateMachine.States
     public sealed class ExecutedState : ICharacterState
     {
         private readonly CharacterMotor _motor;
+        private readonly CharacterCombatConfig _combat;
         private readonly float _survivingDuration;
         private readonly float _lethalDuration;
 
@@ -18,7 +19,18 @@ namespace Character.StateMachine.States
 
         public CharacterStateId Id => CharacterStateId.Executed;
         public ExecutionSession Session => _session;
+        public ExecutionWarpContext WarpContext => _warpContext;
         public float ElapsedTime { get; private set; }
+
+        private ExecutionWarpContext _warpContext;
+
+        private float CurrentDuration =>
+            _session.TargetWillDie
+                ? _lethalDuration
+                : _survivingDuration;
+
+        public float NormalizedTime =>
+            Mathf.Clamp01(ElapsedTime / CurrentDuration);
 
         public bool HasReachedDuration =>
             _isActive &&
@@ -31,6 +43,7 @@ namespace Character.StateMachine.States
             CharacterCombatConfig combat)
         {
             _motor = motor;
+            _combat = combat;
             _survivingDuration = Mathf.Max(
                 0.01f,
                 combat != null ? combat.executedDuration : 0.01f);
@@ -46,16 +59,81 @@ namespace Character.StateMachine.States
             if (!session.TryValidate(out _) ||
                 !session.IsActive ||
                 session.TargetActorId != ownerActorId ||
-                _isActive)
+                _isActive ||
+                _motor == null ||
+                _motor.Root == null)
             {
                 return false;
             }
 
             if (_hasSession)
-                return _session.ExecutionId == session.ExecutionId;
+            {
+                return _session.ExecutionId == session.ExecutionId &&
+                       _warpContext != null &&
+                       _warpContext.IsActive;
+            }
+
+            var initialPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            if (!ExecutionWarpContext.TryCreateTarget(
+                    session,
+                    ownerActorId,
+                    _combat,
+                    initialPose,
+                    out ExecutionWarpContext warpContext))
+            {
+                return false;
+            }
 
             _session = session;
+            _warpContext = warpContext;
             _hasSession = true;
+            return true;
+        }
+
+        public bool TryWarpRootMotion(
+            Vector3 originalDeltaPosition,
+            Quaternion originalDeltaRotation,
+            out Vector3 correctedDeltaPosition,
+            out Quaternion correctedDeltaRotation)
+        {
+            correctedDeltaPosition = originalDeltaPosition;
+            correctedDeltaRotation = originalDeltaRotation;
+
+            if (!_isActive ||
+                !_hasSession ||
+                _warpContext == null ||
+                !_warpContext.IsActive ||
+                _motor == null ||
+                _motor.Root == null)
+            {
+                return false;
+            }
+
+            var currentPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            float originalDeltaYaw = Mathf.DeltaAngle(
+                0f,
+                originalDeltaRotation.eulerAngles.y);
+
+            if (!_warpContext.TryWarp(
+                    currentPose,
+                    originalDeltaPosition,
+                    originalDeltaYaw,
+                    NormalizedTime,
+                    out correctedDeltaPosition,
+                    out float correctedDeltaYaw))
+            {
+                return false;
+            }
+
+            correctedDeltaRotation =
+                Quaternion.Euler(0f, correctedDeltaYaw, 0f);
+
             return true;
         }
 
@@ -83,7 +161,8 @@ namespace Character.StateMachine.States
             _motor.SetSprintActive(false);
             _motor.SetMovementBlocked(true);
             _motor.SetTurnRotationOverride(true);
-            ApplyFixedPose();
+            ApplyInitialPose();
+            _motor.BeginReactionRootMotion();
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
@@ -93,12 +172,13 @@ namespace Character.StateMachine.States
 
             ElapsedTime += Mathf.Max(0f, deltaTime);
 
-            // 不推进 Motor，直接丢弃 rig_Executed 的 Root Motion。
-            ApplyFixedPose();
+            _motor.Tick(default, deltaTime);
+            RefreshWarpResidual();
         }
 
         public void Exit()
         {
+            _motor.EndReactionRootMotion();
             _motor.SetMovementBlocked(false);
             _motor.SetTurnRotationOverride(false);
 
@@ -107,7 +187,7 @@ namespace Character.StateMachine.States
             ClearBinding();
         }
 
-        private void ApplyFixedPose()
+        private void ApplyInitialPose()
         {
             if (!_hasSession)
                 return;
@@ -120,8 +200,31 @@ namespace Character.StateMachine.States
 
         private void ClearBinding()
         {
+            if (_warpContext != null)
+            {
+                _warpContext.TryEnd(_warpContext.ExecutionId);
+            }
+
+            _warpContext = null;
             _session = default;
             _hasSession = false;
+        }
+
+        private void RefreshWarpResidual()
+        {
+            if (_warpContext == null ||
+                !_warpContext.IsActive ||
+                _motor == null ||
+                _motor.Root == null)
+            {
+                return;
+            }
+
+            var actualPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            _warpContext.RefreshRemainingError(actualPose);
         }
     }
 }

@@ -574,8 +574,25 @@ namespace AI
             if (CurrentStateId is not (
                     CharacterStateId.Attack
                     or CharacterStateId.Hit
-                    or CharacterStateId.Dead))
+                    or CharacterStateId.Dead
+                    or CharacterStateId.Executed))
                 return;
+
+            if (CurrentStateId == CharacterStateId.Executed)
+            {
+                if (_executed == null ||
+                    !_executed.TryWarpRootMotion(
+                        deltaPosition,
+                        deltaRotation,
+                        out Vector3 warpedPosition,
+                        out Quaternion warpedRotation))
+                {
+                    return;
+                }
+
+                deltaPosition = warpedPosition;
+                deltaRotation = warpedRotation;
+            }
 
             _motor.ApplyRootMotionDelta(deltaPosition, deltaRotation);
         }

@@ -827,6 +827,8 @@ namespace Character.Sync
                 {
                     Transform executorTransform = executorIdentity.transform;
                     Vector3 executorPosition = executorTransform.position;
+                    Transform targetTransform = targetIdentity.transform;
+                    Vector3 targetPosition = targetTransform.position;
                     DeathPresentationVariant deathVariant =
                         session.TargetWillDie
                             ? DeathPresentationVariant.Executed
@@ -856,6 +858,11 @@ namespace Character.Sync
                         ExecutorPy = executorPosition.y,
                         ExecutorPz = executorPosition.z,
                         ExecutorYaw = executorTransform.eulerAngles.y,
+
+                        TargetPx = targetPosition.x,
+                        TargetPy = targetPosition.y,
+                        TargetPz = targetPosition.z,
+                        TargetYaw = targetTransform.eulerAngles.y,
 
                         StartTimeSec = session.StartTimeSec,
                         ResultTimeSec = session.ResultTimeSec,
@@ -922,6 +929,7 @@ namespace Character.Sync
                 ? DeathPresentationVariant.Executed
                 : DeathPresentationVariant.Default;
             Vector3 executorPosition = executorIdentity.transform.position;
+            Vector3 targetPosition = targetIdentity.transform.position;
             ExecutionStateMsg cached = new ExecutionStateMsg
             {
                 HasState = 1,
@@ -940,6 +948,10 @@ namespace Character.Sync
                 ExecutorPy = executorPosition.y,
                 ExecutorPz = executorPosition.z,
                 ExecutorYaw = executorIdentity.transform.eulerAngles.y,
+                TargetPx = targetPosition.x,
+                TargetPy = targetPosition.y,
+                TargetPz = targetPosition.z,
+                TargetYaw = targetIdentity.transform.eulerAngles.y,
                 StartTimeSec = session.StartTimeSec,
                 ResultTimeSec = session.ResultTimeSec,
                 AuthorityTimeSec = NetworkTime.localTime,

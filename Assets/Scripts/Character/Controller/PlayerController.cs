@@ -1070,17 +1070,28 @@ namespace Character.Controller
         public void HandleAnimatorRootMotion(Vector3 deltaPosition, Quaternion deltaRotation)
         {
 
-            bool canConsumeExecutionRootMotion = CurrentStateId == CharacterStateId.Executing && NetworkServer.active;
+            bool isExecutionState = CurrentStateId is
+                CharacterStateId.Executing or
+                CharacterStateId.Executed;
 
+            bool canConsumeExecutionRootMotion =
+                isExecutionState &&
+                NetworkServer.active;
 
-            if (!CanProcessLocalInput() && !canConsumeExecutionRootMotion) return;
+            if (isExecutionState && !canConsumeExecutionRootMotion)
+                return;
+
+            if (!isExecutionState && !CanProcessLocalInput())
+                return;
+
             if (_motor == null) return;
 
             if (CurrentStateId is not (
                     CharacterStateId.Attack
                     or CharacterStateId.Hit
                     or CharacterStateId.Dead
-                    or CharacterStateId.Executing))
+                    or CharacterStateId.Executing
+                    or CharacterStateId.Executed))
                 return;
 
             if (CurrentStateId == CharacterStateId.Executing)
@@ -1092,6 +1103,21 @@ namespace Character.Controller
 
                 deltaPosition = warpedPosition;
                 deltaRotation = warpedRotation;
+            }
+            else if (CurrentStateId == CharacterStateId.Executed)
+            {
+                if (_executedState == null ||
+                    !_executedState.TryWarpRootMotion(
+                        deltaPosition,
+                        deltaRotation,
+                        out Vector3 targetWarpedPosition,
+                        out Quaternion targetWarpedRotation))
+                {
+                    return;
+                }
+
+                deltaPosition = targetWarpedPosition;
+                deltaRotation = targetWarpedRotation;
             }
 
             _motor.SetAttackRootMotionDelta(deltaPosition, deltaRotation);

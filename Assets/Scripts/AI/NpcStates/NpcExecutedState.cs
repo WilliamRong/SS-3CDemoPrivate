@@ -9,6 +9,7 @@ namespace AI.NpcStates
     public sealed class NpcExecutedState : ICharacterState
     {
         private readonly NpcMotor _motor;
+        private readonly CharacterCombatConfig _combat;
         private readonly float _survivingDuration;
         private readonly float _lethalDuration;
 
@@ -18,7 +19,18 @@ namespace AI.NpcStates
 
         public CharacterStateId Id => CharacterStateId.Executed;
         public ExecutionSession Session => _session;
+        public ExecutionWarpContext WarpContext => _warpContext;
         public float ElapsedTime { get; private set; }
+
+        private ExecutionWarpContext _warpContext;
+
+        private float CurrentDuration =>
+            _session.TargetWillDie
+                ? _lethalDuration
+                : _survivingDuration;
+
+        public float NormalizedTime =>
+            Mathf.Clamp01(ElapsedTime / CurrentDuration);
 
         public bool HasReachedDuration =>
             _isActive &&
@@ -31,6 +43,7 @@ namespace AI.NpcStates
             CharacterCombatConfig combat)
         {
             _motor = motor;
+            _combat = combat;
             _survivingDuration = Mathf.Max(
                 0.01f,
                 combat != null ? combat.executedDuration : 0.01f);
@@ -46,16 +59,81 @@ namespace AI.NpcStates
             if (!session.TryValidate(out _) ||
                 !session.IsActive ||
                 session.TargetActorId != ownerActorId ||
-                _isActive)
+                _isActive ||
+                _motor == null ||
+                _motor.Root == null)
             {
                 return false;
             }
 
             if (_hasSession)
-                return _session.ExecutionId == session.ExecutionId;
+            {
+                return _session.ExecutionId == session.ExecutionId &&
+                       _warpContext != null &&
+                       _warpContext.IsActive;
+            }
+
+            var initialPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            if (!ExecutionWarpContext.TryCreateTarget(
+                    session,
+                    ownerActorId,
+                    _combat,
+                    initialPose,
+                    out ExecutionWarpContext warpContext))
+            {
+                return false;
+            }
 
             _session = session;
+            _warpContext = warpContext;
             _hasSession = true;
+            return true;
+        }
+
+        public bool TryWarpRootMotion(
+            Vector3 originalDeltaPosition,
+            Quaternion originalDeltaRotation,
+            out Vector3 correctedDeltaPosition,
+            out Quaternion correctedDeltaRotation)
+        {
+            correctedDeltaPosition = originalDeltaPosition;
+            correctedDeltaRotation = originalDeltaRotation;
+
+            if (!_isActive ||
+                !_hasSession ||
+                _warpContext == null ||
+                !_warpContext.IsActive ||
+                _motor == null ||
+                _motor.Root == null)
+            {
+                return false;
+            }
+
+            var currentPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            float originalDeltaYaw = Mathf.DeltaAngle(
+                0f,
+                originalDeltaRotation.eulerAngles.y);
+
+            if (!_warpContext.TryWarp(
+                    currentPose,
+                    originalDeltaPosition,
+                    originalDeltaYaw,
+                    NormalizedTime,
+                    out correctedDeltaPosition,
+                    out float correctedDeltaYaw))
+            {
+                return false;
+            }
+
+            correctedDeltaRotation =
+                Quaternion.Euler(0f, correctedDeltaYaw, 0f);
+
             return true;
         }
 
@@ -82,7 +160,7 @@ namespace AI.NpcStates
 
             _motor?.Stop();
             _motor?.ResetPath();
-            ApplyFixedPose();
+            ApplyInitialPose();
         }
 
         public void Tick(CharacterIntent intent, float deltaTime)
@@ -91,7 +169,7 @@ namespace AI.NpcStates
                 return;
 
             ElapsedTime += Mathf.Max(0f, deltaTime);
-            ApplyFixedPose();
+            RefreshWarpResidual();
         }
 
         public void Exit()
@@ -101,7 +179,7 @@ namespace AI.NpcStates
             ClearBinding();
         }
 
-        private void ApplyFixedPose()
+        private void ApplyInitialPose()
         {
             if (!_hasSession || _motor == null)
                 return;
@@ -114,8 +192,31 @@ namespace AI.NpcStates
 
         private void ClearBinding()
         {
+            if (_warpContext != null)
+            {
+                _warpContext.TryEnd(_warpContext.ExecutionId);
+            }
+
+            _warpContext = null;
             _session = default;
             _hasSession = false;
+        }
+
+        private void RefreshWarpResidual()
+        {
+            if (_warpContext == null ||
+                !_warpContext.IsActive ||
+                _motor == null ||
+                _motor.Root == null)
+            {
+                return;
+            }
+
+            var actualPose = new ExecutionPose(
+                _motor.Root.position,
+                _motor.Root.eulerAngles.y);
+
+            _warpContext.RefreshRemainingError(actualPose);
         }
     }
 }

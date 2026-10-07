@@ -199,6 +199,12 @@ namespace Character.EditorTests.Execution
             config.executionWarpWindowEndNormalized = 0.5f;
             config.executionWarpCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
+            config.executedMaxWarpTranslation = 4f;
+            config.executedMaxWarpYaw = 180f;
+            config.executedWarpWindowStartNormalized = 0f;
+            config.executedWarpWindowEndNormalized = 1f;
+            config.executedWarpCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
             return config;
         }
 
@@ -347,6 +353,155 @@ namespace Character.EditorTests.Execution
                 out ExecutionWarpContext context);
 
             Assert.That(created, Is.False);
+            Assert.That(context, Is.Null);
+        }
+
+        [Test]
+        public void TargetAnchorResolverRotatesBranchOffsetWithFixedPose()
+        {
+            CharacterCombatConfig config = CreateConfig();
+            config.executedAnchorOffset = new Vector3(0f, 0f, 2f);
+            config.executedAnchorYawOffset = 25f;
+            config.executedDeathAnchorOffset = new Vector3(1f, 0f, 0f);
+            config.executedDeathAnchorYawOffset = -30f;
+
+            var fixedPose = new ExecutionPose(
+                new Vector3(10f, 0f, 5f),
+                90f);
+
+            Assert.That(
+                ExecutionWarpAnchorResolver.TryResolveTargetAnchor(
+                    fixedPose,
+                    config,
+                    false,
+                    out ExecutionPose survivingAnchor),
+                Is.True);
+
+            AssertVectorApproximately(
+                survivingAnchor.Position,
+                new Vector3(12f, 0f, 5f));
+            Assert.That(
+                survivingAnchor.Yaw,
+                Is.EqualTo(115f).Within(0.0001f));
+
+            Assert.That(
+                ExecutionWarpAnchorResolver.TryResolveTargetAnchor(
+                    fixedPose,
+                    config,
+                    true,
+                    out ExecutionPose lethalAnchor),
+                Is.True);
+
+            AssertVectorApproximately(
+                lethalAnchor.Position,
+                new Vector3(10f, 0f, 4f));
+            Assert.That(
+                lethalAnchor.Yaw,
+                Is.EqualTo(60f).Within(0.0001f));
+        }
+
+        [Test]
+        public void GenericSettingsDriveTargetTrajectoryToAnchor()
+        {
+            var settings = new ExecutionWarpSettings(
+                0f,
+                1f,
+                4f,
+                180f,
+                AnimationCurve.Linear(0f, 0f, 1f, 1f));
+
+            var samples = new[]
+            {
+                new ExecutionWarpInputSample(
+                    0.5f,
+                    new Vector3(0f, 0f, -0.5f),
+                    0f),
+                new ExecutionWarpInputSample(
+                    1f,
+                    new Vector3(0f, 0f, -0.5f),
+                    0f),
+            };
+
+            Assert.That(
+                ExecutionWarpTrajectorySampler.TrySample(
+                    new ExecutionPose(new Vector3(0f, 0f, -2f), 0f),
+                    new ExecutionPose(Vector3.zero, 0f),
+                    settings,
+                    samples,
+                    out ExecutionWarpTrajectory trajectory),
+                Is.True);
+
+            Assert.That(trajectory.Frames.Count, Is.EqualTo(2));
+            AssertVectorApproximately(
+                trajectory.FinalPose.Position,
+                new Vector3(0f, 0f, -2f));
+            Assert.That(
+                trajectory.FinalPositionError.magnitude,
+                Is.EqualTo(0f).Within(0.0001f));
+        }
+
+        [TestCase(false, -2f)]
+        [TestCase(true, -3f)]
+        public void TargetRuntimeContextUsesSelectedBranchAnchor(
+            bool targetWillDie,
+            float expectedZ)
+        {
+            CharacterCombatConfig config = CreateConfig();
+            config.executedAnchorOffset = new Vector3(0f, 0f, -2f);
+            config.executedDeathAnchorOffset = new Vector3(0f, 0f, -3f);
+
+            var session = new ExecutionSession(
+                2001UL,
+                10,
+                20,
+                new ExecutionPose(Vector3.zero, 0f),
+                new ExecutionPose(Vector3.forward, 180f),
+                0d,
+                2d,
+                50f,
+                targetWillDie);
+
+            Assert.That(
+                ExecutionWarpContext.TryCreateTarget(
+                    session,
+                    20,
+                    config,
+                    new ExecutionPose(Vector3.zero, 0f),
+                    out ExecutionWarpContext context),
+                Is.True);
+
+            Assert.That(
+                context.Participant,
+                Is.EqualTo(ExecutionWarpParticipant.Target));
+            Assert.That(
+                context.AnchorPose.Position.z,
+                Is.EqualTo(expectedZ).Within(0.0001f));
+        }
+
+        [Test]
+        public void TargetRuntimeContextRejectsWrongOwner()
+        {
+            CharacterCombatConfig config = CreateConfig();
+
+            var session = new ExecutionSession(
+                2002UL,
+                10,
+                20,
+                new ExecutionPose(Vector3.zero, 0f),
+                new ExecutionPose(Vector3.forward, 180f),
+                0d,
+                2d,
+                50f,
+                false);
+
+            Assert.That(
+                ExecutionWarpContext.TryCreateTarget(
+                    session,
+                    10,
+                    config,
+                    new ExecutionPose(Vector3.zero, 0f),
+                    out ExecutionWarpContext context),
+                Is.False);
             Assert.That(context, Is.Null);
         }
 

@@ -121,11 +121,16 @@ namespace Character.Sync
         public float ExecutorAnchorPz;
         public float ExecutorAnchorYaw;
 
-        // 返回消息时处决者的绝对权威姿态。
+        // 返回消息时双方的绝对权威姿态。
         public float ExecutorPx;
         public float ExecutorPy;
         public float ExecutorPz;
         public float ExecutorYaw;
+
+        public float TargetPx;
+        public float TargetPy;
+        public float TargetPz;
+        public float TargetYaw;
 
         public double StartTimeSec;
         public double ResultTimeSec;

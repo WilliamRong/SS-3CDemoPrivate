@@ -112,13 +112,37 @@ namespace Character.Execution
         {
             trajectory = null;
 
+            if (!ExecutionWarpSettings.TryFromExecutor(
+                    config,
+                    out ExecutionWarpSettings settings))
+            {
+                return false;
+            }
+
+            return TrySample(
+                anchorPose,
+                initialExecutorPose,
+                settings,
+                inputSamples,
+                out trajectory);
+        }
+
+        public static bool TrySample(
+                  in ExecutionPose anchorPose,
+                  in ExecutionPose initialParticipantPose,
+                  in ExecutionWarpSettings settings,
+                  IReadOnlyList<ExecutionWarpInputSample> inputSamples,
+                  out ExecutionWarpTrajectory trajectory)
+        {
+            trajectory = null;
+
             if (inputSamples == null)
                 return false;
 
             if (!ExecutionWarpSolver.TryCreate(
                     anchorPose,
-                    initialExecutorPose,
-                    config,
+                    initialParticipantPose,
+                    settings,
                     out ExecutionWarpSolver solver))
             {
                 return false;
@@ -127,7 +151,7 @@ namespace Character.Execution
             var frames = new List<ExecutionWarpTrajectoryFrame>(
                 inputSamples.Count);
 
-            ExecutionPose currentPose = initialExecutorPose;
+            ExecutionPose currentPose = initialParticipantPose;
 
             for (int i = 0; i < inputSamples.Count; i++)
             {
@@ -186,7 +210,7 @@ namespace Character.Execution
 
             trajectory = new ExecutionWarpTrajectory(
                 anchorPose,
-                initialExecutorPose,
+                initialParticipantPose,
                 currentPose,
                 frames,
                 solver.ActualRemainingPositionError,

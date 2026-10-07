@@ -40,8 +40,8 @@ MonoBehaviour:
   parryCrossFadeDuration: 0.08
   parriedCrossFadeDuration: 0.08
   executingCrossFadeDuration: 0.08
-  executedCrossFadeDuration: 0.08
-  executedDeathCrossFadeDuration: 0.08
+  executedCrossFadeDuration: 0.09
+  executedDeathCrossFadeDuration: 0.09
   executeClipDuration: 2.7
   executedClipDuration: 3.516667
   executedDeathClipDuration: 2.5333335

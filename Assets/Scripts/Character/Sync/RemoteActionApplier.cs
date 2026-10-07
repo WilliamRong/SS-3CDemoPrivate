@@ -286,7 +286,15 @@ namespace Character.Sync
                 float.IsNaN(message.ExecutorPz) ||
                 float.IsInfinity(message.ExecutorPz) ||
                 float.IsNaN(message.ExecutorYaw) ||
-                float.IsInfinity(message.ExecutorYaw))
+                float.IsInfinity(message.ExecutorYaw) ||
+                float.IsNaN(message.TargetPx) ||
+                float.IsInfinity(message.TargetPx) ||
+                float.IsNaN(message.TargetPy) ||
+                float.IsInfinity(message.TargetPy) ||
+                float.IsNaN(message.TargetPz) ||
+                float.IsInfinity(message.TargetPz) ||
+                float.IsNaN(message.TargetYaw) ||
+                float.IsInfinity(message.TargetYaw))
             {
                 return;
             }
@@ -348,10 +356,13 @@ namespace Character.Sync
                         message.ExecutorPx,
                         message.ExecutorPy,
                         message.ExecutorPz)
-                    : stateSession.FixedTargetPose.Position;
+                    : new Vector3(
+                        message.TargetPx,
+                        message.TargetPy,
+                        message.TargetPz);
                 float yaw = actorId == stateSession.ExecutorActorId
                     ? message.ExecutorYaw
-                    : stateSession.FixedTargetPose.Yaw;
+                    : message.TargetYaw;
 
                 transform.SetPositionAndRotation(
                     position,
@@ -359,6 +370,33 @@ namespace Character.Sync
             }
 
             ApplyExecutionStart(startMessage);
+
+            // Entering Executing/Executed applies the deterministic start pose.
+            // A state-recovery message instead carries the latest authoritative
+            // pose, so restore it after the state transition as well. Remote
+            // participants do not consume execution Root Motion locally.
+            if (!NetworkServer.active)
+            {
+                Vector3 recoveredPosition =
+                    actorId == stateSession.ExecutorActorId
+                        ? new Vector3(
+                            message.ExecutorPx,
+                            message.ExecutorPy,
+                            message.ExecutorPz)
+                        : new Vector3(
+                            message.TargetPx,
+                            message.TargetPy,
+                            message.TargetPz);
+
+                float recoveredYaw =
+                    actorId == stateSession.ExecutorActorId
+                        ? message.ExecutorYaw
+                        : message.TargetYaw;
+
+                transform.SetPositionAndRotation(
+                    recoveredPosition,
+                    Quaternion.Euler(0f, recoveredYaw, 0f));
+            }
 
             TryApplyPendingExecutionResult();
 

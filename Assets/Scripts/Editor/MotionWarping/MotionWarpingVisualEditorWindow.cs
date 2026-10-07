@@ -1,3 +1,4 @@
+using System.Text;
 using Character.Config;
 using Character.Execution;
 using UnityEditor;
@@ -28,6 +29,9 @@ namespace Character.EditorTools.Execution
         private const string DefaultExecutedDeathClipPath =
             "Assets/ARPGSamurai/Animations/Humanoid/rig_Executed_Death.anim";
 
+        private const string DefaultPreviewLayoutDirectory =
+            "Assets/Editor/MotionWarpingPreviewLayouts";
+
         private string _defaultResourceMessage;
 
         private const string WindowTitle = "Motion Warping Visual Editor";
@@ -50,20 +54,47 @@ namespace Character.EditorTools.Execution
         private MotionWarpingRootMotionSample
             _executeRootMotionSample;
 
+        private MotionWarpingRootMotionSample
+            _targetRootMotionSample;
+
         private AnimationClip _sampledExecuteClip;
 
         private GameObject _sampledExecutorPrefab;
 
         private string _executeSamplingMessage;
 
+        private AnimationClip _sampledTargetRootMotionClip;
+
+        private GameObject _sampledTargetRootMotionPrefab;
+
+        private TargetPreviewBranch _sampledTargetRootMotionBranch;
+
+        private string _targetRootMotionSamplingMessage;
+
         //========================Trajectory==============================
         private ExecutionWarpTrajectory _executeTrajectory;
 
+        private ExecutionWarpTrajectory _targetTrajectory;
+
         private bool _showTrajectoryDiagnostics = true;
+
+        private string _calibrationReportMessage = string.Empty;
+
+        private MessageType _calibrationReportMessageType =
+            MessageType.Info;
 
         //==========================Timeline==============================
 
+        private float _previewElapsedTime = 0f;
+
+        // Warp 轨迹始终使用处决者自己的 normalized time。
         private float _scrubNormalizedTime = 0f;
+
+        private bool _isPreviewPlaying;
+
+        private double _previewPlaybackStartedAt;
+
+        private string _previewPlaybackMessage = string.Empty;
 
         //==========================PreivewScene==========================
 
@@ -75,6 +106,8 @@ namespace Character.EditorTools.Execution
 
         private bool _previewSceneOpenedByWindow;
 
+        private bool _previewSceneIsEditorPreviewScene;
+
         private GameObject _previewRoot;
         private GameObject _previewExecutorInstance;
 
@@ -83,6 +116,52 @@ namespace Character.EditorTools.Execution
         private GameObject _previewExecutorSource;
         private GameObject _previewTargetSource;
         private string _previewScenePath;
+
+        private string _sceneNavigationMessage = string.Empty;
+
+        private Vector3 _previewExecutorInitialPosition =
+            new Vector3(0f, 0f, 0.6f);
+
+        private float _previewExecutorInitialYaw = 180f;
+
+        private Vector3 _previewExecutorInitialEulerAngles =
+            new Vector3(0f, 180f, 0f);
+
+        private Vector3 _previewTargetInitialPosition = Vector3.zero;
+
+        private float _previewTargetInitialYaw;
+
+        private Vector3 _previewTargetInitialEulerAngles = Vector3.zero;
+
+        [SerializeField]
+        private MotionWarpingPreviewLayout _previewLayout;
+
+        [SerializeField]
+        private Vector3 _configuredExecutorPosition =
+            new Vector3(0f, 0f, 0.6f);
+
+        [SerializeField]
+        private Vector3 _configuredExecutorEulerAngles =
+            new Vector3(0f, 180f, 0f);
+
+        [SerializeField]
+        private Vector3 _configuredTargetPosition = Vector3.zero;
+
+        [SerializeField]
+        private Vector3 _configuredTargetEulerAngles = Vector3.zero;
+
+        [SerializeField]
+        private bool _useCombatDefaultPreviewLayout = true;
+
+        private string _previewLayoutMessage = string.Empty;
+
+        private string _previewSpatialMessage = string.Empty;
+
+        private MotionWarpingAnimationPreviewPlayer
+            _executorAnimationPreviewPlayer;
+
+        private MotionWarpingAnimationPreviewPlayer
+            _targetAnimationPreviewPlayer;
 
 
         private CharacterCombatConfig _previewCombatSource;
@@ -131,16 +210,21 @@ namespace Character.EditorTools.Execution
 
         private void OnGUI()
         {
+            DrawHeader();
+            DrawDefaultResourceToolBar();
+
+            SyncPreviewScene();
+            DrawPreviewWorkspaceToolbar();
+            DrawTimelineSection();
+
+            EditorGUILayout.Space(4f);
             _scroll = EditorGUILayout.BeginScrollView(_scroll);
 
-            DrawHeader();
-
-
-            DrawDefaultResourceToolBar();
             DrawAssetSection();
 
             SyncPreviewScene();
             DrawPreviewSceneStatus();
+            DrawInitialPoseConfigurationSection();
 
 
             DrawCombatConfigSection();
@@ -150,8 +234,8 @@ namespace Character.EditorTools.Execution
             DrawExecuteRootMotionSamplingSection();
 
             DrawTargetPosePreviewSection();
-            DrawTimelineSection();
             DrawTrajectoryDiagnosticsSection();
+            DrawCalibrationReportSection();
             DrawDiagnosticsSection();
 
             EditorGUILayout.EndScrollView();
@@ -162,7 +246,7 @@ namespace Character.EditorTools.Execution
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField(WindowTitle, EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(
-                "在隔离 PreviewScene 中采样 Root Motion，并用 Scene View 轨迹和 Handle 校准 Motion Warping。",
+                "进入专用编辑器场景后采样 Root Motion，并用 Scene View 轨迹和 Handle 校准 Motion Warping。",
                 MessageType.Info);
         }
 
@@ -231,6 +315,7 @@ namespace Character.EditorTools.Execution
         private void ClearResourceSelection()
         {
             ClearExecuteRootMotionSample();
+            ClearTargetRootMotionSample();
             DisposePreviewScene();
             _combatConfig = null;
             _presentationConfig = null;
@@ -368,6 +453,25 @@ namespace Character.EditorTools.Execution
             DrawProperty(serialized, "executionWarpWindowStartNormalized");
             DrawProperty(serialized, "executionWarpWindowEndNormalized");
             DrawProperty(serialized, "executionWarpCurve");
+
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(
+                "被处决者 Warp",
+                EditorStyles.boldLabel);
+            DrawProperty(serialized, "executedAnchorOffset");
+            DrawProperty(serialized, "executedAnchorYawOffset");
+            DrawProperty(serialized, "executedDeathAnchorOffset");
+            DrawProperty(serialized, "executedDeathAnchorYawOffset");
+            DrawProperty(serialized, "executedMaxWarpTranslation");
+            DrawProperty(serialized, "executedMaxWarpYaw");
+            DrawProperty(serialized, "executedWarpWindowStartNormalized");
+            DrawProperty(serialized, "executedWarpWindowEndNormalized");
+            DrawProperty(serialized, "executedWarpCurve");
+
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(
+                "处决时长",
+                EditorStyles.boldLabel);
             DrawProperty(serialized, "executingDuration");
             DrawProperty(serialized, "executedDuration");
             DrawProperty(serialized, "executedDeathDuration");
@@ -648,6 +752,12 @@ namespace Character.EditorTools.Execution
             EditorApplication.quitting +=
                 HandleEditorQuitting;
 
+            EditorApplication.update +=
+                HandleEditorUpdate;
+
+            EditorSceneManager.activeSceneChangedInEditMode +=
+                HandleActiveSceneChangedInEditMode;
+
             Undo.undoRedoPerformed += HandleUndoRedo;
             SceneView.duringSceneGui += HandleSceneGUI;
         }
@@ -660,15 +770,29 @@ namespace Character.EditorTools.Execution
             EditorApplication.quitting -=
                 HandleEditorQuitting;
 
+            EditorApplication.update -=
+                HandleEditorUpdate;
+
+            EditorSceneManager.activeSceneChangedInEditMode -=
+                HandleActiveSceneChangedInEditMode;
+
             Undo.undoRedoPerformed -= HandleUndoRedo;
             SceneView.duringSceneGui -= HandleSceneGUI;
 
+            StopPreviewPlayback(false);
             DisposePreviewScene();
         }
 
         private void HandleUndoRedo()
         {
             _executeTrajectory = null;
+            _targetTrajectory = null;
+
+            if (_previewExecutorInstance != null &&
+                _previewTargetInstance != null)
+            {
+                ApplyConfiguredPreviewPoses();
+            }
 
             Repaint();
             SceneView.RepaintAll();
@@ -683,6 +807,15 @@ namespace Character.EditorTools.Execution
             }
 
             _executeTrajectory = null;
+            _targetTrajectory = null;
+
+            if (_previewExecutorInstance != null &&
+                _previewTargetInstance != null)
+            {
+                SetScrubElapsedTime(
+                    _previewElapsedTime,
+                    true);
+            }
 
             Repaint();
             SceneView.RepaintAll();
@@ -703,20 +836,233 @@ namespace Character.EditorTools.Execution
             DisposePreviewScene();
         }
 
+        private void HandleActiveSceneChangedInEditMode(
+            Scene previousScene,
+            Scene nextScene)
+        {
+            if (IsDedicatedPreviewSceneActive(
+                    GetConfiguredPreviewScenePath()))
+            {
+                SyncPreviewScene();
+            }
+            else
+            {
+                StopPreviewPlayback(false);
+                DisposePreviewScene();
+            }
+
+            Repaint();
+            SceneView.RepaintAll();
+        }
+
+        private string GetConfiguredPreviewScenePath()
+        {
+            if (_previewSceneAsset != null)
+            {
+                string selectedPath =
+                    AssetDatabase.GetAssetPath(_previewSceneAsset);
+
+                if (!string.IsNullOrEmpty(selectedPath))
+                {
+                    return selectedPath;
+                }
+            }
+
+            return DefaultPreviewScenePath;
+        }
+
+        private static bool IsDedicatedPreviewSceneActive(
+            string scenePath)
+        {
+            if (string.IsNullOrEmpty(scenePath))
+            {
+                return false;
+            }
+
+            Scene activeScene = SceneManager.GetActiveScene();
+
+            return activeScene.IsValid() &&
+                   activeScene.isLoaded &&
+                   string.Equals(
+                       activeScene.path,
+                       scenePath,
+                       System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void DrawPreviewWorkspaceToolbar()
+        {
+            string scenePath = GetConfiguredPreviewScenePath();
+            bool dedicatedSceneActive =
+                IsDedicatedPreviewSceneActive(scenePath);
+
+            EditorGUILayout.Space(6f);
+            EditorGUILayout.LabelField(
+                "预览工作区",
+                EditorStyles.boldLabel);
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                using (new EditorGUI.DisabledScope(
+                           dedicatedSceneActive))
+                {
+                    if (GUILayout.Button(
+                            dedicatedSceneActive
+                                ? "已在预览场景"
+                                : "进入预览场景",
+                            GUILayout.Height(26f)))
+                    {
+                        OpenDedicatedPreviewScene();
+                    }
+                }
+
+                bool canRun =
+                    dedicatedSceneActive &&
+                    _previewExecutorInstance != null &&
+                    _previewTargetInstance != null &&
+                    _executeClip != null;
+
+                using (new EditorGUI.DisabledScope(!canRun))
+                {
+                    if (GUILayout.Button(
+                            _isPreviewPlaying
+                                ? "重新运行动作"
+                                : "运行动作",
+                            GUILayout.Height(26f)))
+                    {
+                        StartPreviewPlayback();
+                    }
+                }
+
+                using (new EditorGUI.DisabledScope(
+                           !_isPreviewPlaying))
+                {
+                    if (GUILayout.Button(
+                            "停止",
+                            GUILayout.Width(64f),
+                            GUILayout.Height(26f)))
+                    {
+                        StopPreviewPlayback(false);
+                    }
+                }
+
+                using (new EditorGUI.DisabledScope(!canRun))
+                {
+                    if (GUILayout.Button(
+                            "复位",
+                            GUILayout.Width(64f),
+                            GUILayout.Height(26f)))
+                    {
+                        StopPreviewPlayback(false);
+                        SetScrubElapsedTime(0f, true);
+                        _previewPlaybackMessage =
+                            "Edit Mode 预览已复位。";
+                    }
+                }
+            }
+
+            if (!dedicatedSceneActive)
+            {
+                EditorGUILayout.HelpBox(
+                    $"当前不在专用预览场景。点击“进入预览场景”将以 Single 模式打开：\n{scenePath}",
+                    MessageType.Info);
+            }
+
+            if (!string.IsNullOrEmpty(_sceneNavigationMessage))
+            {
+                EditorGUILayout.HelpBox(
+                    _sceneNavigationMessage,
+                    dedicatedSceneActive
+                        ? MessageType.Info
+                        : MessageType.Warning);
+            }
+
+            if (!string.IsNullOrEmpty(_previewPlaybackMessage))
+            {
+                EditorGUILayout.HelpBox(
+                    _previewPlaybackMessage,
+                    _previewPlaybackMessage.StartsWith(
+                        "无法")
+                        ? MessageType.Warning
+                        : MessageType.Info);
+            }
+        }
+
+        private void OpenDedicatedPreviewScene()
+        {
+            string scenePath = GetConfiguredPreviewScenePath();
+            SceneAsset sceneAsset =
+                AssetDatabase.LoadAssetAtPath<SceneAsset>(
+                    scenePath);
+
+            if (sceneAsset == null)
+            {
+                _sceneNavigationMessage =
+                    $"无法进入预览场景：资源不存在。\n{scenePath}";
+                return;
+            }
+
+            if (IsDedicatedPreviewSceneActive(scenePath))
+            {
+                _previewSceneAsset = sceneAsset;
+                _sceneNavigationMessage =
+                    "专用预览场景已经处于活动状态。";
+                SyncPreviewScene();
+                return;
+            }
+
+            if (!EditorSceneManager
+                    .SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                _sceneNavigationMessage =
+                    "已取消进入预览场景。";
+                return;
+            }
+
+            StopPreviewPlayback(false);
+            DisposePreviewScene();
+
+            try
+            {
+                Scene openedScene =
+                    EditorSceneManager.OpenScene(
+                        scenePath,
+                        OpenSceneMode.Single);
+
+                if (!openedScene.IsValid() ||
+                    !openedScene.isLoaded)
+                {
+                    _sceneNavigationMessage =
+                        "无法进入预览场景：Unity 未能加载场景。";
+                    return;
+                }
+
+                _previewSceneAsset = sceneAsset;
+                _sceneNavigationMessage =
+                    $"已进入专用预览场景：{scenePath}";
+
+                SyncPreviewScene();
+                Repaint();
+                SceneView.RepaintAll();
+            }
+            catch (System.Exception exception)
+            {
+                _sceneNavigationMessage =
+                    $"无法进入预览场景：{exception.Message}";
+            }
+        }
+
 
         private void SyncPreviewScene()
         {
-            string scenePath =
-                _previewSceneAsset == null
-                    ? string.Empty
-                    : AssetDatabase.GetAssetPath(_previewSceneAsset);
+            string scenePath = GetConfiguredPreviewScenePath();
 
             bool hasRequiredResources =
                 !string.IsNullOrEmpty(scenePath) &&
                 _executorPreviewPrefab != null &&
                 _targetPreviewPrefab != null;
 
-            if (!hasRequiredResources)
+            if (!hasRequiredResources ||
+                !IsDedicatedPreviewSceneActive(scenePath))
             {
                 DisposePreviewScene();
                 return;
@@ -729,10 +1075,20 @@ namespace Character.EditorTools.Execution
                 _previewCombatSource != _combatConfig ||
                 _previewPresentationSource != _presentationConfig;
 
-            if (_previewScene.IsValid() &&
-                _previewScene.isLoaded &&
+            bool previewHierarchyIntact =
+                _previewRoot != null &&
                 _previewExecutorInstance != null &&
                 _previewTargetInstance != null &&
+                _previewExecutorInstance.transform.parent ==
+                    _previewRoot.transform &&
+                _previewTargetInstance.transform.parent ==
+                    _previewRoot.transform &&
+                _previewExecutorInstance.scene == _previewScene &&
+                _previewTargetInstance.scene == _previewScene;
+
+            if (_previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                previewHierarchyIntact &&
                 !sourceChanged)
             {
                 return;
@@ -764,48 +1120,30 @@ namespace Character.EditorTools.Execution
 
         private bool TryOpenPreviewScene(string scenePath)
         {
-            Scene loadedScene =
-                SceneManager.GetSceneByPath(scenePath);
-
-            if (loadedScene.IsValid() &&
-                loadedScene.isLoaded)
-            {
-                _previewScene = loadedScene;
-                _previewSceneOpenedByWindow = false;
-                _previewScenePath = scenePath;
-                return true;
-            }
-
-            Scene previousActiveScene =
+            Scene activeScene =
                 SceneManager.GetActiveScene();
 
-            _previewScene =
-                EditorSceneManager.OpenScene(
+            if (!activeScene.IsValid() ||
+                !activeScene.isLoaded ||
+                !string.Equals(
+                    activeScene.path,
                     scenePath,
-                    OpenSceneMode.Additive);
-
-            if (!_previewScene.IsValid() ||
-                !_previewScene.isLoaded)
+                    System.StringComparison.OrdinalIgnoreCase))
             {
-                _previewScene = default;
-                _previewScenePath = string.Empty;
                 return false;
             }
 
-            _previewSceneOpenedByWindow = true;
+            _previewScene = activeScene;
+            _previewSceneOpenedByWindow = false;
+            _previewSceneIsEditorPreviewScene = false;
             _previewScenePath = scenePath;
-
-            if (previousActiveScene.IsValid() &&
-                previousActiveScene.isLoaded)
-            {
-                SceneManager.SetActiveScene(previousActiveScene);
-            }
-
             return true;
         }
 
         private void CreatePreviewInstances(string scenePath)
         {
+            bool sceneWasDirty = _previewScene.isDirty;
+
             _previewRoot =
                 new GameObject("MotionWarpingPreviewRoot");
 
@@ -853,13 +1191,14 @@ namespace Character.EditorTools.Execution
                 _previewRoot.transform,
                 false);
 
-            _previewTargetInstance.transform.SetPositionAndRotation(
-                Vector3.zero,
-                Quaternion.identity);
-
-            _previewExecutorInstance.transform.SetPositionAndRotation(
-                new Vector3(0f, 0f, -1f),
-                Quaternion.identity);
+            if (_useCombatDefaultPreviewLayout)
+            {
+                ConfigureDefaultPreviewPoses();
+            }
+            else
+            {
+                ApplyConfiguredPreviewPoses();
+            }
 
             _previewExecutorSource =
                 _executorPreviewPrefab;
@@ -870,15 +1209,89 @@ namespace Character.EditorTools.Execution
             _previewCombatSource = _combatConfig;
 
             _previewPresentationSource = _presentationConfig;
+
+            if (!sceneWasDirty &&
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded)
+            {
+                ClearPreviewSceneDirtiness(
+                    _previewScene);
+            }
+        }
+
+        private void ConfigureDefaultPreviewPoses()
+        {
+            Vector3 anchorOffset =
+                _combatConfig == null
+                    ? new Vector3(0f, 0f, 0.6f)
+                    : _combatConfig.executorAnchorOffset;
+
+            Quaternion targetYawRotation =
+                Quaternion.identity;
+
+            Vector3 executorPosition =
+                Vector3.zero +
+                targetYawRotation * anchorOffset;
+
+            Vector3 executorToTarget =
+                Vector3.zero - executorPosition;
+
+            executorToTarget.y = 0f;
+
+            float executorYaw =
+                executorToTarget.sqrMagnitude > 0.000001f
+                    ? Mathf.Atan2(
+                          executorToTarget.x,
+                          executorToTarget.z) *
+                      Mathf.Rad2Deg
+                    : 180f;
+
+            _configuredTargetPosition = Vector3.zero;
+            _configuredTargetEulerAngles = Vector3.zero;
+            _configuredExecutorPosition = executorPosition;
+            _configuredExecutorEulerAngles =
+                new Vector3(0f, executorYaw, 0f);
+            _useCombatDefaultPreviewLayout = true;
+
+            ApplyConfiguredPreviewPoses();
         }
 
 
 
         private void DisposePreviewScene()
         {
+            _previewElapsedTime = 0f;
+            _scrubNormalizedTime = 0f;
+            _targetPreviewNormalizedTime = 0f;
+
+            bool hasPreviewState =
+                _previewScene.IsValid() ||
+                _previewRoot != null ||
+                _previewExecutorInstance != null ||
+                _previewTargetInstance != null ||
+                _previewExecutorSource != null ||
+                _previewTargetSource != null ||
+                _executorAnimationPreviewPlayer != null ||
+                _targetAnimationPreviewPlayer != null;
+
+            if (!hasPreviewState)
+            {
+                _isPreviewPlaying = false;
+                return;
+            }
+
             Scene sceneToClose = _previewScene;
+            bool sceneWasDirty =
+                sceneToClose.IsValid() &&
+                sceneToClose.isLoaded &&
+                sceneToClose.isDirty;
             bool closeScene =
                 _previewSceneOpenedByWindow;
+            bool closeEditorPreviewScene =
+                _previewSceneIsEditorPreviewScene;
+
+            DisposeAnimationPreviewPlayers();
+            ClearSelectionIfItBelongsToPreview();
 
             if (_previewExecutorInstance != null)
             {
@@ -899,14 +1312,30 @@ namespace Character.EditorTools.Execution
                 sceneToClose.IsValid() &&
                 sceneToClose.isLoaded)
             {
-                EditorSceneManager.CloseScene(
-                    sceneToClose,
-                    true);
+                if (closeEditorPreviewScene)
+                {
+                    EditorSceneManager.ClosePreviewScene(
+                        sceneToClose);
+                }
+                else
+                {
+                    EditorSceneManager.CloseScene(
+                        sceneToClose,
+                        true);
+                }
+            }
+            else if (!sceneWasDirty &&
+                     sceneToClose.IsValid() &&
+                     sceneToClose.isLoaded)
+            {
+                ClearPreviewSceneDirtiness(
+                    sceneToClose);
             }
 
             _previewScene = default;
             _previewScenePath = string.Empty;
             _previewSceneOpenedByWindow = false;
+            _previewSceneIsEditorPreviewScene = false;
 
             _previewRoot = null;
             _previewExecutorInstance = null;
@@ -915,6 +1344,18 @@ namespace Character.EditorTools.Execution
             _previewTargetSource = null;
             _previewCombatSource = null;
             _previewPresentationSource = null;
+            _previewExecutorInitialPosition =
+                new Vector3(0f, 0f, 0.6f);
+            _previewExecutorInitialYaw = 180f;
+            _previewExecutorInitialEulerAngles =
+                new Vector3(0f, 180f, 0f);
+            _previewTargetInitialPosition = Vector3.zero;
+            _previewTargetInitialYaw = 0f;
+            _previewTargetInitialEulerAngles = Vector3.zero;
+            _executeTrajectory = null;
+            _targetTrajectory = null;
+            _previewSpatialMessage = string.Empty;
+            _isPreviewPlaying = false;
 
             _targetPreviewMessage = string.Empty;
             _targetPoseSamplingAttempted = false;
@@ -924,17 +1365,53 @@ namespace Character.EditorTools.Execution
             ClearTargetPosePreviewState();
         }
 
+        private void ClearSelectionIfItBelongsToPreview()
+        {
+            if (_previewRoot == null ||
+                Selection.activeObject == null)
+            {
+                return;
+            }
+
+            GameObject selectedObject =
+                Selection.activeObject as GameObject;
+
+            if (selectedObject == null &&
+                Selection.activeObject is Component component)
+            {
+                selectedObject = component.gameObject;
+            }
+
+            if (selectedObject != null &&
+                selectedObject.transform.IsChildOf(
+                    _previewRoot.transform))
+            {
+                Selection.activeObject = null;
+            }
+        }
+
         private void DrawPreviewSceneStatus()
         {
             EditorGUILayout.Space(6f);
             EditorGUILayout.LabelField(
-                "Preview Scene",
+                "专用预览场景",
                 EditorStyles.boldLabel);
+
+            string scenePath = GetConfiguredPreviewScenePath();
+
+            if (!IsDedicatedPreviewSceneActive(scenePath))
+            {
+                EditorGUILayout.HelpBox(
+                    "当前场景不是专用预览场景；工具不会在这里创建预览对象。",
+                    MessageType.Info);
+
+                return;
+            }
 
             if (!_previewScene.IsValid())
             {
                 EditorGUILayout.HelpBox(
-                    "Preview Scene 尚未加载。",
+                    "专用场景已打开，但临时预览环境尚未就绪。",
                     MessageType.Info);
 
                 return;
@@ -946,9 +1423,434 @@ namespace Character.EditorTools.Execution
 
             EditorGUILayout.HelpBox(
                 valid
-                    ? $"已加载：{_previewScenePath}\n预览对象已隔离到该场景。"
-                    : "场景已加载，但预览对象创建失败。",
+                    ? $"已进入：{_previewScenePath}\n预览对象仅临时存在，不会写入场景资产。"
+                    : "专用场景已打开，但预览对象创建失败。",
                 valid ? MessageType.Info : MessageType.Error);
+
+            if (!string.IsNullOrEmpty(_previewSpatialMessage))
+            {
+                EditorGUILayout.HelpBox(
+                    _previewSpatialMessage,
+                    _previewSpatialMessage.Contains(
+                        "空间条件有效")
+                        ? MessageType.Info
+                        : MessageType.Warning);
+            }
+        }
+
+        private void DrawInitialPoseConfigurationSection()
+        {
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField(
+                "预览初始站位",
+                EditorStyles.boldLabel);
+
+            EditorGUILayout.HelpBox(
+                "这里的世界位置/旋转只控制专用场景中的临时预览角色，不会改写运行时出生点或 Combat 配置。",
+                MessageType.Info);
+
+            MotionWarpingPreviewLayout selectedLayout =
+                (MotionWarpingPreviewLayout)EditorGUILayout.ObjectField(
+                    "站位配置",
+                    _previewLayout,
+                    typeof(MotionWarpingPreviewLayout),
+                    false);
+
+            if (selectedLayout != _previewLayout)
+            {
+                Undo.RecordObject(
+                    this,
+                    "Select Motion Warping Preview Layout");
+
+                _previewLayout = selectedLayout;
+                _previewLayoutMessage = selectedLayout == null
+                    ? "已取消选择站位配置；当前工作副本仍保留。"
+                    : $"已选择 {selectedLayout.name}；点击“加载配置”应用其内容。";
+            }
+
+            EditorGUI.BeginChangeCheck();
+
+            Vector3 executorPosition =
+                EditorGUILayout.Vector3Field(
+                    "处决者 Position",
+                    _configuredExecutorPosition);
+
+            Vector3 executorEulerAngles =
+                EditorGUILayout.Vector3Field(
+                    "处决者 Rotation",
+                    _configuredExecutorEulerAngles);
+
+            Vector3 targetPosition =
+                EditorGUILayout.Vector3Field(
+                    "被处决者 Position",
+                    _configuredTargetPosition);
+
+            Vector3 targetEulerAngles =
+                EditorGUILayout.Vector3Field(
+                    "被处决者 Rotation",
+                    _configuredTargetEulerAngles);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                Undo.RecordObject(
+                    this,
+                    "Edit Motion Warping Preview Layout");
+
+                _configuredExecutorPosition = executorPosition;
+                _configuredExecutorEulerAngles =
+                    executorEulerAngles;
+                _configuredTargetPosition = targetPosition;
+                _configuredTargetEulerAngles = targetEulerAngles;
+                _useCombatDefaultPreviewLayout = false;
+                _previewLayoutMessage =
+                    "初始站位工作副本已更新；如需复用，请新建或保存配置。";
+
+                ApplyConfiguredPreviewPoses();
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("新建配置"))
+                {
+                    CreatePreviewLayoutAsset();
+                }
+
+                using (new EditorGUI.DisabledScope(
+                           _previewLayout == null))
+                {
+                    if (GUILayout.Button("加载配置"))
+                    {
+                        LoadSelectedPreviewLayout();
+                    }
+
+                    if (GUILayout.Button("保存配置"))
+                    {
+                        SaveSelectedPreviewLayout();
+                    }
+                }
+
+                if (GUILayout.Button("按 Combat 锚点重置"))
+                {
+                    Undo.RecordObject(
+                        this,
+                        "Reset Motion Warping Preview Layout");
+
+                    ConfigureDefaultPreviewPoses();
+                    _previewLayoutMessage = _combatConfig == null
+                        ? "已按后备锚点重置工作副本。"
+                        : "已按当前 Combat 锚点重置工作副本；尚未覆盖站位配置资产。";
+                }
+            }
+
+            if (!string.IsNullOrEmpty(_previewLayoutMessage))
+            {
+                bool isWarning =
+                    _previewLayoutMessage.StartsWith("无法") ||
+                    _previewLayoutMessage.StartsWith("站位数据无效");
+
+                EditorGUILayout.HelpBox(
+                    _previewLayoutMessage,
+                    isWarning
+                        ? MessageType.Warning
+                        : MessageType.Info);
+            }
+        }
+
+        private void ApplyConfiguredPreviewPoses()
+        {
+            if (!IsFiniteVector3(_configuredExecutorPosition) ||
+                !IsFiniteVector3(
+                    _configuredExecutorEulerAngles) ||
+                !IsFiniteVector3(_configuredTargetPosition) ||
+                !IsFiniteVector3(_configuredTargetEulerAngles))
+            {
+                _previewLayoutMessage =
+                    "站位数据无效：Position/Rotation 必须全部是有限数值。";
+                return;
+            }
+
+            if (_previewExecutorInstance == null ||
+                _previewTargetInstance == null)
+            {
+                _previewSpatialMessage =
+                    "初始站位已保留；进入专用预览场景后应用。";
+                return;
+            }
+
+            StopPreviewPlayback(false);
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
+
+            Transform targetTransform =
+                _previewTargetInstance.transform;
+
+            targetTransform.SetPositionAndRotation(
+                _configuredTargetPosition,
+                Quaternion.Euler(
+                    _configuredTargetEulerAngles));
+
+            _previewExecutorInstance.transform
+                .SetPositionAndRotation(
+                    _configuredExecutorPosition,
+                    Quaternion.Euler(
+                        _configuredExecutorEulerAngles));
+
+            _previewExecutorInitialPosition =
+                _configuredExecutorPosition;
+            _previewExecutorInitialEulerAngles =
+                _configuredExecutorEulerAngles;
+            _previewExecutorInitialYaw =
+                Mathf.DeltaAngle(
+                    0f,
+                    _configuredExecutorEulerAngles.y);
+
+            _previewTargetInitialPosition =
+                _configuredTargetPosition;
+            _previewTargetInitialEulerAngles =
+                _configuredTargetEulerAngles;
+            _previewTargetInitialYaw =
+                Mathf.DeltaAngle(
+                    0f,
+                    _configuredTargetEulerAngles.y);
+
+            _scrubNormalizedTime = 0f;
+            _targetPreviewNormalizedTime = 0f;
+            _previewElapsedTime = 0f;
+            _executeTrajectory = null;
+            _targetTrajectory = null;
+
+            if (_combatConfig == null)
+            {
+                _previewSpatialMessage =
+                    "初始站位已应用；选择 Combat Config 后可验证空间条件。";
+            }
+            else
+            {
+                ExecutionEligibilityResult eligibility =
+                    ExecutionSpatialValidator.Evaluate(
+                        _previewExecutorInstance.transform,
+                        targetTransform,
+                        _combatConfig);
+
+                string layoutKind =
+                    _useCombatDefaultPreviewLayout
+                        ? "默认"
+                        : "当前";
+
+                _previewSpatialMessage = eligibility.IsEligible
+                    ? $"{layoutKind}空间条件有效：距离 {eligibility.HorizontalDistance:F3}m，" +
+                      $"目标正面角 {eligibility.TargetFrontAngle:F2}°，" +
+                      $"初始 Warp 误差 {eligibility.WarpTranslationError:F3}m / " +
+                      $"{eligibility.WarpYawError:F2}°。"
+                    : $"{layoutKind}站位未通过空间判定：{eligibility.RejectionReason}。";
+            }
+
+            RestorePreviewSceneDirtiness(sceneWasDirty);
+            SceneView.RepaintAll();
+        }
+
+        private void LoadSelectedPreviewLayout()
+        {
+            if (_previewLayout == null)
+            {
+                _previewLayoutMessage =
+                    "无法加载：请先选择站位配置。";
+                return;
+            }
+
+            if (!IsPreviewLayoutFinite(_previewLayout))
+            {
+                _previewLayoutMessage =
+                    "站位数据无效：所选配置包含 NaN 或 Infinity。";
+                return;
+            }
+
+            Undo.RecordObject(
+                this,
+                "Load Motion Warping Preview Layout");
+
+            _configuredExecutorPosition =
+                _previewLayout.executorPosition;
+            _configuredExecutorEulerAngles =
+                _previewLayout.executorEulerAngles;
+            _configuredTargetPosition =
+                _previewLayout.targetPosition;
+            _configuredTargetEulerAngles =
+                _previewLayout.targetEulerAngles;
+            _useCombatDefaultPreviewLayout = false;
+
+            ApplyConfiguredPreviewPoses();
+            _previewLayoutMessage =
+                $"已加载站位配置：{_previewLayout.name}。";
+        }
+
+        private void SaveSelectedPreviewLayout()
+        {
+            if (_previewLayout == null)
+            {
+                _previewLayoutMessage =
+                    "无法保存：请先选择或新建站位配置。";
+                return;
+            }
+
+            if (!AreConfiguredPreviewPosesFinite())
+            {
+                _previewLayoutMessage =
+                    "站位数据无效：Position/Rotation 必须全部是有限数值。";
+                return;
+            }
+
+            Undo.RecordObject(
+                _previewLayout,
+                "Save Motion Warping Preview Layout");
+
+            using var serialized =
+                new SerializedObject(_previewLayout);
+
+            serialized.Update();
+            serialized.FindProperty("executorPosition")
+                .vector3Value = _configuredExecutorPosition;
+            serialized.FindProperty("executorEulerAngles")
+                .vector3Value = _configuredExecutorEulerAngles;
+            serialized.FindProperty("targetPosition")
+                .vector3Value = _configuredTargetPosition;
+            serialized.FindProperty("targetEulerAngles")
+                .vector3Value = _configuredTargetEulerAngles;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            EditorUtility.SetDirty(_previewLayout);
+            AssetDatabase.SaveAssetIfDirty(_previewLayout);
+
+            _previewLayoutMessage =
+                $"已保存站位配置：{AssetDatabase.GetAssetPath(_previewLayout)}";
+        }
+
+        private void CreatePreviewLayoutAsset()
+        {
+            if (!AreConfiguredPreviewPosesFinite())
+            {
+                _previewLayoutMessage =
+                    "站位数据无效：Position/Rotation 必须全部是有限数值。";
+                return;
+            }
+
+            if (!EnsurePreviewLayoutDirectory())
+            {
+                _previewLayoutMessage =
+                    $"无法创建默认目录：{DefaultPreviewLayoutDirectory}";
+                return;
+            }
+
+            string assetPath =
+                EditorUtility.SaveFilePanelInProject(
+                    "新建 Motion Warping 预览站位配置",
+                    "MotionWarpingPreviewLayout",
+                    "asset",
+                    "站位配置仅用于 Editor 预览。",
+                    DefaultPreviewLayoutDirectory);
+
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                return;
+            }
+
+            string normalizedPath =
+                assetPath.Replace('\\', '/');
+
+            if (!normalizedPath.StartsWith(
+                    "Assets/Editor/",
+                    System.StringComparison.OrdinalIgnoreCase))
+            {
+                _previewLayoutMessage =
+                    "无法创建：站位配置必须保存在 Assets/Editor/ 下，以保持 Editor-only。";
+                return;
+            }
+
+            var layout =
+                CreateInstance<MotionWarpingPreviewLayout>();
+
+            layout.executorPosition =
+                _configuredExecutorPosition;
+            layout.executorEulerAngles =
+                _configuredExecutorEulerAngles;
+            layout.targetPosition =
+                _configuredTargetPosition;
+            layout.targetEulerAngles =
+                _configuredTargetEulerAngles;
+
+            AssetDatabase.CreateAsset(layout, normalizedPath);
+            EditorUtility.SetDirty(layout);
+            AssetDatabase.SaveAssetIfDirty(layout);
+
+            Undo.RecordObject(
+                this,
+                "Select New Motion Warping Preview Layout");
+
+            _previewLayout = layout;
+            _useCombatDefaultPreviewLayout = false;
+            _previewLayoutMessage =
+                $"已新建站位配置：{normalizedPath}";
+
+            Selection.activeObject = layout;
+            EditorGUIUtility.PingObject(layout);
+        }
+
+        private bool AreConfiguredPreviewPosesFinite()
+        {
+            return IsFiniteVector3(_configuredExecutorPosition) &&
+                   IsFiniteVector3(
+                       _configuredExecutorEulerAngles) &&
+                   IsFiniteVector3(_configuredTargetPosition) &&
+                   IsFiniteVector3(
+                       _configuredTargetEulerAngles);
+        }
+
+        private static bool IsPreviewLayoutFinite(
+            MotionWarpingPreviewLayout layout)
+        {
+            return layout != null &&
+                   IsFiniteVector3(layout.executorPosition) &&
+                   IsFiniteVector3(
+                       layout.executorEulerAngles) &&
+                   IsFiniteVector3(layout.targetPosition) &&
+                   IsFiniteVector3(layout.targetEulerAngles);
+        }
+
+        private static bool EnsurePreviewLayoutDirectory()
+        {
+            const string editorDirectory = "Assets/Editor";
+
+            if (!AssetDatabase.IsValidFolder(editorDirectory))
+            {
+                string editorGuid =
+                    AssetDatabase.CreateFolder(
+                        "Assets",
+                        "Editor");
+
+                if (string.IsNullOrEmpty(editorGuid))
+                {
+                    return false;
+                }
+            }
+
+            if (!AssetDatabase.IsValidFolder(
+                    DefaultPreviewLayoutDirectory))
+            {
+                string layoutGuid =
+                    AssetDatabase.CreateFolder(
+                        editorDirectory,
+                        "MotionWarpingPreviewLayouts");
+
+                if (string.IsNullOrEmpty(layoutGuid))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private void DrawExecuteRootMotionSamplingSection()
@@ -1046,8 +1948,16 @@ namespace Character.EditorTools.Execution
 
         private void SampleExecuteRootMotion()
         {
+            _isPreviewPlaying = false;
+            DisposeExecutorAnimationPreviewPlayer();
+            RestorePreviewExecutorInitialPose();
             _executeSamplingAttempted = true;
             ClearExecuteRootMotionSample();
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
 
             bool success =
                 MotionWarpingRootMotionSampler.TrySample(
@@ -1056,6 +1966,8 @@ namespace Character.EditorTools.Execution
                     ExecuteSampleRate,
                     out MotionWarpingRootMotionSample sample,
                     out string error);
+
+            RestorePreviewSceneDirtiness(sceneWasDirty);
 
             if (!success)
             {
@@ -1113,6 +2025,384 @@ namespace Character.EditorTools.Execution
             Repaint();
         }
 
+        private void StartPreviewPlayback()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                _previewPlaybackMessage =
+                    "无法运行动作：该按钮只用于 Edit Mode 预览。";
+                return;
+            }
+
+            string scenePath = GetConfiguredPreviewScenePath();
+
+            if (!IsDedicatedPreviewSceneActive(scenePath) ||
+                _previewExecutorInstance == null ||
+                _previewTargetInstance == null)
+            {
+                _previewPlaybackMessage =
+                    "无法运行动作：请先进入专用预览场景并准备预览对象。";
+                return;
+            }
+
+            InvalidateStaleExecuteSample();
+            InvalidateStaleTargetRootMotionSample();
+
+            if (_executeRootMotionSample == null)
+            {
+                SampleExecuteRootMotion();
+            }
+
+            if (_targetRootMotionSample == null)
+            {
+                SampleTargetRootMotion();
+            }
+
+            SetScrubElapsedTime(0f, true);
+
+            if (!TryEvaluatePreviewState(
+                    out ExecutionWarpTrajectory trajectory,
+                    out string previewMessage))
+            {
+                _previewPlaybackMessage =
+                    $"无法运行动作：{previewMessage}";
+                return;
+            }
+
+            _executeTrajectory = trajectory;
+            _previewPlaybackStartedAt =
+                EditorApplication.timeSinceStartup;
+            _isPreviewPlaying = true;
+            _previewPlaybackMessage =
+                "正在播放 Edit Mode 预览；该结果不等同于 Runtime Verified。";
+
+            Repaint();
+            SceneView.RepaintAll();
+        }
+
+        private void StopPreviewPlayback(bool resetToStart)
+        {
+            bool wasPlaying = _isPreviewPlaying;
+            _isPreviewPlaying = false;
+
+            if (resetToStart &&
+                _previewExecutorInstance != null)
+            {
+                SetScrubElapsedTime(0f, true);
+            }
+
+            if (wasPlaying)
+            {
+                _previewPlaybackMessage =
+                    "Edit Mode 动作预览已停止。";
+                Repaint();
+                SceneView.RepaintAll();
+            }
+        }
+
+        private void HandleEditorUpdate()
+        {
+            if (!_isPreviewPlaying)
+            {
+                return;
+            }
+
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                StopPreviewPlayback(false);
+                _previewPlaybackMessage =
+                    "Edit Mode 动作预览已停止：Unity 正在进入 Play Mode。";
+                return;
+            }
+
+            if (!IsDedicatedPreviewSceneActive(
+                    GetConfiguredPreviewScenePath()))
+            {
+                StopPreviewPlayback(false);
+                DisposePreviewScene();
+                _previewPlaybackMessage =
+                    "Edit Mode 动作预览已停止：已离开专用预览场景。";
+                return;
+            }
+
+            float duration = GetPreviewAnimationDuration();
+
+            if (duration <= 0f)
+            {
+                StopPreviewPlayback(false);
+                _previewPlaybackMessage =
+                    "无法继续运行动作：动画时长无效。";
+                return;
+            }
+
+            float elapsedTime = Mathf.Max(
+                0f,
+                (float)(EditorApplication.timeSinceStartup -
+                        _previewPlaybackStartedAt));
+
+            SetScrubElapsedTime(elapsedTime, true);
+
+            if (elapsedTime >= duration)
+            {
+                _isPreviewPlaying = false;
+                _previewPlaybackMessage =
+                    "Edit Mode 动作预览播放完成；Runtime 仍未验证。";
+            }
+        }
+
+        private void SetScrubElapsedTime(
+            float elapsedTime,
+            bool applyPose)
+        {
+            if (TryGetPreviewTimeSample(
+                    elapsedTime,
+                    out MotionWarpingPreviewTimeSample timing))
+            {
+                _previewElapsedTime = timing.ElapsedTime;
+                _scrubNormalizedTime =
+                    timing.ExecutorNormalizedTime;
+                _targetPreviewNormalizedTime =
+                    timing.TargetNormalizedTime;
+            }
+            else
+            {
+                _previewElapsedTime = 0f;
+                _scrubNormalizedTime = 0f;
+                _targetPreviewNormalizedTime = 0f;
+            }
+
+            if (applyPose)
+            {
+                ApplyPreviewPoseAtScrub();
+            }
+
+            Repaint();
+            SceneView.RepaintAll();
+        }
+
+        private void ApplyPreviewPoseAtScrub()
+        {
+            ApplyTargetPosePreview();
+
+            if (_previewExecutorInstance == null ||
+                _executeClip == null ||
+                !TryBuildExecuteTrajectory(
+                    out ExecutionWarpTrajectory trajectory) ||
+                trajectory.Frames == null ||
+                trajectory.Frames.Count == 0)
+            {
+                RestorePreviewExecutorInitialPose();
+                return;
+            }
+
+            float normalizedTime =
+                Mathf.Clamp01(_scrubNormalizedTime);
+
+            ExecutionPose executorPose =
+                trajectory.InitialPose;
+
+            for (int index = 0;
+                 index < trajectory.Frames.Count;
+                 index++)
+            {
+                ExecutionWarpTrajectoryFrame frame =
+                    trajectory.Frames[index];
+
+                if (frame.NormalizedTime >
+                    normalizedTime + 0.0001f)
+                {
+                    break;
+                }
+
+                executorPose = frame.PoseAfter;
+            }
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
+
+            try
+            {
+                MotionWarpingAnimationPreviewPlayer player =
+                    GetExecutorAnimationPreviewPlayer();
+
+                if (!player.TrySample(
+                        _previewExecutorInstance,
+                        _executeClip,
+                        normalizedTime,
+                        out string animationError))
+                {
+                    _previewPlaybackMessage =
+                        $"无法更新处决者动画：{animationError}";
+                    _isPreviewPlaying = false;
+                    return;
+                }
+
+                _previewExecutorInstance.transform
+                    .SetPositionAndRotation(
+                        executorPose.Position,
+                        Quaternion.Euler(
+                            _previewExecutorInitialEulerAngles.x,
+                            executorPose.Yaw,
+                            _previewExecutorInitialEulerAngles.z));
+
+                _executeTrajectory = trajectory;
+            }
+            catch (System.Exception exception)
+            {
+                _previewPlaybackMessage =
+                    $"无法更新动作姿态：{exception.Message}";
+                _isPreviewPlaying = false;
+            }
+            finally
+            {
+                RestorePreviewSceneDirtiness(sceneWasDirty);
+            }
+        }
+
+        private void RestorePreviewExecutorInitialPose()
+        {
+            if (_previewExecutorInstance == null)
+            {
+                return;
+            }
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
+
+            _previewExecutorInstance.transform
+                .SetPositionAndRotation(
+                    _previewExecutorInitialPosition,
+                    Quaternion.Euler(
+                        _previewExecutorInitialEulerAngles.x,
+                        _previewExecutorInitialYaw,
+                        _previewExecutorInitialEulerAngles.z));
+
+            RestorePreviewSceneDirtiness(sceneWasDirty);
+        }
+
+        private void RestorePreviewTargetInitialPose()
+        {
+            if (_previewTargetInstance == null)
+            {
+                return;
+            }
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
+
+            _previewTargetInstance.transform
+                .SetPositionAndRotation(
+                    _previewTargetInitialPosition,
+                    Quaternion.Euler(
+                        _previewTargetInitialEulerAngles.x,
+                        _previewTargetInitialYaw,
+                        _previewTargetInitialEulerAngles.z));
+
+            RestorePreviewSceneDirtiness(sceneWasDirty);
+        }
+
+        private void RestorePreviewSceneDirtiness(
+            bool sceneWasDirty)
+        {
+            if (!sceneWasDirty &&
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded)
+            {
+                ClearPreviewSceneDirtiness(
+                    _previewScene);
+            }
+        }
+
+        private static void ClearPreviewSceneDirtiness(
+            Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                return;
+            }
+
+            System.Reflection.MethodInfo clearMethod =
+                typeof(EditorSceneManager).GetMethod(
+                    "ClearSceneDirtiness",
+                    System.Reflection.BindingFlags.Static |
+                    System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic);
+
+            if (clearMethod == null)
+            {
+                return;
+            }
+
+            try
+            {
+                clearMethod.Invoke(
+                    null,
+                    new object[] { scene });
+            }
+            catch (System.Exception)
+            {
+                // 保留 Dirty 状态比自动保存或覆盖用户场景更安全。
+            }
+        }
+
+        private MotionWarpingAnimationPreviewPlayer
+            GetExecutorAnimationPreviewPlayer()
+        {
+            if (_executorAnimationPreviewPlayer == null)
+            {
+                _executorAnimationPreviewPlayer =
+                    new MotionWarpingAnimationPreviewPlayer();
+            }
+
+            return _executorAnimationPreviewPlayer;
+        }
+
+        private MotionWarpingAnimationPreviewPlayer
+            GetTargetAnimationPreviewPlayer()
+        {
+            if (_targetAnimationPreviewPlayer == null)
+            {
+                _targetAnimationPreviewPlayer =
+                    new MotionWarpingAnimationPreviewPlayer();
+            }
+
+            return _targetAnimationPreviewPlayer;
+        }
+
+        private void DisposeExecutorAnimationPreviewPlayer()
+        {
+            if (_executorAnimationPreviewPlayer == null)
+            {
+                return;
+            }
+
+            _executorAnimationPreviewPlayer.Dispose();
+            _executorAnimationPreviewPlayer = null;
+        }
+
+        private void DisposeTargetAnimationPreviewPlayer()
+        {
+            if (_targetAnimationPreviewPlayer == null)
+            {
+                return;
+            }
+
+            _targetAnimationPreviewPlayer.Dispose();
+            _targetAnimationPreviewPlayer = null;
+        }
+
+        private void DisposeAnimationPreviewPlayers()
+        {
+            DisposeExecutorAnimationPreviewPlayer();
+            DisposeTargetAnimationPreviewPlayer();
+        }
+
         private void InvalidateStaleExecuteSample()
         {
             if (_executeRootMotionSample == null)
@@ -1142,8 +2432,104 @@ namespace Character.EditorTools.Execution
             _executeSamplingMessage = string.Empty;
         }
 
+        private void InvalidateStaleTargetRootMotionSample()
+        {
+            if (_targetRootMotionSample == null)
+            {
+                return;
+            }
+
+            bool sourceChanged =
+                _sampledTargetRootMotionClip !=
+                    GetSelectedTargetPreviewClip() ||
+                _sampledTargetRootMotionPrefab !=
+                    _targetPreviewPrefab ||
+                _sampledTargetRootMotionBranch !=
+                    _targetPreviewBranch;
+
+            if (!sourceChanged)
+            {
+                return;
+            }
+
+            ClearTargetRootMotionSample();
+            _targetRootMotionSamplingMessage =
+                "目标 Root Motion 采样来源已经变化，请重新采样当前分支。";
+        }
+
+        private void ClearTargetRootMotionSample()
+        {
+            _targetRootMotionSample = null;
+            _sampledTargetRootMotionClip = null;
+            _sampledTargetRootMotionPrefab = null;
+            _sampledTargetRootMotionBranch =
+                TargetPreviewBranch.Executed;
+            _targetRootMotionSamplingMessage = string.Empty;
+            _targetTrajectory = null;
+        }
+
+        private void SampleTargetRootMotion()
+        {
+            _isPreviewPlaying = false;
+            DisposeTargetAnimationPreviewPlayer();
+            RestorePreviewTargetInitialPose();
+            ClearTargetRootMotionSample();
+
+            AnimationClip clip = GetSelectedTargetPreviewClip();
+
+            if (_previewTargetInstance == null || clip == null)
+            {
+                _targetRootMotionSamplingMessage =
+                    "目标 Root Motion 采样失败：预览实例或动画不存在。";
+                return;
+            }
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
+
+            bool success = MotionWarpingRootMotionSampler.TrySample(
+                _previewTargetInstance,
+                clip,
+                ExecuteSampleRate,
+                out MotionWarpingRootMotionSample sample,
+                out string error);
+
+            RestorePreviewTargetInitialPose();
+            RestorePreviewSceneDirtiness(sceneWasDirty);
+
+            if (!success || sample == null ||
+                sample.InputSamples == null ||
+                sample.InputSamples.Count == 0)
+            {
+                _targetRootMotionSamplingMessage =
+                    $"目标 Root Motion 采样失败：" +
+                    $"{(string.IsNullOrEmpty(error) ? "没有生成帧样本。" : error)}";
+                SceneView.RepaintAll();
+                Repaint();
+                return;
+            }
+
+            _targetRootMotionSample = sample;
+            _sampledTargetRootMotionClip = clip;
+            _sampledTargetRootMotionPrefab = _targetPreviewPrefab;
+            _sampledTargetRootMotionBranch = _targetPreviewBranch;
+            _targetRootMotionSamplingMessage = sample.HasRootMotion
+                ? $"采样完成：{sample.InputSamples.Count} 帧，" +
+                  $"水平位移 " +
+                  $"{ExecutionWarpSolver.ProjectToHorizontalPlane(sample.TotalPosition).magnitude:F4}m，" +
+                  $"Yaw {sample.TotalYaw:F3}°。"
+                : "采样完成，但没有检测到有效目标 Root Motion。";
+
+            SceneView.RepaintAll();
+            Repaint();
+        }
+
         private void DrawTargetPosePreviewSection()
         {
+            InvalidateStaleTargetRootMotionSample();
+
             EditorGUILayout.Space(8f);
 
             EditorGUILayout.LabelField(
@@ -1173,25 +2559,39 @@ namespace Character.EditorTools.Execution
                         "目标分支",
                         _targetPreviewBranch);
 
-                float nextNormalizedTime =
-                    EditorGUILayout.Slider(
-                        "Normalized Time",
-                        _targetPreviewNormalizedTime,
-                        0f,
-                        1f);
+                bool branchChanged =
+                    EditorGUI.EndChangeCheck();
 
-                bool changed = EditorGUI.EndChangeCheck();
-
-                if (changed)
+                if (branchChanged)
                 {
+                    StopPreviewPlayback(false);
                     _targetPreviewBranch = nextBranch;
-                    _targetPreviewNormalizedTime = nextNormalizedTime;
+                    ClearTargetRootMotionSample();
 
-                    ApplyTargetPosePreview();
+                    if (GetSelectedTargetPreviewClip() != null)
+                    {
+                        SampleTargetRootMotion();
+                    }
+
+                    SetScrubElapsedTime(
+                        _previewElapsedTime,
+                        true);
                 }
 
                 AnimationClip selectedClip =
                     GetSelectedTargetPreviewClip();
+
+                float targetDuration =
+                    GetTargetPreviewDuration();
+
+                EditorGUILayout.LabelField(
+                    "Target Time",
+                    $"{Mathf.Min(_previewElapsedTime, targetDuration):F3}s / " +
+                    $"{targetDuration:F3}s");
+
+                EditorGUILayout.LabelField(
+                    "Target Normalized",
+                    _targetPreviewNormalizedTime.ToString("F3"));
 
                 EditorGUILayout.LabelField(
                     "当前动画",
@@ -1208,13 +2608,52 @@ namespace Character.EditorTools.Execution
                     _previewTargetInstance.transform.rotation.eulerAngles.ToString("F2"));
 
                 EditorGUILayout.HelpBox(
-                    "目标对象位置固定，仅采样姿态，不应用 Root Motion。",
+                    "目标会使用当前分支的 Root Motion，并通过与处决者相同的 " +
+                    "ExecutionWarpSolver 收敛到目标锚点。",
                     MessageType.Info);
+
+                bool canSampleRootMotion =
+                    selectedClip != null &&
+                    _previewTargetInstance != null;
+
+                using (new EditorGUI.DisabledScope(!canSampleRootMotion))
+                {
+                    if (GUILayout.Button(
+                            "采样当前目标 Root Motion",
+                            GUILayout.Height(24f)))
+                    {
+                        SampleTargetRootMotion();
+                        SetScrubElapsedTime(
+                            _previewElapsedTime,
+                            true);
+                    }
+                }
+
+                if (_targetRootMotionSample != null)
+                {
+                    EditorGUILayout.LabelField(
+                        "Root Motion 位移",
+                        _targetRootMotionSample.TotalPosition.ToString("F4"));
+                    EditorGUILayout.LabelField(
+                        "Root Motion Yaw",
+                        $"{_targetRootMotionSample.TotalYaw:F3}°");
+                }
+
+                if (!string.IsNullOrEmpty(
+                        _targetRootMotionSamplingMessage))
+                {
+                    EditorGUILayout.HelpBox(
+                        _targetRootMotionSamplingMessage,
+                        _targetRootMotionSample != null &&
+                        _targetRootMotionSample.HasRootMotion
+                            ? MessageType.Info
+                            : MessageType.Warning);
+                }
 
                 if (!string.IsNullOrEmpty(_targetPreviewMessage))
                 {
                     MessageType messageType =
-                        _targetPreviewMessage.StartsWith("姿态采样完成")
+                        _targetPreviewMessage.StartsWith("姿态与 Root Motion 预览完成")
                             ? MessageType.Info
                             : MessageType.Warning;
 
@@ -1316,32 +2755,65 @@ namespace Character.EditorTools.Execution
             Transform targetRoot =
                 _previewTargetInstance.transform;
 
-            Vector3 fixedPosition =
-                targetRoot.position;
+            ExecutionPose targetPose = new ExecutionPose(
+                _previewTargetInitialPosition,
+                _previewTargetInitialYaw);
 
-            Quaternion fixedRotation =
-                targetRoot.rotation;
+            if (TryBuildTargetTrajectory(
+                    out ExecutionWarpTrajectory trajectory) &&
+                trajectory.Frames != null)
+            {
+                float normalizedTime =
+                    Mathf.Clamp01(_targetPreviewNormalizedTime);
 
-            bool animatorWasEnabled =
-                animator.enabled;
+                for (int index = 0;
+                     index < trajectory.Frames.Count;
+                     index++)
+                {
+                    ExecutionWarpTrajectoryFrame frame =
+                        trajectory.Frames[index];
+
+                    if (frame.NormalizedTime >
+                        normalizedTime + 0.0001f)
+                    {
+                        break;
+                    }
+
+                    targetPose = frame.PoseAfter;
+                }
+
+                _targetTrajectory = trajectory;
+            }
+
+            bool sceneWasDirty =
+                _previewScene.IsValid() &&
+                _previewScene.isLoaded &&
+                _previewScene.isDirty;
 
             try
             {
-                animator.enabled = false;
+                MotionWarpingAnimationPreviewPlayer player =
+                    GetTargetAnimationPreviewPlayer();
 
-                float sampleTime =
-                    Mathf.Clamp01(_targetPreviewNormalizedTime) *
-                    clip.length;
+                if (!player.TrySample(
+                        _previewTargetInstance,
+                        clip,
+                        _targetPreviewNormalizedTime,
+                        out string animationError))
+                {
+                    _targetPreviewMessage =
+                        $"姿态采样失败：{animationError}";
+                    ClearTargetPosePreviewState();
+                    return;
+                }
 
-                clip.SampleAnimation(
-                    _previewTargetInstance,
-                    sampleTime);
-
-                // SampleAnimation 可能会写入根节点的动画位移和旋转。
-                // 姿态预览只保留骨骼姿态，不允许目标对象发生位移。
+                // Playable 负责骨骼姿态，通用 Warp 轨迹负责参与者根节点。
                 targetRoot.SetPositionAndRotation(
-                    fixedPosition,
-                    fixedRotation);
+                    targetPose.Position,
+                    Quaternion.Euler(
+                        _previewTargetInitialEulerAngles.x,
+                        targetPose.Yaw,
+                        _previewTargetInitialEulerAngles.z));
 
                 _sampledTargetPreviewClip = clip;
                 _sampledTargetPreviewBranch =
@@ -1350,7 +2822,7 @@ namespace Character.EditorTools.Execution
                     _targetPreviewNormalizedTime;
 
                 _targetPreviewMessage =
-                    $"姿态采样完成：{clip.name}，" +
+                    $"姿态与 Root Motion 预览完成：{clip.name}，" +
                     $"Normalized Time " +
                     $"{_targetPreviewNormalizedTime:F3}。";
 
@@ -1366,12 +2838,13 @@ namespace Character.EditorTools.Execution
             }
             finally
             {
-                animator.enabled = animatorWasEnabled;
+                RestorePreviewSceneDirtiness(sceneWasDirty);
             }
         }
 
         private void ClearTargetPosePreviewState()
         {
+            DisposeTargetAnimationPreviewPlayer();
             _sampledTargetPreviewClip = null;
             _sampledTargetPreviewBranch =
                 TargetPreviewBranch.Executed;
@@ -1403,7 +2876,8 @@ namespace Character.EditorTools.Execution
                     _sampledTargetPreviewNormalizedTime -
                     _targetPreviewNormalizedTime) <= 0.0001f &&
                 !string.IsNullOrEmpty(_targetPreviewMessage) &&
-                _targetPreviewMessage.StartsWith("姿态采样完成");
+                _targetPreviewMessage.StartsWith(
+                    "姿态与 Root Motion 预览完成");
 
             if (!valid)
             {
@@ -1417,13 +2891,21 @@ namespace Character.EditorTools.Execution
             }
 
             EditorGUILayout.HelpBox(
-                "目标姿态采样有效。该结果仅表示编辑器姿态预览，" +
+                "目标姿态和 Warp 根轨迹预览有效。" +
                 "不等同于运行时处决验证通过。",
                 MessageType.Info);
         }
 
-        private float GetPreviewAnimationDuration()
+        private float GetExecutorPreviewDuration()
         {
+            if (_combatConfig != null &&
+                IsFiniteScalar(
+                    _combatConfig.executingDuration) &&
+                _combatConfig.executingDuration > 0f)
+            {
+                return _combatConfig.executingDuration;
+            }
+
             if (_executeClip != null &&
                 _executeClip.length > 0f &&
                 !float.IsNaN(_executeClip.length) &&
@@ -1443,6 +2925,73 @@ namespace Character.EditorTools.Execution
             return 0f;
         }
 
+        private float GetTargetPreviewDuration()
+        {
+            if (_combatConfig != null)
+            {
+                float configuredDuration =
+                    _targetPreviewBranch ==
+                    TargetPreviewBranch.ExecutedDeath
+                        ? _combatConfig.executedDeathDuration
+                        : _combatConfig.executedDuration;
+
+                if (IsFiniteScalar(configuredDuration) &&
+                    configuredDuration > 0f)
+                {
+                    return configuredDuration;
+                }
+            }
+
+            AnimationClip targetClip =
+                GetSelectedTargetPreviewClip();
+
+            if (targetClip != null &&
+                IsFiniteScalar(targetClip.length) &&
+                targetClip.length > 0f)
+            {
+                return targetClip.length;
+            }
+
+            if (_presentationConfig != null)
+            {
+                float calibratedDuration =
+                    _targetPreviewBranch ==
+                    TargetPreviewBranch.ExecutedDeath
+                        ? _presentationConfig
+                            .executedDeathClipDuration
+                        : _presentationConfig
+                            .executedClipDuration;
+
+                if (IsFiniteScalar(calibratedDuration) &&
+                    calibratedDuration > 0f)
+                {
+                    return calibratedDuration;
+                }
+            }
+
+            return 0f;
+        }
+
+        private bool TryGetPreviewTimeSample(
+            float elapsedTime,
+            out MotionWarpingPreviewTimeSample timing)
+        {
+            return MotionWarpingPreviewTiming.TryEvaluate(
+                elapsedTime,
+                GetExecutorPreviewDuration(),
+                GetTargetPreviewDuration(),
+                out timing);
+        }
+
+        private float GetPreviewAnimationDuration()
+        {
+            return TryGetPreviewTimeSample(
+                    0f,
+                    out MotionWarpingPreviewTimeSample timing)
+                ? timing.PreviewDuration
+                : 0f;
+        }
+
         private void DrawTimelineSection()
         {
             EditorGUILayout.Space(8f);
@@ -1450,14 +2999,31 @@ namespace Character.EditorTools.Execution
                 "Motion Warping Timeline",
                 EditorStyles.boldLabel);
 
+            float executorDuration =
+                GetExecutorPreviewDuration();
+
+            float targetDuration =
+                GetTargetPreviewDuration();
+
             float duration = GetPreviewAnimationDuration();
 
             if (duration <= 0f)
             {
                 EditorGUILayout.HelpBox(
-                    "Timeline unavailable: assign a valid rig_Execute clip.",
+                    "Timeline unavailable: assign valid configs and execution clips.",
                     MessageType.Info);
                 return;
+            }
+
+            if (TryGetPreviewTimeSample(
+                    _previewElapsedTime,
+                    out MotionWarpingPreviewTimeSample currentTiming))
+            {
+                _previewElapsedTime = currentTiming.ElapsedTime;
+                _scrubNormalizedTime =
+                    currentTiming.ExecutorNormalizedTime;
+                _targetPreviewNormalizedTime =
+                    currentTiming.TargetNormalizedTime;
             }
 
             float warpStart = _combatConfig == null
@@ -1469,6 +3035,16 @@ namespace Character.EditorTools.Execution
                 ? 0f
                 : Mathf.Clamp01(
                     _combatConfig.executionWarpWindowEndNormalized);
+
+            float targetWarpStart = _combatConfig == null
+                ? 0f
+                : Mathf.Clamp01(
+                    _combatConfig.executedWarpWindowStartNormalized);
+
+            float targetWarpEnd = _combatConfig == null
+                ? 0f
+                : Mathf.Clamp01(
+                    _combatConfig.executedWarpWindowEndNormalized);
 
             float resultTime = _combatConfig == null
                 ? 0f
@@ -1487,48 +3063,73 @@ namespace Character.EditorTools.Execution
             using (new EditorGUI.IndentLevelScope())
             {
                 EditorGUILayout.LabelField(
-                    "Animation Duration",
+                    "Executor Duration",
+                    $"{executorDuration:F3}s");
+
+                EditorGUILayout.LabelField(
+                    "Target Duration",
+                    $"{targetDuration:F3}s " +
+                    $"({_targetPreviewBranch})");
+
+                EditorGUILayout.LabelField(
+                    "Preview Duration",
                     $"{duration:F3}s");
 
                 EditorGUILayout.LabelField(
-                    "Warp Window",
+                    "Executor Warp Window",
                     $"{warpStart:F3} - {warpEnd:F3} " +
-                    $"({warpStart * duration:F3}s - " +
-                    $"{warpEnd * duration:F3}s)");
+                    $"({warpStart * executorDuration:F3}s - " +
+                    $"{warpEnd * executorDuration:F3}s)");
+
+                EditorGUILayout.LabelField(
+                    "Target Warp Window",
+                    $"{targetWarpStart:F3} - {targetWarpEnd:F3} " +
+                    $"({targetWarpStart * targetDuration:F3}s - " +
+                    $"{targetWarpEnd * targetDuration:F3}s)");
 
                 EditorGUILayout.LabelField(
                     "Execution Result",
                     $"{resultTime:F3}s " +
                     $"(Normalized {resultNormalized:F3})");
 
-                DrawTimelineEditingControls(duration);
+                DrawTimelineEditingControls(
+                    executorDuration);
 
                 EditorGUI.BeginChangeCheck();
 
                 float currentScrub =
-                    float.IsNaN(_scrubNormalizedTime) ||
-                    float.IsInfinity(_scrubNormalizedTime)
+                    float.IsNaN(_previewElapsedTime) ||
+                    float.IsInfinity(_previewElapsedTime)
                         ? 0f
-                        : Mathf.Clamp01(_scrubNormalizedTime);
+                        : Mathf.Clamp(
+                            _previewElapsedTime,
+                            0f,
+                            duration);
 
                 float nextScrub = EditorGUILayout.Slider(
                     "Scrub Time",
                     currentScrub,
                     0f,
-                    1f);
+                    duration);
 
                 if (EditorGUI.EndChangeCheck())
                 {
-                    _scrubNormalizedTime = Mathf.Clamp01(nextScrub);
-                    _targetPreviewNormalizedTime = _scrubNormalizedTime;
-                    ApplyTargetPosePreview();
-                    SceneView.RepaintAll();
+                    StopPreviewPlayback(false);
+                    SetScrubElapsedTime(nextScrub, true);
                 }
 
                 EditorGUILayout.LabelField(
                     "Current Scrub",
-                    $"{_scrubNormalizedTime * duration:F3}s " +
-                    $"(Normalized {_scrubNormalizedTime:F3})");
+                    $"{_previewElapsedTime:F3}s / " +
+                    $"{duration:F3}s");
+
+                EditorGUILayout.LabelField(
+                    "Executor Normalized",
+                    _scrubNormalizedTime.ToString("F3"));
+
+                EditorGUILayout.LabelField(
+                    "Target Normalized",
+                    _targetPreviewNormalizedTime.ToString("F3"));
 
                 if (!resultTimeValid)
                 {
@@ -1581,8 +3182,18 @@ namespace Character.EditorTools.Execution
                 serialized.FindProperty(
                     "executionResultTime");
 
+            SerializedProperty targetWarpStartProperty =
+                serialized.FindProperty(
+                    "executedWarpWindowStartNormalized");
+
+            SerializedProperty targetWarpEndProperty =
+                serialized.FindProperty(
+                    "executedWarpWindowEndNormalized");
+
             if (warpStartProperty == null ||
                 warpEndProperty == null ||
+                targetWarpStartProperty == null ||
+                targetWarpEndProperty == null ||
                 resultTimeProperty == null)
             {
                 EditorGUILayout.HelpBox(
@@ -1610,12 +3221,29 @@ namespace Character.EditorTools.Execution
                         duration)
                     : 0f;
 
+            float nextTargetWarpStart =
+                IsFiniteScalar(targetWarpStartProperty.floatValue)
+                    ? Mathf.Clamp01(targetWarpStartProperty.floatValue)
+                    : 0f;
+
+            float nextTargetWarpEnd =
+                IsFiniteScalar(targetWarpEndProperty.floatValue)
+                    ? Mathf.Clamp01(targetWarpEndProperty.floatValue)
+                    : 1f;
+
             EditorGUI.BeginChangeCheck();
 
             EditorGUILayout.MinMaxSlider(
-                "Edit Warp Window",
+                "Edit Executor Warp Window",
                 ref nextWarpStart,
                 ref nextWarpEnd,
+                0f,
+                1f);
+
+            EditorGUILayout.MinMaxSlider(
+                "Edit Target Warp Window",
+                ref nextTargetWarpStart,
+                ref nextTargetWarpEnd,
                 0f,
                 1f);
 
@@ -1643,6 +3271,12 @@ namespace Character.EditorTools.Execution
 
             warpEndProperty.floatValue =
                 Mathf.Max(nextWarpStart, nextWarpEnd);
+
+            targetWarpStartProperty.floatValue =
+                Mathf.Min(nextTargetWarpStart, nextTargetWarpEnd);
+
+            targetWarpEndProperty.floatValue =
+                Mathf.Max(nextTargetWarpStart, nextTargetWarpEnd);
 
             resultTimeProperty.floatValue =
                 nextResultTime;
@@ -1856,7 +3490,279 @@ namespace Character.EditorTools.Execution
                 EditorGUILayout.LabelField(
                     "Warp Window 完成",
                     finalFrame.IsWarpWindowComplete ? "是" : "否");
+
+                DrawTargetTrajectoryDiagnostics();
             }
+        }
+
+        private void DrawTargetTrajectoryDiagnostics()
+        {
+            if (_targetTrajectory == null ||
+                _targetTrajectory.Frames == null ||
+                _targetTrajectory.Frames.Count == 0 ||
+                _combatConfig == null)
+            {
+                return;
+            }
+
+            int frameCount = _targetTrajectory.Frames.Count;
+            int frameIndex = Mathf.Clamp(
+                Mathf.RoundToInt(
+                    Mathf.Clamp01(_targetPreviewNormalizedTime) *
+                    (frameCount - 1)),
+                0,
+                frameCount - 1);
+
+            ExecutionWarpTrajectoryFrame frame =
+                _targetTrajectory.Frames[frameIndex];
+            ExecutionWarpTrajectoryFrame finalFrame =
+                _targetTrajectory.Frames[frameCount - 1];
+
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField(
+                $"目标轨迹诊断 ({_targetPreviewBranch})",
+                EditorStyles.boldLabel);
+            EditorGUILayout.LabelField(
+                "当前目标帧",
+                $"{frame.Index + 1}/{frameCount}, " +
+                $"Normalized {frame.NormalizedTime:F4}");
+            EditorGUILayout.LabelField(
+                "目标修正 Delta Position",
+                frame.CorrectedDeltaPosition.ToString("F5"));
+            EditorGUILayout.LabelField(
+                "目标累计位置修正",
+                frame.RequestedTranslationCorrection.ToString("F5"));
+            EditorGUILayout.LabelField(
+                "目标位置预算占用",
+                FormatBudgetUsage(
+                    frame.RequestedTranslationCorrection.magnitude,
+                    _combatConfig.executedMaxWarpTranslation));
+            EditorGUILayout.LabelField(
+                "目标累计 Yaw 修正",
+                $"{frame.RequestedYawCorrection:F4}°");
+            EditorGUILayout.LabelField(
+                "目标 Yaw 预算占用",
+                FormatBudgetUsage(
+                    Mathf.Abs(frame.RequestedYawCorrection),
+                    _combatConfig.executedMaxWarpYaw));
+            EditorGUILayout.LabelField(
+                "目标最终姿态",
+                $"Position {_targetTrajectory.FinalPose.Position:F4}, " +
+                $"Yaw {_targetTrajectory.FinalPose.Yaw:F3}°");
+            EditorGUILayout.LabelField(
+                "目标最终位置残差",
+                _targetTrajectory.FinalPositionError.ToString("F5"));
+            EditorGUILayout.LabelField(
+                "目标最终 Yaw 残差",
+                $"{_targetTrajectory.FinalYawError:F4}°");
+            EditorGUILayout.LabelField(
+                "目标 Warp Window 完成",
+                finalFrame.IsWarpWindowComplete ? "是" : "否");
+        }
+
+        private void DrawCalibrationReportSection()
+        {
+            EditorGUILayout.Space(8f);
+
+            EditorGUILayout.LabelField(
+                "校准记录",
+                EditorStyles.boldLabel);
+
+            EditorGUILayout.HelpBox(
+                "完成参数调整并确认 Preview Valid 后，" +
+                "复制当前配置和预测残差，用于 6.3/6.4 验收记录。",
+                MessageType.Info);
+
+            if (GUILayout.Button(
+                    "复制当前校准记录",
+                    GUILayout.Height(24f)))
+            {
+                if (TryBuildCalibrationReport(
+                        out string report,
+                        out string message))
+                {
+                    EditorGUIUtility.systemCopyBuffer = report;
+
+                    _calibrationReportMessage = message;
+                    _calibrationReportMessageType =
+                        MessageType.Info;
+                }
+                else
+                {
+                    _calibrationReportMessage = message;
+                    _calibrationReportMessageType =
+                        MessageType.Warning;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(
+                    _calibrationReportMessage))
+            {
+                EditorGUILayout.HelpBox(
+                    _calibrationReportMessage,
+                    _calibrationReportMessageType);
+            }
+        }
+
+        private bool TryBuildCalibrationReport(
+            out string report,
+            out string message)
+        {
+            report = string.Empty;
+
+            bool previewValid = TryEvaluatePreviewState(
+                out ExecutionWarpTrajectory trajectory,
+                out string previewMessage);
+
+            _executeTrajectory = trajectory;
+
+            if (!previewValid)
+            {
+                message =
+                    "无法生成校准记录：" +
+                    previewMessage;
+
+                return false;
+            }
+
+            if (trajectory == null ||
+                trajectory.Frames == null ||
+                trajectory.Frames.Count == 0)
+            {
+                message =
+                    "无法生成校准记录：当前没有有效轨迹帧。";
+
+                return false;
+            }
+
+            ExecutionWarpTrajectoryFrame finalFrame =
+                trajectory.Frames[
+                    trajectory.Frames.Count - 1];
+
+            string combatConfigPath =
+                AssetDatabase.GetAssetPath(
+                    _combatConfig);
+
+            string executeClipPath =
+                AssetDatabase.GetAssetPath(
+                    _executeClip);
+
+            var builder = new StringBuilder(1024);
+
+            builder.AppendLine(
+                "# Motion Warping Calibration Snapshot");
+
+            builder.AppendLine(
+                $"- Captured At: " +
+                $"{System.DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+
+            builder.AppendLine(
+                $"- Combat Config: {combatConfigPath}");
+
+            builder.AppendLine(
+                $"- Execute Clip: {executeClipPath}");
+
+            builder.AppendLine(
+                $"- Execute Clip Duration: " +
+                $"{_executeClip.length:F4}s");
+
+            builder.AppendLine(
+                $"- Executor Runtime Duration: " +
+                $"{GetExecutorPreviewDuration():F4}s");
+
+            builder.AppendLine(
+                $"- Target Runtime Duration " +
+                $"({_targetPreviewBranch}): " +
+                $"{GetTargetPreviewDuration():F4}s");
+
+            builder.AppendLine(
+                $"- Synchronized Preview Duration: " +
+                $"{GetPreviewAnimationDuration():F4}s");
+
+            builder.AppendLine(
+                $"- executionResultTime: " +
+                $"{_combatConfig.executionResultTime:F4}s");
+
+            builder.AppendLine(
+                $"- Warp Window: " +
+                $"{_combatConfig.executionWarpWindowStartNormalized:F4}" +
+                " -> " +
+                $"{_combatConfig.executionWarpWindowEndNormalized:F4}");
+
+            builder.AppendLine(
+                $"- executorAnchorOffset: " +
+                $"{_combatConfig.executorAnchorOffset:F5}");
+
+            builder.AppendLine(
+                $"- Max Warp Translation: " +
+                $"{_combatConfig.executionMaxWarpTranslation:F5}m");
+
+            builder.AppendLine(
+                $"- Max Warp Yaw: " +
+                $"{_combatConfig.executionMaxWarpYaw:F4}deg");
+
+            builder.AppendLine(
+                $"- Initial Executor Pose: " +
+                $"Position {trajectory.InitialPose.Position:F5}, " +
+                $"Yaw {trajectory.InitialPose.Yaw:F4}deg");
+
+            builder.AppendLine(
+                $"- Anchor Pose: " +
+                $"Position {trajectory.AnchorPose.Position:F5}, " +
+                $"Yaw {trajectory.AnchorPose.Yaw:F4}deg");
+
+            builder.AppendLine(
+                $"- Final Executor Pose: " +
+                $"Position {trajectory.FinalPose.Position:F5}, " +
+                $"Yaw {trajectory.FinalPose.Yaw:F4}deg");
+
+            builder.AppendLine(
+                $"- Final Position Error Vector: " +
+                $"{trajectory.FinalPositionError:F5}");
+
+            builder.AppendLine(
+                $"- Final Position Error Magnitude: " +
+                $"{trajectory.FinalPositionError.magnitude:F5}m");
+
+            builder.AppendLine(
+                $"- Final Yaw Error: " +
+                $"{trajectory.FinalYawError:F4}deg");
+
+            builder.AppendLine(
+                $"- Requested Translation Correction: " +
+                $"{finalFrame.RequestedTranslationCorrection:F5}");
+
+            builder.AppendLine(
+                $"- Requested Yaw Correction: " +
+                $"{finalFrame.RequestedYawCorrection:F4}deg");
+
+            builder.AppendLine(
+                $"- Warp Window Complete: " +
+                $"{finalFrame.IsWarpWindowComplete}");
+
+            builder.AppendLine(
+                $"- Sample Count: " +
+                $"{trajectory.Frames.Count}");
+
+            builder.AppendLine(
+                "- Config Valid: true");
+
+            builder.AppendLine(
+                "- Preview Valid: true");
+
+            builder.AppendLine(
+                "- Runtime Verified: false");
+
+            builder.AppendLine(
+                $"- Preview Diagnostic: {previewMessage}");
+
+            report = builder.ToString();
+
+            message =
+                "校准记录已复制到剪贴板。" +
+                "Runtime Verified 仍需在 6.4 的 Offline 双 Player 验收中确认。";
+
+            return true;
         }
 
         private bool TryEvaluatePreviewState(
@@ -1876,6 +3782,15 @@ namespace Character.EditorTools.Execution
             {
                 message =
                     "Config Invalid：Motion Warping 配置非法。Preview Blocked。";
+                return false;
+            }
+
+            if (!ExecutionWarpSettings.TryFromTarget(
+                    _combatConfig,
+                    out _))
+            {
+                message =
+                    "Config Invalid：被处决者 Motion Warping 配置非法。Preview Blocked。";
                 return false;
             }
 
@@ -1989,6 +3904,41 @@ namespace Character.EditorTools.Execution
             AnimationClip selectedTargetClip =
                 GetSelectedTargetPreviewClip();
 
+            if (_targetRootMotionSample == null ||
+                _targetRootMotionSample.InputSamples == null ||
+                _targetRootMotionSample.InputSamples.Count == 0)
+            {
+                message =
+                    "Preview Blocked：尚未取得当前目标分支的 Root Motion 样本。";
+                return false;
+            }
+
+            if (_sampledTargetRootMotionClip != selectedTargetClip ||
+                _sampledTargetRootMotionPrefab != _targetPreviewPrefab ||
+                _sampledTargetRootMotionBranch != _targetPreviewBranch)
+            {
+                message =
+                    "Preview Blocked：目标 Root Motion 采样来源已经变化，请重新采样。";
+                return false;
+            }
+
+            if (!_targetRootMotionSample.HasRootMotion)
+            {
+                message =
+                    "Preview Blocked：当前目标动画未产生可信 Root Motion。";
+                return false;
+            }
+
+            if (!TryBuildTargetTrajectory(
+                    out ExecutionWarpTrajectory targetTrajectory))
+            {
+                message =
+                    "Preview Blocked：共享 ExecutionWarpSolver 无法生成目标轨迹。";
+                return false;
+            }
+
+            _targetTrajectory = targetTrajectory;
+
             bool targetSampleValid =
                 selectedTargetClip != null &&
                 _sampledTargetPreviewClip == selectedTargetClip &&
@@ -2039,29 +3989,29 @@ namespace Character.EditorTools.Execution
             Transform targetTransform =
                 _previewTargetInstance.transform;
 
-            Transform executorTransform =
-                _previewExecutorInstance.transform;
+            var initialExecutorPose =
+                new ExecutionPose(
+                    _previewExecutorInitialPosition,
+                    _previewExecutorInitialYaw);
 
-            float targetYaw =
-                targetTransform.eulerAngles.y;
+            var targetPose =
+                new ExecutionPose(
+                    targetTransform.position,
+                    targetTransform.eulerAngles.y);
 
-            Quaternion targetRotation =
-                Quaternion.Euler(0f, targetYaw, 0f);
+            ExecutionEligibilityResult eligibility =
+                ExecutionSpatialValidator.Evaluate(
+                    initialExecutorPose,
+                    targetPose,
+                    _combatConfig);
 
-            Vector3 anchorPosition =
-                targetTransform.position +
-                targetRotation *
-                _combatConfig.executorAnchorOffset;
+            if (!eligibility.HasSpatialSolution)
+            {
+                return false;
+            }
 
-            positionError =
-                ExecutionWarpSolver.ProjectToHorizontalPlane(
-                    anchorPosition - executorTransform.position)
-                .magnitude;
-
-            yawError = Mathf.Abs(
-                Mathf.DeltaAngle(
-                    executorTransform.eulerAngles.y,
-                    targetYaw));
+            positionError = eligibility.WarpTranslationError;
+            yawError = eligibility.WarpYawError;
 
             if (!IsFiniteScalar(positionError) ||
                 !IsFiniteScalar(yawError))
@@ -2208,26 +4158,30 @@ namespace Character.EditorTools.Execution
             }
 
             DrawAnchorHandle();
+            DrawTargetAnchorHandle();
 
             if (Event.current.type != EventType.Repaint)
             {
                 return;
             }
 
-            if (_executeRootMotionSample == null ||
-                !_executeRootMotionSample.HasRootMotion)
-            {
-                return;
-            }
-
-            if (!TryBuildExecuteTrajectory(
+            if (_executeRootMotionSample != null &&
+                _executeRootMotionSample.HasRootMotion &&
+                TryBuildExecuteTrajectory(
                     out ExecutionWarpTrajectory trajectory))
             {
-                return;
+                _executeTrajectory = trajectory;
+                DrawTrajectoryScene(trajectory);
             }
 
-            _executeTrajectory = trajectory;
-            DrawTrajectoryScene(trajectory);
+            if (_targetRootMotionSample != null &&
+                _targetRootMotionSample.HasRootMotion &&
+                TryBuildTargetTrajectory(
+                    out ExecutionWarpTrajectory targetTrajectory))
+            {
+                _targetTrajectory = targetTrajectory;
+                DrawTargetTrajectoryScene(targetTrajectory);
+            }
         }
 
         private void DrawAnchorHandle()
@@ -2238,11 +4192,8 @@ namespace Character.EditorTools.Execution
                 return;
             }
 
-            Transform targetTransform =
-                _previewTargetInstance.transform;
-
             float targetYaw =
-                targetTransform.eulerAngles.y;
+                _previewTargetInitialYaw;
 
             Quaternion targetRotation =
                 Quaternion.Euler(0f, targetYaw, 0f);
@@ -2266,7 +4217,7 @@ namespace Character.EditorTools.Execution
                 offsetProperty.vector3Value;
 
             Vector3 worldAnchor =
-                targetTransform.position +
+                _previewTargetInitialPosition +
                 targetRotation * currentOffset;
 
             EditorGUI.BeginChangeCheck();
@@ -2283,7 +4234,7 @@ namespace Character.EditorTools.Execution
 
             Vector3 nextOffset =
                 Quaternion.Inverse(targetRotation) *
-                (nextWorldAnchor - targetTransform.position);
+                (nextWorldAnchor - _previewTargetInitialPosition);
 
             if (!IsFiniteVector3(nextOffset))
             {
@@ -2298,6 +4249,80 @@ namespace Character.EditorTools.Execution
             offsetProperty.vector3Value = nextOffset;
 
             // 前面已经调用了 Undo.RecordObject，避免这里再生成一条重复 Undo。
+            if (!serialized.ApplyModifiedPropertiesWithoutUndo())
+            {
+                return;
+            }
+
+            HandleSerializedConfigChanged(_combatConfig);
+        }
+
+        private void DrawTargetAnchorHandle()
+        {
+            if (_combatConfig == null ||
+                _previewTargetInstance == null)
+            {
+                return;
+            }
+
+            Quaternion referenceRotation = Quaternion.Euler(
+                0f,
+                _previewTargetInitialYaw,
+                0f);
+
+            string propertyName = _targetPreviewBranch ==
+                TargetPreviewBranch.ExecutedDeath
+                    ? "executedDeathAnchorOffset"
+                    : "executedAnchorOffset";
+
+            using var serialized =
+                new SerializedObject(_combatConfig);
+            serialized.Update();
+
+            SerializedProperty offsetProperty =
+                serialized.FindProperty(propertyName);
+
+            if (offsetProperty == null ||
+                offsetProperty.propertyType !=
+                SerializedPropertyType.Vector3)
+            {
+                return;
+            }
+
+            Vector3 worldAnchor =
+                _previewTargetInitialPosition +
+                referenceRotation * offsetProperty.vector3Value;
+
+            Handles.color = new Color(0.25f, 0.75f, 1f);
+            Handles.Label(
+                worldAnchor + Vector3.up * 0.16f,
+                "Target Warp Anchor");
+
+            EditorGUI.BeginChangeCheck();
+            Vector3 nextWorldAnchor = Handles.PositionHandle(
+                worldAnchor,
+                referenceRotation);
+
+            if (!EditorGUI.EndChangeCheck())
+            {
+                return;
+            }
+
+            Vector3 nextOffset =
+                Quaternion.Inverse(referenceRotation) *
+                (nextWorldAnchor - _previewTargetInitialPosition);
+
+            if (!IsFiniteVector3(nextOffset))
+            {
+                return;
+            }
+
+            Undo.RecordObject(
+                _combatConfig,
+                "Move Target Motion Warping Anchor");
+            serialized.Update();
+            offsetProperty.vector3Value = nextOffset;
+
             if (!serialized.ApplyModifiedPropertiesWithoutUndo())
             {
                 return;
@@ -2331,37 +4356,73 @@ namespace Character.EditorTools.Execution
                 return false;
             }
 
-            Transform targetTransform =
-                _previewTargetInstance.transform;
-
-            Transform executorTransform =
-                _previewExecutorInstance.transform;
-
-            float targetYaw =
-                targetTransform.eulerAngles.y;
-
-            Quaternion targetRotation =
-                Quaternion.Euler(0f, targetYaw, 0f);
-
-            Vector3 anchorPosition =
-                targetTransform.position +
-                targetRotation * _combatConfig.executorAnchorOffset;
-
-            var anchorPose =
-                new ExecutionPose(
-                    anchorPosition,
-                    targetYaw);
-
             var initialExecutorPose =
                 new ExecutionPose(
-                    executorTransform.position,
-                    executorTransform.eulerAngles.y);
+                    _previewExecutorInitialPosition,
+                    _previewExecutorInitialYaw);
+
+            var targetPose =
+                new ExecutionPose(
+                    _previewTargetInitialPosition,
+                    _previewTargetInitialYaw);
+
+            ExecutionEligibilityResult eligibility =
+                ExecutionSpatialValidator.Evaluate(
+                    initialExecutorPose,
+                    targetPose,
+                    _combatConfig);
+
+            if (!eligibility.HasSpatialSolution)
+            {
+                return false;
+            }
 
             return ExecutionWarpTrajectorySampler.TrySample(
-                anchorPose,
+                eligibility.ExecutorAnchorPose,
                 initialExecutorPose,
                 _combatConfig,
                 _executeRootMotionSample.InputSamples,
+                out trajectory);
+        }
+
+        private bool TryBuildTargetTrajectory(
+            out ExecutionWarpTrajectory trajectory)
+        {
+            trajectory = null;
+
+            if (_combatConfig == null ||
+                _previewTargetInstance == null ||
+                _targetRootMotionSample == null ||
+                _targetRootMotionSample.InputSamples == null ||
+                _targetRootMotionSample.InputSamples.Count == 0 ||
+                !ExecutionWarpSettings.TryFromTarget(
+                    _combatConfig,
+                    out ExecutionWarpSettings settings))
+            {
+                return false;
+            }
+
+            var initialTargetPose = new ExecutionPose(
+                _previewTargetInitialPosition,
+                _previewTargetInitialYaw);
+
+            bool lethal = _targetPreviewBranch ==
+                TargetPreviewBranch.ExecutedDeath;
+
+            if (!ExecutionWarpAnchorResolver.TryResolveTargetAnchor(
+                    initialTargetPose,
+                    _combatConfig,
+                    lethal,
+                    out ExecutionPose anchorPose))
+            {
+                return false;
+            }
+
+            return ExecutionWarpTrajectorySampler.TrySample(
+                anchorPose,
+                initialTargetPose,
+                settings,
+                _targetRootMotionSample.InputSamples,
                 out trajectory);
         }
 
@@ -2379,9 +4440,9 @@ namespace Character.EditorTools.Execution
                 _executeRootMotionSample;
 
             DrawPoseMarker(
-                "Target",
-                _previewTargetInstance.transform.position,
-                _previewTargetInstance.transform.eulerAngles.y,
+                "Target Start",
+                _previewTargetInitialPosition,
+                _previewTargetInitialYaw,
                 Color.cyan);
 
             DrawPoseMarker(
@@ -2470,6 +4531,99 @@ namespace Character.EditorTools.Execution
                     frame.PoseAfter.Position,
                     frame.PoseAfter.Yaw,
                     Color.yellow);
+
+                Handles.color = Color.magenta;
+                Handles.DrawLine(
+                    frame.PoseAfter.Position,
+                    trajectory.AnchorPose.Position);
+            }
+
+            Handles.color = Color.white;
+        }
+
+        private void DrawTargetTrajectoryScene(
+            ExecutionWarpTrajectory trajectory)
+        {
+            if (trajectory == null ||
+                _targetRootMotionSample == null)
+            {
+                return;
+            }
+
+            DrawPoseMarker(
+                "Target Start",
+                trajectory.InitialPose.Position,
+                trajectory.InitialPose.Yaw,
+                Color.cyan);
+
+            DrawPoseMarker(
+                "Target Anchor",
+                trajectory.AnchorPose.Position,
+                trajectory.AnchorPose.Yaw,
+                new Color(0.15f, 0.65f, 1f));
+
+            Handles.color = new Color(0.35f, 0.55f, 0.75f);
+
+            if (_targetRootMotionSample.AccumulatedPositions != null)
+            {
+                for (int index = 0;
+                     index + 1 <
+                     _targetRootMotionSample.AccumulatedPositions.Count;
+                     index++)
+                {
+                    Handles.DrawLine(
+                        trajectory.InitialPose.Position +
+                        _targetRootMotionSample.AccumulatedPositions[index],
+                        trajectory.InitialPose.Position +
+                        _targetRootMotionSample.AccumulatedPositions[index + 1]);
+                }
+            }
+
+            Handles.color = Color.cyan;
+
+            if (trajectory.Frames != null)
+            {
+                for (int index = 0;
+                     index < trajectory.Frames.Count;
+                     index++)
+                {
+                    Vector3 start = index == 0
+                        ? trajectory.InitialPose.Position
+                        : trajectory.Frames[index - 1].PoseAfter.Position;
+
+                    Handles.DrawLine(
+                        start,
+                        trajectory.Frames[index].PoseAfter.Position);
+                }
+            }
+
+            DrawPoseMarker(
+                "Target Warp Final",
+                trajectory.FinalPose.Position,
+                trajectory.FinalPose.Yaw,
+                Color.blue);
+
+            int frameCount = trajectory.Frames == null
+                ? 0
+                : trajectory.Frames.Count;
+
+            if (frameCount > 0)
+            {
+                int scrubIndex = Mathf.Clamp(
+                    Mathf.RoundToInt(
+                        Mathf.Clamp01(_targetPreviewNormalizedTime) *
+                        (frameCount - 1)),
+                    0,
+                    frameCount - 1);
+
+                ExecutionWarpTrajectoryFrame frame =
+                    trajectory.Frames[scrubIndex];
+
+                DrawPoseMarker(
+                    "Target Scrub",
+                    frame.PoseAfter.Position,
+                    frame.PoseAfter.Yaw,
+                    new Color(0.45f, 0.9f, 1f));
 
                 Handles.color = Color.magenta;
                 Handles.DrawLine(

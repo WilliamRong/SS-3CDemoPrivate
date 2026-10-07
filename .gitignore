@@ -80,3 +80,7 @@ Assets/Opsive/
 Assets/Opsive.meta
 Assets/Samples/Opsive Behavior Designer/
 Assets/Samples/Opsive Behavior Designer.meta
+
+# Unity EditMode test artifacts
+Assets/__MotionWarpingEditorTests_*/
+Assets/__MotionWarpingEditorTests_*.meta

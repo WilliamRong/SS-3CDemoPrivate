@@ -8,6 +8,7 @@ namespace Character.Execution
         private readonly ExecutionWarpSolver _solver;
 
         public ulong ExecutionId { get; }
+        public ExecutionWarpParticipant Participant { get; }
 
         public ExecutionPose AnchorPose => _solver.AnchorPose;
         public float WindowStartNormalized => _solver.WindowStartNormalized;
@@ -54,9 +55,11 @@ namespace Character.Execution
 
         private ExecutionWarpContext(
             ulong executionId,
+            ExecutionWarpParticipant participant,
             ExecutionWarpSolver solver)
         {
             ExecutionId = executionId;
+            Participant = participant;
             _solver = solver;
         }
 
@@ -67,6 +70,39 @@ namespace Character.Execution
             in ExecutionPose initialExecutorPose,
             out ExecutionWarpContext context)
         {
+            return TryCreate(
+                session,
+                ownerActorId,
+                ExecutionWarpParticipant.Executor,
+                config,
+                initialExecutorPose,
+                out context);
+        }
+
+        public static bool TryCreateTarget(
+            in ExecutionSession session,
+            int ownerActorId,
+            CharacterCombatConfig config,
+            in ExecutionPose initialTargetPose,
+            out ExecutionWarpContext context)
+        {
+            return TryCreate(
+                session,
+                ownerActorId,
+                ExecutionWarpParticipant.Target,
+                config,
+                initialTargetPose,
+                out context);
+        }
+
+        public static bool TryCreate(
+            in ExecutionSession session,
+            int ownerActorId,
+            ExecutionWarpParticipant participant,
+            CharacterCombatConfig config,
+            in ExecutionPose initialParticipantPose,
+            out ExecutionWarpContext context)
+        {
             context = null;
 
             if (!session.TryValidate(out _))
@@ -75,13 +111,54 @@ namespace Character.Execution
             if (!session.IsActive)
                 return false;
 
-            if (session.ExecutorActorId != ownerActorId)
+            if (participant is not (
+                    ExecutionWarpParticipant.Executor or
+                    ExecutionWarpParticipant.Target))
+            {
+                return false;
+            }
+
+            int expectedActorId =
+                participant == ExecutionWarpParticipant.Executor
+                    ? session.ExecutorActorId
+                    : session.TargetActorId;
+
+            if (expectedActorId != ownerActorId)
                 return false;
 
+            ExecutionPose anchorPose;
+            ExecutionWarpSettings settings;
+
+            if (participant == ExecutionWarpParticipant.Executor)
+            {
+                anchorPose = session.ExecutorAnchorPose;
+
+                if (!ExecutionWarpSettings.TryFromExecutor(
+                        config,
+                        out settings))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                if (!ExecutionWarpAnchorResolver.TryResolveTargetAnchor(
+                        session.FixedTargetPose,
+                        config,
+                        session.TargetWillDie,
+                        out anchorPose) ||
+                    !ExecutionWarpSettings.TryFromTarget(
+                        config,
+                        out settings))
+                {
+                    return false;
+                }
+            }
+
             if (!ExecutionWarpSolver.TryCreate(
-                    session.ExecutorAnchorPose,
-                    initialExecutorPose,
-                    config,
+                    anchorPose,
+                    initialParticipantPose,
+                    settings,
                     out ExecutionWarpSolver solver))
             {
                 return false;
@@ -89,6 +166,7 @@ namespace Character.Execution
 
             context = new ExecutionWarpContext(
                 session.ExecutionId,
+                participant,
                 solver);
 
             return true;

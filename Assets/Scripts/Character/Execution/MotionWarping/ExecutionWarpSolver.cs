@@ -90,14 +90,14 @@ namespace Character.Execution
         private ExecutionWarpSolver(
                    in ExecutionPose anchorPose,
                    in ExecutionPose initialExecutorPose,
-                   CharacterCombatConfig config,
+                   in ExecutionWarpSettings settings,
                    AnimationCurve weightCurve)
         {
             AnchorPose = anchorPose;
-            WindowStartNormalized = config.executionWarpWindowStartNormalized;
-            WindowEndNormalized = config.executionWarpWindowEndNormalized;
-            MaxInitialTranslationError = config.executionMaxWarpTranslation;
-            MaxInitialYawError = config.executionMaxWarpYaw;
+            WindowStartNormalized = settings.WindowStartNormalized;
+            WindowEndNormalized = settings.WindowEndNormalized;
+            MaxInitialTranslationError = settings.MaxInitialTranslationError;
+            MaxInitialYawError = settings.MaxInitialYawError;
             _weightCurve = weightCurve;
             IsActive = true;
 
@@ -112,27 +112,51 @@ namespace Character.Execution
            CharacterCombatConfig config,
            out ExecutionWarpSolver solver)
         {
+            if (!ExecutionWarpSettings.TryFromExecutor(
+                    config,
+                    out ExecutionWarpSettings settings))
+            {
+                solver = null;
+                return false;
+            }
+
+            return TryCreate(
+                anchorPose,
+                initialExecutorPose,
+                settings,
+                out solver);
+        }
+
+        public static bool TryCreate(
+           in ExecutionPose anchorPose,
+           in ExecutionPose initialParticipantPose,
+           in ExecutionWarpSettings settings,
+           out ExecutionWarpSolver solver)
+        {
             solver = null;
 
-            if (config == null || !initialExecutorPose.IsFinite || !anchorPose.IsFinite)
+            if (!initialParticipantPose.IsFinite || !anchorPose.IsFinite)
                 return false;
 
-            if (!IsValidConfiguration(config))
+            if (!IsValidSettings(settings))
                 return false;
 
-            if (!IsInitialPoseWithinBudget(anchorPose, initialExecutorPose, config))
+            if (!IsInitialPoseWithinBudget(
+                    anchorPose,
+                    initialParticipantPose,
+                    settings))
                 return false;
 
-            var curve = new AnimationCurve(config.executionWarpCurve.keys)
+            var curve = new AnimationCurve(settings.WeightCurve.keys)
             {
-                preWrapMode = config.executionWarpCurve.preWrapMode,
-                postWrapMode = config.executionWarpCurve.postWrapMode,
+                preWrapMode = settings.WeightCurve.preWrapMode,
+                postWrapMode = settings.WeightCurve.postWrapMode,
             };
 
             solver = new ExecutionWarpSolver(
                 anchorPose,
-                initialExecutorPose,
-                config,
+                initialParticipantPose,
+                settings,
                 curve);
 
             return true;
@@ -337,38 +361,43 @@ namespace Character.Execution
 
         public static bool IsValidConfiguration(CharacterCombatConfig config)
         {
-            if (config == null)
-                return false;
+            return ExecutionWarpSettings.TryFromExecutor(
+                config,
+                out _);
+        }
 
-            if (!IsFinite(config.executionWarpWindowStartNormalized) ||
-                !IsFinite(config.executionWarpWindowEndNormalized))
+        public static bool IsValidSettings(
+            in ExecutionWarpSettings settings)
+        {
+            if (!IsFinite(settings.WindowStartNormalized) ||
+                !IsFinite(settings.WindowEndNormalized))
             {
                 return false;
             }
 
-            if (config.executionWarpWindowStartNormalized < 0f ||
-                config.executionWarpWindowStartNormalized > 1f ||
-                config.executionWarpWindowEndNormalized < config.executionWarpWindowStartNormalized ||
-                config.executionWarpWindowEndNormalized > 1f)
+            if (settings.WindowStartNormalized < 0f ||
+                settings.WindowStartNormalized > 1f ||
+                settings.WindowEndNormalized < settings.WindowStartNormalized ||
+                settings.WindowEndNormalized > 1f)
             {
                 return false;
             }
 
-            if (!IsFinite(config.executionMaxWarpTranslation) ||
-                config.executionMaxWarpTranslation < 0f)
+            if (!IsFinite(settings.MaxInitialTranslationError) ||
+                settings.MaxInitialTranslationError < 0f)
             {
                 return false;
             }
 
-            if (!IsFinite(config.executionMaxWarpYaw) ||
-                config.executionMaxWarpYaw < 0f ||
-                config.executionMaxWarpYaw > 180f)
+            if (!IsFinite(settings.MaxInitialYawError) ||
+                settings.MaxInitialYawError < 0f ||
+                settings.MaxInitialYawError > 180f)
             {
                 return false;
             }
 
             return CharacterCombatConfig.IsExecutionWarpCurveValid(
-                config.executionWarpCurve);
+                settings.WeightCurve);
         }
 
         public static bool IsInitialPoseWithinBudget(
@@ -376,22 +405,39 @@ namespace Character.Execution
             in ExecutionPose initialExecutorPose,
             CharacterCombatConfig config)
         {
+            return ExecutionWarpSettings.TryFromExecutor(
+                       config,
+                       out ExecutionWarpSettings settings) &&
+                   IsInitialPoseWithinBudget(
+                       anchorPose,
+                       initialExecutorPose,
+                       settings);
+        }
 
-            if (config == null) return false;
+        public static bool IsInitialPoseWithinBudget(
+            in ExecutionPose anchorPose,
+            in ExecutionPose initialParticipantPose,
+            in ExecutionWarpSettings settings)
+        {
+            if (!IsValidSettings(settings))
+                return false;
 
             Vector3 positionError =
-                ProjectToHorizontalPlane(anchorPose.Position - initialExecutorPose.Position);
+                ProjectToHorizontalPlane(
+                    anchorPose.Position -
+                    initialParticipantPose.Position);
 
             float translationError = positionError.magnitude;
 
             float yawError = Mathf.Abs(Mathf.DeltaAngle(
-                initialExecutorPose.Yaw,
+                initialParticipantPose.Yaw,
                 anchorPose.Yaw));
 
             return IsFinite(translationError) &&
-                   translationError <= config.executionMaxWarpTranslation &&
+                   translationError <=
+                       settings.MaxInitialTranslationError &&
                    IsFinite(yawError) &&
-                   yawError <= config.executionMaxWarpYaw;
+                   yawError <= settings.MaxInitialYawError;
         }
 
         public static Vector3 ProjectToHorizontalPlane(Vector3 value)
